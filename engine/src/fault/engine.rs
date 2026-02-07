@@ -59,14 +59,27 @@ pub fn step_faults(state: &mut PhoneState, dt: f64) {
 /// =======================
 
 pub fn propagate_faults(state: &mut PhoneState) {
+    // snapshot untuk menghindari mut borrow conflict
     let snapshot = state.faults.active.clone();
 
     for (id, fault) in snapshot {
         if fault.phase == FaultPhase::Persistent {
             let probability = fault.intensity * 0.05;
 
-            if random_hit(probability) {
+            // =======================
+            // RNG WAJIB DARI PHONE_STATE
+            // =======================
+
+            if state.rng_hit(probability) {
                 spawn_secondary_fault(state, id);
+
+                // =======================
+                // SYSTEM CONSEQUENCE
+                // Propagasi fault TIDAK gratis
+                // =======================
+
+                state.stress.electrical += probability * 0.1;
+                state.stress.thermal += probability * 0.05;
             }
         }
     }
@@ -77,8 +90,8 @@ pub fn propagate_faults(state: &mut PhoneState) {
 /// =======================
 
 fn spawn_secondary_fault(state: &mut PhoneState, source: FaultId) {
-    // Untuk sekarang: pilih fault acak dari template
-    // (akan diganti model coupling matrix di fase lanjut)
+    // Pilih fault acak SELAIN source
+    // (akan diganti coupling matrix di fase lanjut)
 
     let new_id = FaultId::random_except(source);
 
@@ -94,9 +107,4 @@ fn spawn_secondary_fault(state: &mut PhoneState, source: FaultId) {
     );
 
     state.faults.active.insert(new_id, instance);
-}
-
-fn random_hit(p: f64) -> bool {
-    let r: f64 = rand::random();
-    r < p
 }

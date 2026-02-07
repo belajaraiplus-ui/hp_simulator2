@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use crate::state::phone_state::*;
 use crate::state::ids::*;
+use crate::core::rng::SimRng; // ⬅️ DITAMBAHKAN
 
 pub fn bootstrap_state() -> PhoneState {
     // =======================
@@ -116,5 +117,10 @@ pub fn bootstrap_state() -> PhoneState {
         material: MaterialState {
             aging_map: HashMap::new(),
         },
+
+        // =======================
+        // DETERMINISTIC RNG (WAJIB)
+        // =======================
+        rng: SimRng::new(123_456_789),
     }
 }

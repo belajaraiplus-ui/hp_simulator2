@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::state::ids::{RailId, ThermalZoneId, ComponentId, FaultId};
 use crate::fault::model::FaultInstance;
+use crate::core::rng::SimRng; // ⬅️ DITAMBAHKAN (deterministic RNG)
 
 /// PHONE STATE — Single Source of Truth
 ///
@@ -131,6 +132,11 @@ pub struct PhoneState {
     pub last_temperature: HashMap<ThermalZoneId, f64>,
 
     pub material: MaterialState,
+
+    /// DETERMINISTIC RNG
+    /// Semua probabilistic behavior WAJIB lewat ini
+    /// (fault evolution, degradation chance, misleading measurement, dll)
+    pub rng: SimRng,
 }
 
 // =======================
@@ -166,6 +172,8 @@ impl StressState {
 }
 
 impl PhoneState {
+    /// Minimal bootstrap (tanpa rail / zona)
+    /// Seed RNG DISET DI SINI
     pub fn minimal() -> Self {
         Self {
             time: 0.0,
@@ -187,7 +195,19 @@ impl PhoneState {
             material: MaterialState {
                 aging_map: HashMap::new(),
             },
+            rng: SimRng::new(123_456_789), // ⬅️ seed deterministik default
         }
+    }
+
+    /// RNG helper — gunakan ini, jangan buat RNG lain
+    #[inline]
+    pub fn rng_f64(&mut self) -> f64 {
+        self.rng.f64()
+    }
+
+    #[inline]
+    pub fn rng_hit(&mut self, probability: f64) -> bool {
+        self.rng.bernoulli(probability)
     }
 }
 
@@ -229,4 +249,3 @@ impl ElectricalState {
             .sum()
     }
 }
-
