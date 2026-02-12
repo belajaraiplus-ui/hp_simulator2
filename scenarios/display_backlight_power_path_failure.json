@@ -1,0 +1,38 @@
+{
+  "id": "display_backlight_power_path_failure",
+  "title": "Layar tampak gelap meskipun sistem berjalan",
+  "domain": "display_and_touch",
+  "world_profile": "POST_PREVIOUS_REPAIR",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "layar diganti sebelumnya",
+      "perangkat sempat menyala normal setelah servis"
+    ]
+  },
+
+  "symptoms": [
+    "Layar tampak hitam namun masih ada bayangan samar",
+    "Perangkat tetap berfungsi secara sistem"
+  ],
+
+  "constraints": [
+    "Tidak tersedia layar pembanding",
+    "Pengujian dibatasi pada observasi eksternal"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Layar terlihat normal kembali",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Menunjukkan kegagalan domain daya tampilan",
+    "avoid": [
+      "mengaitkan langsung ke kerusakan panel"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "logic_random_reset_without_brownout",
+  "title": "Perangkat melakukan restart acak tanpa indikasi penurunan daya",
+  "domain": "logic_and_timing",
+  "world_profile": "NOISY_POWER_ENV",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat digunakan normal",
+      "restart terjadi tanpa pola waktu yang jelas"
+    ]
+  },
+
+  "symptoms": [
+    "Perangkat restart tiba-tiba",
+    "Tidak ada peringatan baterai atau panas sebelum restart"
+  ],
+
+  "constraints": [
+    "Tidak tersedia log sistem internal",
+    "Pengujian dilakukan dengan alat standar"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat tidak restart sendiri",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Melatih analisa reset tanpa indikasi brownout",
+    "avoid": [
+      "menganggap masalah baterai sebagai penyebab utama"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "rf_power_path_instability",
+  "title": "Sinyal menurun drastis saat perangkat mencoba terhubung",
+  "domain": "rf_and_network",
+  "world_profile": "NOISY_POWER_ENV",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "penggunaan data seluler intensif",
+      "perangkat terasa hangat saat transmisi"
+    ]
+  },
+
+  "symptoms": [
+    "Sinyal turun saat panggilan atau data aktif",
+    "Perangkat kembali normal saat idle"
+  ],
+
+  "constraints": [
+    "Tidak tersedia alat ukur RF khusus",
+    "Pengujian dibatasi pada observasi perilaku"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Koneksi tetap stabil saat digunakan",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Menunjukkan ketergantungan RF pada kestabilan daya",
+    "avoid": [
+      "mengaitkan langsung ke kualitas sinyal operator"
+    ]
+  }
+}

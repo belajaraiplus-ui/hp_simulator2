@@ -1,0 +1,38 @@
+{
+  "id": "storage_progressive_degradation",
+  "title": "Kinerja perangkat menurun dan menjadi tidak stabil seiring waktu",
+  "domain": "storage_and_memory",
+  "world_profile": "HOT_HUMID_WORKSHOP",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat sering digunakan dalam kondisi panas",
+      "penurunan performa terjadi bertahap"
+    ]
+  },
+
+  "symptoms": [
+    "Aplikasi sering lambat atau tidak merespons",
+    "Perangkat kadang restart tanpa sebab jelas"
+  ],
+
+  "constraints": [
+    "Tidak tersedia data kesehatan penyimpanan",
+    "Pengujian dilakukan tanpa reset sistem"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat kembali responsif",
+    "time_pressure": "rendah",
+    "service_history_confidence": "sedang"
+  },
+
+  "author_notes": {
+    "intent": "Melatih pengenalan degradasi progresif",
+    "avoid": [
+      "menganggap masalah langsung sebagai software murni"
+    ]
+  }
+}

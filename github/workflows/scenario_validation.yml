@@ -1,0 +1,37 @@
+name: Scenario DSL Validation
+
+on:
+  pull_request:
+  push:
+    paths:
+      - "scenarios/**"
+      - "engine/**"
+      - "tools/**"
+
+jobs:
+  validate-scenarios:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Build scenario CLI
+        run: |
+          cd tools/scenario_cli
+          cargo build --quiet
+
+      - name: Validate all scenarios
+        shell: pwsh
+        run: |
+          Get-ChildItem ../../scenarios -Filter *.json | ForEach-Object {
+            Write-Host "Validating $($_.Name)"
+            cargo run --quiet -- validate "../../scenarios/$($_.Name)"
+          }

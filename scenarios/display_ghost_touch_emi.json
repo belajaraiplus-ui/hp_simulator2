@@ -1,0 +1,17 @@
+{
+  "id": "display_ghost_touch_emi",
+  "title": "Ghost Touch Saat Dicas",
+
+  "world_profile": "HOT_HUMID_WORKSHOP",
+
+  "customer_complaint": "Layar bergerak sendiri saat dicas. Kalau charger dicabut, kadang normal.",
+
+  "background_story": "Layar pernah diganti di tempat lain. Pemilik sering pakai charger murah. Masalah muncul perlahan, awalnya jarang.",
+
+  "constraints": {
+    "tools": "Multimeter tersedia. Oscilloscope ada tapi jarang dipakai untuk sinyal sentuh.",
+    "time_pressure": "Pemilik terganggu karena layar sering salah pencet."
+  },
+
+  "notes": "Kasus ghost touch sering dipicu oleh EMI, grounding buruk, atau noise dari charger. Pengukuran listrik dasar bisa terlihat normal dan menyesatkan."
+}

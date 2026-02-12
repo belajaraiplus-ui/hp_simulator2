@@ -1,0 +1,41 @@
+{
+  "id": "power_total_failure_zero_current",
+  "title": "Perangkat mati total dan tidak menunjukkan konsumsi arus",
+  "domain": "power_and_charging",
+  "world_profile": "POST_PREVIOUS_REPAIR",
+
+  "initial_conditions": {
+    "power_state": "off",
+    "battery_level": "unknown",
+    "recent_history": [
+      "perangkat tidak dapat dinyalakan sejak terakhir digunakan",
+      "perangkat pernah dibongkar untuk perbaikan sebelumnya"
+    ]
+  },
+
+  "symptoms": [
+    "Perangkat tidak merespons tombol daya",
+    "Tidak ada indikasi arus saat dihubungkan ke power supply",
+    "Layar tetap gelap tanpa tanda aktivitas"
+  ],
+
+  "constraints": [
+    "Tidak tersedia riwayat lengkap perbaikan sebelumnya",
+    "Tidak ada indikasi visual kerusakan fisik",
+    "Pengujian dibatasi pada alat standar bengkel"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Ingin mengetahui apakah perangkat masih layak diperbaiki",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Melatih interpretasi ketiadaan arus dan risiko asumsi terlalu dini",
+    "avoid": [
+      "mengarah langsung ke kesimpulan short berat",
+      "mengasumsikan kerusakan IC tertentu"
+    ]
+  }
+}

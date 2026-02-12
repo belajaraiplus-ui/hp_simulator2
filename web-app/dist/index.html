@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>HP Simulator â€“ Pro Dashboard</title>
+
+<style>
+  body {
+    font-family: system-ui, sans-serif;
+    margin: 20px;
+    background: #0f1115;
+    color: #e5e5e5;
+  }
+
+  h1 {
+    margin-bottom: 20px;
+  }
+
+  .panel {
+    background: #1a1d24;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 0 10px rgba(0,0,0,0.3);
+  }
+
+  button {
+    padding: 6px 12px;
+    margin-right: 6px;
+    cursor: pointer;
+    border: none;
+    border-radius: 4px;
+  }
+
+  button:hover {
+    opacity: 0.9;
+  }
+
+  #step { background: #2e8bff; color: white; }
+  #run { background: #28a745; color: white; }
+  #pause { background: #dc3545; color: white; }
+
+  #status {
+    font-weight: bold;
+  }
+
+  select {
+    padding: 4px;
+    border-radius: 4px;
+  }
+
+  /* Distress Bar */
+  #distressBar {
+    width: 100%;
+    height: 22px;
+    background: #333;
+    border-radius: 6px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+
+  #distressFill {
+    height: 100%;
+    width: 0%;
+    background: green;
+    transition: width 0.1s linear;
+  }
+
+  /* Graph layout */
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  canvas {
+    width: 100%;
+    border: 1px solid #333;
+    background: #111;
+    border-radius: 6px;
+  }
+
+  pre {
+    background: #000;
+    color: #00ff88;
+    padding: 10px;
+    max-height: 200px;
+    overflow-y: auto;
+    border-radius: 6px;
+  }
+
+  .small {
+    font-size: 0.85em;
+    color: #aaa;
+  }
+
+  ul {
+    list-style: none;
+    padding-left: 0;
+  }
+
+  li {
+    padding: 4px 0;
+  }
+
+  .fault-critical {
+    color: #ff4c4c;
+    font-weight: bold;
+  }
+
+  .fault-warning {
+    color: orange;
+  }
+
+  .fault-info {
+    color: #ccc;
+  }
+
+  .session-running {
+    color: #28a745;
+  }
+
+  .session-terminated {
+    color: #dc3545;
+    font-weight: bold;
+  }
+
+</style>
+  <script type="module" crossorigin src="/assets/index-BEZMdoiA.js"></script>
+</head>
+
+<body>
+
+<h1>HP Repair Simulator â€“ Pro Dashboard</h1>
+
+<!-- ===================== -->
+<!-- CONTROLS -->
+<!-- ===================== -->
+<div class="panel">
+  <button id="step">STEP</button>
+  <button id="run">RUN</button>
+  <button id="pause">PAUSE</button>
+
+  Speed:
+  <select id="speed">
+    <option value="0.1">0.1x</option>
+    <option value="1" selected>1x</option>
+    <option value="5">5x</option>
+  </select>
+
+  <div style="margin-top:10px;">
+    Status: <strong id="status">PAUSED</strong>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Active Faults</h3>
+  <ul id="faultList"></ul>
+</div>
+
+<div class="panel">
+  <h3>Session Status</h3>
+  <div>
+    State: <strong id="sessionState">Unknown</strong>
+  </div>
+  <div>
+    Termination Reason:
+    <span id="terminationReason">-</span>
+  </div>
+</div>
+
+<!-- ===================== -->
+<!-- DISTRESS -->
+<!-- ===================== -->
+<div class="panel">
+  <h3>System Distress</h3>
+  <div id="distressBar">
+    <div id="distressFill"></div>
+  </div>
+  <div class="small">
+    Green = stable â€¢ Orange = warning â€¢ Red = critical
+  </div>
+</div>
+
+<!-- ===================== -->
+<!-- GRAPH GRID -->
+<!-- ===================== -->
+<div class="grid">
+
+  <div class="panel">
+    <h3>Voltage Oscilloscope</h3>
+    <canvas id="voltageCanvas" width="600" height="200"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>Thermal Monitor</h3>
+    <canvas id="thermalCanvas" width="600" height="200"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>Distress Timeline</h3>
+    <canvas id="distressCanvas" width="600" height="150"></canvas>
+  </div>
+
+  <div class="panel">
+    <h3>Snapshot (Debug)</h3>
+    <pre id="out"></pre>
+  </div>
+
+</div>
+
+
+</body>
+</html>

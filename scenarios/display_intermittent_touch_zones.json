@@ -1,0 +1,38 @@
+{
+  "id": "display_intermittent_touch_zones",
+  "title": "Sebagian area layar tidak selalu merespons sentuhan",
+  "domain": "display_and_touch",
+  "world_profile": "POST_PREVIOUS_REPAIR",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat pernah dibongkar",
+      "layar dipasang kembali setelah servis"
+    ]
+  },
+
+  "symptoms": [
+    "Area tertentu layar tidak merespons secara konsisten",
+    "Respons sentuhan berubah saat perangkat ditekan ringan"
+  ],
+
+  "constraints": [
+    "Tidak tersedia unit pembanding",
+    "Pengujian dilakukan tanpa pembongkaran ulang"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Sentuhan berfungsi merata",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Menunjukkan degradasi integritas sinyal sentuh",
+    "avoid": [
+      "menganggap masalah bersifat software murni"
+    ]
+  }
+}

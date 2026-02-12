@@ -1,0 +1,38 @@
+{
+  "id": "display_emi_induced_ghost_touch",
+  "title": "Layar merespons sentuhan yang tidak dilakukan pengguna",
+  "domain": "display_and_touch",
+  "world_profile": "NOISY_POWER_ENV",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat sering digunakan saat terhubung ke charger",
+      "charger yang digunakan bervariasi kualitasnya"
+    ]
+  },
+
+  "symptoms": [
+    "Layar melakukan input acak tanpa sentuhan",
+    "Perilaku sentuh memburuk saat pengisian daya"
+  ],
+
+  "constraints": [
+    "Tidak tersedia charger referensi",
+    "Pengujian dilakukan tanpa membuka perangkat"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Layar kembali dapat digunakan normal",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Melatih identifikasi gangguan noise terhadap threshold sentuh",
+    "avoid": [
+      "menyimpulkan kerusakan panel secara langsung"
+    ]
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "id": "power_thermal_escalation_during_charging",
+  "title": "Perangkat cepat panas dan berhenti mengisi saat proses pengisian",
+  "domain": "power_and_charging",
+  "world_profile": "HOT_HUMID_WORKSHOP",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "low",
+    "recent_history": [
+      "pengisian dilakukan di lingkungan panas",
+      "perangkat sering digunakan sambil mengisi daya"
+    ]
+  },
+
+  "symptoms": [
+    "Suhu perangkat meningkat signifikan saat pengisian",
+    "Proses pengisian terhenti tanpa pesan jelas",
+    "Perangkat menjadi tidak responsif sementara"
+  ],
+
+  "constraints": [
+    "Tidak tersedia pendinginan tambahan",
+    "Pengujian dibatasi pada pengamatan non-destruktif"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat tidak panas saat diisi",
+    "time_pressure": "tinggi",
+    "service_history_confidence": "sedang"
+  },
+
+  "author_notes": {
+    "intent": "Menunjukkan interaksi panas–arus saat charging",
+    "avoid": [
+      "menganggap panas sebagai efek normal pengisian"
+    ]
+  }
+}

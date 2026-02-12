@@ -1,0 +1,38 @@
+{
+  "id": "memory_instability_random_boot_failure",
+  "title": "Perangkat gagal menyala secara acak setelah restart",
+  "domain": "storage_and_memory",
+  "world_profile": "STABLE_LAB",
+
+  "initial_conditions": {
+    "power_state": "off",
+    "battery_level": "medium",
+    "recent_history": [
+      "restart dilakukan beberapa kali",
+      "kegagalan boot tidak selalu terjadi"
+    ]
+  },
+
+  "symptoms": [
+    "Perangkat kadang gagal boot",
+    "Proses boot berhasil setelah beberapa percobaan"
+  ],
+
+  "constraints": [
+    "Tidak tersedia mode diagnostik lanjutan",
+    "Pengujian dibatasi pada siklus nyala–mati"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat dapat menyala konsisten",
+    "time_pressure": "rendah",
+    "service_history_confidence": "sedang"
+  },
+
+  "author_notes": {
+    "intent": "Menunjukkan ketidakstabilan memori yang tidak deterministik",
+    "avoid": [
+      "menyimpulkan kesalahan prosedur pengguna"
+    ]
+  }
+}

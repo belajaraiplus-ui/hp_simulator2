@@ -1,0 +1,38 @@
+{
+  "id": "thermal_localized_hotspot",
+  "title": "Satu area perangkat menjadi sangat panas tanpa beban tinggi",
+  "domain": "thermal_behavior",
+  "world_profile": "HOT_HUMID_WORKSHOP",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat terasa panas di satu titik",
+      "tidak ada aktivitas berat berlangsung"
+    ]
+  },
+
+  "symptoms": [
+    "Panas terkonsentrasi di area tertentu",
+    "Area lain perangkat tetap relatif dingin"
+  ],
+
+  "constraints": [
+    "Tidak tersedia kamera termal",
+    "Pengujian dilakukan dengan sentuhan manual"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat tidak panas saat idle",
+    "time_pressure": "sedang",
+    "service_history_confidence": "sedang"
+  },
+
+  "author_notes": {
+    "intent": "Melatih identifikasi hotspot lokal",
+    "avoid": [
+      "menganggap panas merata di seluruh perangkat"
+    ]
+  }
+}

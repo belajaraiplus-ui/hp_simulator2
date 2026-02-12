@@ -1,0 +1,38 @@
+{
+  "id": "battery_voltage_capacity_mismatch",
+  "title": "Persentase baterai tidak mencerminkan daya tahan sebenarnya",
+  "domain": "battery_behavior",
+  "world_profile": "STABLE_LAB",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "high",
+    "recent_history": [
+      "baterai terlihat penuh setelah pengisian",
+      "perangkat langsung digunakan setelah dilepas dari charger"
+    ]
+  },
+
+  "symptoms": [
+    "Persentase baterai turun cepat dalam waktu singkat",
+    "Tegangan terukur tidak sebanding dengan durasi pemakaian"
+  ],
+
+  "constraints": [
+    "Tidak ada riwayat penggantian baterai",
+    "Pengujian dilakukan di lingkungan stabil"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Indikator baterai akurat",
+    "time_pressure": "rendah",
+    "service_history_confidence": "sedang"
+  },
+
+  "author_notes": {
+    "intent": "Melatih pemisahan konsep tegangan dan kapasitas",
+    "avoid": [
+      "menyimpulkan kualitas baterai dari satu indikator"
+    ]
+  }
+}

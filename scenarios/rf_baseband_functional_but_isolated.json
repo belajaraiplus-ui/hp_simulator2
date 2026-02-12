@@ -1,0 +1,38 @@
+{
+  "id": "rf_baseband_functional_but_isolated",
+  "title": "Perangkat mendeteksi modul jaringan namun tidak dapat terhubung",
+  "domain": "rf_and_network",
+  "world_profile": "STABLE_LAB",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat dinyalakan ulang beberapa kali",
+      "tidak ada perubahan lingkungan jaringan"
+    ]
+  },
+
+  "symptoms": [
+    "Informasi jaringan terdeteksi oleh sistem",
+    "Tidak ada koneksi panggilan atau data"
+  ],
+
+  "constraints": [
+    "Pengujian dilakukan di lingkungan jaringan stabil",
+    "Tidak tersedia data kalibrasi sebelumnya"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat dapat terhubung jaringan",
+    "time_pressure": "rendah",
+    "service_history_confidence": "sedang"
+  },
+
+  "author_notes": {
+    "intent": "Memisahkan deteksi sistem dan komunikasi efektif",
+    "avoid": [
+      "menganggap modul jaringan sepenuhnya mati"
+    ]
+  }
+}

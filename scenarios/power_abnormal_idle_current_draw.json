@@ -1,0 +1,40 @@
+{
+  "id": "power_abnormal_idle_current_draw",
+  "title": "Konsumsi arus meningkat meskipun perangkat dalam kondisi idle",
+  "domain": "power_and_charging",
+  "world_profile": "HOT_HUMID_WORKSHOP",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat terasa hangat meskipun tidak digunakan",
+      "penggunaan normal tanpa aplikasi berat"
+    ]
+  },
+
+  "symptoms": [
+    "Konsumsi arus lebih tinggi dari yang diharapkan saat idle",
+    "Perangkat terasa hangat tanpa aktivitas jelas",
+    "Baterai berkurang lebih cepat dari biasanya"
+  ],
+
+  "constraints": [
+    "Tidak ada aplikasi pihak ketiga yang terpasang",
+    "Pengujian dilakukan dalam kondisi lingkungan panas"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Baterai kembali normal",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Melatih deteksi kebocoran arus dan panas laten",
+    "avoid": [
+      "mengaitkan langsung ke satu IC",
+      "menganggap idle berarti aman"
+    ]
+  }
+}

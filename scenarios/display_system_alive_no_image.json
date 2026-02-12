@@ -1,0 +1,38 @@
+{
+  "id": "display_system_alive_no_image",
+  "title": "Perangkat menyala namun layar tidak menampilkan gambar",
+  "domain": "display_and_touch",
+  "world_profile": "POST_PREVIOUS_REPAIR",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat pernah dibongkar",
+      "layar pernah dilepas"
+    ]
+  },
+
+  "symptoms": [
+    "Tidak ada tampilan visual di layar",
+    "Perangkat merespons suara atau getaran"
+  ],
+
+  "constraints": [
+    "Tidak ada retakan layar",
+    "Pengujian dilakukan tanpa mengganti komponen"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Layar kembali menampilkan gambar",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Memisahkan domain sistem utama dan tampilan",
+    "avoid": [
+      "menganggap perangkat mati total"
+    ]
+  }
+}

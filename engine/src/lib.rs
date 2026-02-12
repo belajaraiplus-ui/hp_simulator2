@@ -11,6 +11,10 @@ mod fault;
 mod session;
 mod analysis;
 mod postmortem;
+pub mod scenario_dsl;
+pub mod scenario;
+pub mod world;
+
 
 use api::types::ActionRequest;
 use api::context::WasmContext;

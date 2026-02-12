@@ -1,0 +1,41 @@
+{
+  "id": "power_boot_only_under_external_power",
+  "title": "Perangkat hanya dapat menyala saat terhubung ke sumber daya eksternal",
+  "domain": "power_and_charging",
+  "world_profile": "HOT_HUMID_WORKSHOP",
+
+  "initial_conditions": {
+    "power_state": "off",
+    "battery_level": "unknown",
+    "recent_history": [
+      "perangkat digunakan hingga mati",
+      "pengisian dilakukan di lingkungan panas"
+    ]
+  },
+
+  "symptoms": [
+    "Perangkat dapat menyala ketika terhubung ke charger atau power supply",
+    "Perangkat langsung mati ketika sumber daya eksternal dilepas",
+    "Tidak ada indikator stabilitas setelah proses boot"
+  ],
+
+  "constraints": [
+    "Kondisi baterai sebelumnya tidak diketahui",
+    "Lingkungan kerja panas dan lembap",
+    "Pengujian dibatasi pada pengukuran non-destruktif"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat bisa digunakan tanpa harus selalu terhubung charger",
+    "time_pressure": "tinggi",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Melatih pemisahan analisa antara suplai eksternal dan keberlanjutan daya internal",
+    "avoid": [
+      "mengarah langsung ke kesimpulan penggantian baterai",
+      "menganggap perangkat stabil hanya karena bisa boot"
+    ]
+  }
+}

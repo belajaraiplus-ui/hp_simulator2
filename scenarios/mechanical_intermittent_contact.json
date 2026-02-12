@@ -1,0 +1,38 @@
+{
+  "id": "mechanical_intermittent_contact",
+  "title": "Perangkat mati atau berubah perilaku saat digerakkan",
+  "domain": "mechanical_and_connector",
+  "world_profile": "POST_PREVIOUS_REPAIR",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat pernah dibongkar",
+      "masalah muncul setelah pergerakan tertentu"
+    ]
+  },
+
+  "symptoms": [
+    "Perangkat mati saat digoyang ringan",
+    "Fungsi kembali normal saat posisi berubah"
+  ],
+
+  "constraints": [
+    "Tidak ada kerusakan fisik eksternal terlihat",
+    "Pengujian tanpa pembongkaran ulang"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat stabil dalam penggunaan normal",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Melatih kesadaran terhadap faktor mekanis laten",
+    "avoid": [
+      "mengabaikan pengaruh posisi fisik"
+    ]
+  }
+}

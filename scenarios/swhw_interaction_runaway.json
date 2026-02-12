@@ -1,0 +1,38 @@
+{
+  "id": "swhw_interaction_runaway",
+  "title": "Perangkat menunjukkan kegagalan berulang hanya pada kondisi tertentu",
+  "domain": "software_hardware_interaction",
+  "world_profile": "NOISY_POWER_ENV",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "masalah muncul hanya saat fitur tertentu aktif",
+      "perangkat kembali normal saat kondisi diubah"
+    ]
+  },
+
+  "symptoms": [
+    "Kegagalan terjadi berulang pada kondisi spesifik",
+    "Perangkat tampak normal di luar kondisi tersebut"
+  ],
+
+  "constraints": [
+    "Tidak tersedia alat diagnostik internal",
+    "Pengujian bergantung pada observasi perilaku"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Masalah dapat direproduksi dan diatasi",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Menunjukkan loop keputusan SW–HW yang saling memperburuk",
+    "avoid": [
+      "menganggap masalah hanya berasal dari software atau hardware saja"
+    ]
+  }
+}

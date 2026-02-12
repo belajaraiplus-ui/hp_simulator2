@@ -1,0 +1,38 @@
+{
+  "id": "security_secure_subsystem_lockout",
+  "title": "Perangkat terkunci dan tidak dapat digunakan meskipun menyala",
+  "domain": "security_and_lockout",
+  "world_profile": "STABLE_LAB",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "high",
+    "recent_history": [
+      "pembaruan sistem dilakukan sebelumnya",
+      "tidak ada kerusakan fisik"
+    ]
+  },
+
+  "symptoms": [
+    "Akses ke sistem dibatasi",
+    "Fungsi utama tidak dapat digunakan"
+  ],
+
+  "constraints": [
+    "Tidak tersedia kredensial pemilik",
+    "Pengujian dibatasi pada mode pengguna"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat bisa digunakan kembali",
+    "time_pressure": "rendah",
+    "service_history_confidence": "tinggi"
+  },
+
+  "author_notes": {
+    "intent": "Melatih keputusan berhenti pada batas keamanan",
+    "avoid": [
+      "menganggap perangkat rusak secara fisik"
+    ]
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "id": "thermal_systemic_inefficiency",
+  "title": "Perangkat cepat panas karena pelepasan panas tidak efektif",
+  "domain": "thermal_behavior",
+  "world_profile": "POST_PREVIOUS_REPAIR",
+
+  "initial_conditions": {
+    "power_state": "on",
+    "battery_level": "medium",
+    "recent_history": [
+      "perangkat pernah dibongkar",
+      "suhu meningkat lebih cepat dari biasanya"
+    ]
+  },
+
+  "symptoms": [
+    "Perangkat cepat panas dalam penggunaan ringan",
+    "Kinerja menurun saat suhu naik"
+  ],
+
+  "constraints": [
+    "Tidak tersedia komponen pendingin pengganti",
+    "Pengujian dilakukan dalam casing terpasang"
+  ],
+
+  "starting_context": {
+    "customer_expectation": "Perangkat tidak cepat panas",
+    "time_pressure": "sedang",
+    "service_history_confidence": "rendah"
+  },
+
+  "author_notes": {
+    "intent": "Menunjukkan kegagalan pembuangan panas sistemik",
+    "avoid": [
+      "menganggap panas sebagai efek normal penggunaan"
+    ]
+  }
+}
