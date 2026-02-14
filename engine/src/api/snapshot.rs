@@ -1,9 +1,11 @@
 use serde_json::{json, Value};
 use crate::state::phone_state::PhoneState;
-use crate::state::ids::{RailId, ThermalZoneId};
+use crate::measurement::board_profile;
 
+/// Build a snapshot JSON value from the internal PhoneState.
 /// Snapshot visual: gunakan last-seen measurements (proxy), bukan ground truth.
 pub fn build_snapshot(state: &PhoneState) -> Value {
+
     // =======================
     // POWER RAILS (last observed only)
     // =======================
@@ -41,12 +43,40 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
     }).collect::<Vec<_>>();
 
     // =======================
+    // MEASUREMENT HISTORY (observable effects only)
+    // =======================
+
+    let measurements = state
+        .measurements
+        .history
+        .iter()
+        .map(|m| {
+            json!({
+                "time": m.time,
+                "target": m.target,
+                "observed_value": m.observed_value,
+                "noise": m.noise,
+                "injected_energy": m.injected_energy,
+                "stress_added": m.stress_added
+            })
+        })
+        .collect::<Vec<_>>();
+
+    // =======================
+    // PSU SNAPSHOT (observable tool state)
+    // =======================
+
+    let power_input = json!({
+        "enabled": state.electrical.input.enabled,
+        "voltage": state.electrical.input.voltage,
+        "current_limit": state.electrical.input.current_limit,
+        "measured_current": state.electrical.input.measured_current
+    });
+
+    // =======================
     // DISTRESS PROXY (OBSERVABLE-ONLY)
     // =======================
-    // TIDAK membaca fault registry.
-    // Dibangun dari stress, noise, dan measurement behavior.
 
-    // measurement noise average (last N)
     let noise_avg = {
         let hist = &state.measurements.history;
         let n = std::cmp::min(10, hist.len());
@@ -61,8 +91,8 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
         }
     };
 
-    // observability penalty: seberapa banyak rail belum pernah diukur
     let total_rails = state.electrical.rails.len() as f64;
+
     let missing_rails = state
         .electrical
         .rails
@@ -76,7 +106,6 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
         0.0
     };
 
-    // distress synthesis (proxy, noisy, imperfect)
     let mut distress =
         state.stress.electrical * 0.5 +
         state.stress.thermal * 0.3 +
@@ -84,20 +113,36 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
         noise_avg * 0.4 +
         observability_penalty * 0.6;
 
-    // clamp for UI sanity (NOT physical truth)
     if distress.is_nan() {
         distress = 0.0;
     }
+
     distress = distress.clamp(0.0, 1.0);
 
     // =======================
     // FINAL SNAPSHOT
     // =======================
 
+    let profile = board_profile::active_profile();
+    let component_catalog = profile.components.iter().map(|c| {
+        json!({
+            "id": c.id,
+            "label": c.label,
+            "rail": format!("{:?}", c.rail)
+        })
+    }).collect::<Vec<_>>();
+
     json!({
         "time": state.time,
+        "board_profile": {
+            "id": profile.id,
+            "display_name": profile.display_name
+        },
+        "component_catalog": component_catalog,
         "rails": rails,
         "thermals": thermals,
+        "measurements": measurements,
+        "power_input": power_input,
         "distress": distress
     })
 }

@@ -24,10 +24,11 @@ impl MeasurementTool for Oscilloscope {
 
         // 3️⃣ Stress akibat pengukuran
         let stress = jitter_like.abs() * 0.03 * rep;
-        s.stress.cumulative_stress += stress;
+        s.stress.measurement += stress;
 
         s.measurements.history.push(MeasurementEvent {
             time: s.time,
+            target: "Scope(Rail)".to_string(),
             observed_value: observed,
             noise: jitter_like,
             injected_energy: stress,

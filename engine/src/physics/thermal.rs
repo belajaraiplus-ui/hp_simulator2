@@ -13,7 +13,7 @@ pub fn step_thermal(s: &mut PhoneState, dt: f64) {
     let prev_temps: Vec<(ThermalZoneId, f64)> =
         s.thermal.zones.iter().map(|(id, z)| (*id, z.temperature)).collect();
 
-    for (id, z) in s.thermal.zones.iter_mut() {
+    for (_id, z) in s.thermal.zones.iter_mut() {
 
         // =======================
         // NUMERICAL SAFETY

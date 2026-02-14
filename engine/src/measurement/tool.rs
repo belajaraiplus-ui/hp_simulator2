@@ -1,9 +1,13 @@
 use serde_json::{json, Value};
 use crate::state::phone_state::PhoneState;
 
-pub struct MeasurementTool;
+pub trait MeasurementTool {
+    fn perform(&self, s: &mut PhoneState, dt: f64) -> f64;
+}
 
-impl MeasurementTool {
+pub struct MeasurementDispatcher;
+
+impl MeasurementDispatcher {
 
     pub fn dispatch(tool: &str, _phone: &mut PhoneState) -> Value {
         match tool {

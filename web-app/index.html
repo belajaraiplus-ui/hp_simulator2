@@ -29,19 +29,45 @@
   h1{ font-size:1.15rem; margin:0; }
   .subtitle{ color:var(--muted); font-size:0.92rem; }
 
-  .grid{ display:grid; grid-template-columns:360px 1fr; gap:18px; margin-top:8px; }
+  /* Layout Grid: Left Tools | Center Bench | Right Analysis */
+  .grid{ display:grid; grid-template-columns: 300px 1fr 340px; gap:18px; margin-top:12px; height: calc(100vh - 100px); }
 
-  /* Service bench style for left column */
-  .bench {
-    background: linear-gradient(180deg, #3b2f23, #2e2419); /* warm wood-ish */
-    padding:14px;
-    border-radius:12px;
-    box-shadow: 0 8px 30px rgba(0,0,0,0.6), inset 0 -8px 24px rgba(255,255,255,0.02);
-    border:1px solid rgba(255,255,255,0.03);
-    color:#f3f0ea;
+  .col-side { display:flex; flex-direction:column; gap:12px; overflow-y:auto; padding-right:4px; }
+
+  /* Center Work Mat */
+  .work-mat {
+    background-color: #354a5f; /* Anti-static mat blue */
+    background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 20px 20px;
+    border-radius: 16px;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: inset 0 0 60px rgba(0,0,0,0.6), 0 20px 40px rgba(0,0,0,0.4);
+    border: 8px solid #222e38;
+    position: relative;
+    height: 100%;
+    box-sizing: border-box;
   }
 
-  .controls { display:flex; flex-direction:column; gap:12px; }
+  /* LCD Display Style for Multimeter Reading */
+  .lcd-panel {
+    background: #9ea792;
+    color: #111;
+    font-family: 'Courier New', Courier, monospace;
+    font-weight: 700;
+    font-size: 1.4rem;
+    padding: 12px 16px;
+    border-radius: 6px;
+    border: 4px solid #555;
+    box-shadow: inset 2px 2px 6px rgba(0,0,0,0.2);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .lcd-label { font-size:0.8rem; color:#444; text-transform:uppercase; letter-spacing:1px; }
 
   .btn {
     background:linear-gradient(180deg,#0b9d58,#087c44);
@@ -65,14 +91,106 @@
     padding:12px; border-radius:10px; border:1px solid rgba(255,255,255,0.03);
   }
 
-  .small { font-size:0.9rem; color:var(--muted); }
+  .board-map {
+    position: relative;
+    flex-grow: 1;
+    width: 100%;
+    min-height: 400px;
+    border-radius: 4px;
+    border: 4px solid #1a261c; /* Tepi PCB */
+    background:
+      /* Grid Jalur (Traces) */
+      linear-gradient(0deg, rgba(255,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px),
+      /* Warna Dasar Solder Mask (Dark Green) */
+      linear-gradient(180deg, #0f2015, #0a1810);
+    background-size: 20px 20px, 20px 20px, 100% 100%;
+    box-shadow: inset 0 0 30px rgba(0,0,0,0.8);
+    overflow: hidden;
+  }
 
-  /* Right column: charts */
-  .panels { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .board-region {
+    position: absolute;
+    /* Tampilan EMI Shield (Kaleng) */
+    border: 2px solid #a0a0a0;
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(200,200,200,0.15), rgba(255,255,255,0.05));
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+    color: rgba(255,255,255,0.4);
+    font-family: 'Courier New', monospace;
+    font-weight: bold;
+    font-size: 10px;
+    padding: 4px;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 1;
+  }
+
+  .board-node {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    z-index: 2;
+    cursor: pointer;
+    box-shadow: 1px 1px 3px rgba(0,0,0,0.7);
+    transition: transform 0.1s;
+  }
+
+  /* Visualisasi Komponen Realistis */
+  .comp-c { /* Capacitor (Coklat) */
+    background: #8b5a2b;
+    border-top: 3px solid #c0c0c0; border-bottom: 3px solid #c0c0c0; /* Terminasi */
+    width: 10px; height: 14px; border-radius: 1px;
+  }
+  .comp-r { /* Resistor (Hitam) */
+    background: #111;
+    border-top: 2px solid #ccc; border-bottom: 2px solid #ccc;
+    width: 10px; height: 14px; border-radius: 1px;
+  }
+  .comp-j { /* Connector/Inductor (Abu-abu Besar) */
+    background: #444; border: 1px solid #666;
+    width: 24px; height: 24px; border-radius: 2px;
+    display:grid; place-items:center; color:#fff; font-size:8px;
+  }
+  .comp-tp { /* Test Point (Emas Bulat) */
+    background: #d4af37; border: 1px solid #b8860b;
+    width: 10px; height: 10px; border-radius: 50%;
+    box-shadow: 0 0 2px #ffeb3b;
+  }
+
+  /* Label muncul saat hover */
+  .board-node::after {
+    content: attr(data-label);
+    position: absolute;
+    bottom: 100%; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.9); color: #fff;
+    padding: 4px 6px; border-radius: 4px;
+    font-size: 11px; white-space: nowrap;
+    opacity: 0; pointer-events: none; transition: opacity 0.2s;
+    margin-bottom: 6px; border: 1px solid #555;
+  }
+
+  .board-node:hover {
+    transform: translate(-50%, -50%) scale(1.2);
+    z-index: 100;
+  }
+  .board-node:hover::after { opacity: 1; }
+
+  .board-node.active {
+    box-shadow: 0 0 0 2px #ff3333, 0 0 12px rgba(255, 50, 50, 0.8);
+  }
+
+  .board-node.active {
+    border-color: #ff3333; /* Warna Probe Merah */
+    background: #4a1a1a;
+    color: #ffcccc;
+    box-shadow: 0 0 8px rgba(255, 50, 50, 0.6);
+  }
+
+  .small { font-size:0.9rem; color:var(--muted); }
 
   canvas { width:100%; height:200px; border-radius:8px; background: linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.55)); border:1px solid rgba(255,255,255,0.03); display:block; }
 
-  canvas.small { height:150px; }
+  canvas.small { height:120px; }
 
   pre.debug {
     background: linear-gradient(180deg, rgba(0,0,0,0.6), rgba(0,0,0,0.75));
@@ -85,9 +203,13 @@
 
   footer.info { margin-top:8px; display:flex; justify-content:space-between; color:var(--muted); font-size:0.9rem; }
 
-  @media (max-width:980px){
-    .grid{ grid-template-columns:1fr; }
-    .panels{ grid-template-columns:1fr; }
+  @media (max-width:1200px){
+    .grid{ grid-template-columns: 280px 1fr; grid-template-rows: auto auto; height:auto; }
+    .col-side:last-child { grid-column: 1 / -1; display:grid; grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width:800px){
+    .grid{ grid-template-columns: 1fr; }
+    .col-side:last-child { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -117,20 +239,15 @@
     </header>
 
     <div class="grid">
-      <!-- LEFT: service bench / controls -->
-      <aside class="bench">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-          <div style="font-weight:700">Service Bench</div>
-          <div class="small">Realistic workspace UI</div>
-        </div>
-
-        <div class="controls">
+      <!-- LEFT COLUMN: Tools & Controls -->
+      <aside class="col-side">
+        <div class="card">
+          <div style="font-weight:700; margin-bottom:8px">Simulation Control</div>
           <div style="display:flex;gap:8px;align-items:center">
             <button id="step" class="btn alt">STEP</button>
             <button id="run" class="btn">RUN</button>
             <button id="pause" class="btn warn">PAUSE</button>
           </div>
-
           <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
             <div>
               <div class="small">Speed</div>
@@ -141,15 +258,73 @@
                 <option value="5">5x</option>
               </select>
             </div>
-
             <div style="text-align:right">
-              <button id="manualMeasure" class="ghost">Trigger Noise</button>
+              <button id="manualMeasure" class="ghost">Read Meter</button>
               <button id="exportReport" class="ghost">Export</button>
             </div>
           </div>
+        </div>
 
-          <!-- Smoothing slider (new) -->
-          <div class="card" style="display:flex;flex-direction:column;gap:8px;">
+        <div class="card small" style="display:flex;flex-direction:column;gap:8px;">
+            <div style="font-weight:700">Multimeter Settings</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <label>Mode
+                <select id="multimeterMode">
+                  <option value="voltage">Voltage</option>
+                  <option value="ohm">Ohm</option>
+                  <option value="diode">Diode</option>
+                  <option value="continuity">Continuity</option>
+                </select>
+              </label>
+              <label>Target
+                <select id="multimeterTargetType">
+                  <option value="rail">Rail</option>
+                  <option value="component">Component</option>
+                </select>
+              </label>
+              <label>Rail
+                <select id="multimeterRail">
+                  <option value="vbat">VBAT</option>
+                  <option value="vcore">VCORE</option>
+                  <option value="vio">VIO</option>
+                </select>
+              </label>
+              <label>Component
+                <select id="multimeterComponent">
+                  <option value="tp_vbat">TP_VBAT</option>
+                  <option value="tp_vcore">TP_VCORE</option>
+                  <option value="tp_vio">TP_VIO</option>
+                  <option value="c_vbat_in">C_VBAT_IN</option>
+                  <option value="c_vcore_out">C_VCORE_OUT</option>
+                  <option value="r_vcore_fb">R_VCORE_FB</option>
+                  <option value="r_vbat_sense">R_VBAT_SENSE</option>
+                  <option value="j_vbat_main">J_VBAT_MAIN</option>
+                  <option value="j_vcore_phase">J_VCORE_PHASE</option>
+                </select>
+              </label>
+            </div>
+        </div>
+
+        <div class="card small" style="display:flex;flex-direction:column;gap:8px;">
+            <div style="font-weight:700">PSU Control</div>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <label>
+                <input id="psuEnable" type="checkbox" checked />
+                Enable
+              </label>
+              <label>Voltage (V)
+                <input id="psuVoltage" type="number" min="0" max="30" step="0.01" value="4.20" style="width:90px;" />
+              </label>
+              <label>Limit (A)
+                <input id="psuCurrentLimit" type="number" min="0" max="10" step="0.01" value="2.00" style="width:90px;" />
+              </label>
+              <button id="psuApply" class="ghost">Apply PSU</button>
+            </div>
+            <div id="psuStatus">PSU: --</div>
+            <div id="psuMeasuredCurrent">Current: --</div>
+        </div>
+
+        <div class="card" style="display:flex;flex-direction:column;gap:8px;">
             <div style="display:flex;justify-content:space-between;align-items:center">
               <div style="font-weight:700">Smoothing</div>
               <div class="small">EMA α = <span id="smoothingValue">0.18</span></div>
@@ -158,28 +333,39 @@
               <input id="smoothingSlider" type="range" min="0" max="1" step="0.01" value="0.18" style="width:100%" />
             </label>
             <div class="small">Lower α → smoother / slower. Higher α → more responsive.</div>
-          </div>
+        </div>
 
-          <div class="card small">
+        <div class="card small">
             <div><strong>Simulation Info</strong></div>
             <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
               <div>Scenario: <strong id="scenarioName">Default</strong></div>
               <div>Time: <strong id="simTime">0.00</strong> s</div>
               <div>Engine: <strong>Deterministic Fixed Step</strong></div>
             </div>
-          </div>
+        </div>
 
-          <div class="card small">
+        <div class="card small">
             <div><strong>Coverage</strong></div>
             <div style="margin-top:6px">Coverage: <strong id="coveragePercent">0%</strong></div>
             <ul id="unobservedRails" style="margin:8px 0 0 14px;padding:0;color:var(--muted)"></ul>
-          </div>
         </div>
       </aside>
 
-      <!-- RIGHT: charts & diagnostics -->
-      <main style="display:flex;flex-direction:column;gap:18px">
-        <section class="panels">
+      <!-- CENTER COLUMN: Workbench Mat -->
+      <section class="work-mat">
+        <div class="lcd-panel">
+          <div class="lcd-label">Multimeter Reading</div>
+          <div id="multimeterResult">--</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.5);font-size:0.85rem;">
+           <div id="boardProfileLabel">Board: --</div>
+           <div>Anti-Static Work Mat</div>
+        </div>
+        <div id="motherboardMap" class="board-map" aria-label="Motherboard component map"></div>
+      </section>
+
+      <!-- RIGHT COLUMN: Charts & Diagnostics -->
+      <aside class="col-side">
           <div class="card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
               <div><strong>Voltage (Last Observed)</strong></div>
@@ -212,9 +398,7 @@
             </div>
             <pre id="out" class="debug">Awaiting engine...</pre>
           </div>
-        </section>
 
-        <section style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
           <div class="card">
             <h3 style="margin:0 0 8px 0">Diagnostic Mode (Proxy Analysis)</h3>
             <div id="diagnosticText">No analysis yet.</div>
@@ -227,13 +411,11 @@
             <h3 style="margin:12px 0 8px 0">Diagnostic History</h3>
             <pre id="diagnosticLog" class="debug">No history yet.</pre>
           </div>
-        </section>
 
         <footer class="info">
           <div class="small">Tip: STEP for single-step inspection; RUN for continuous simulation.</div>
-          <div class="small">Workbench theme for realistic servicing feel.</div>
         </footer>
-      </main>
+      </aside>
     </div>
   </div>
 

@@ -7,8 +7,9 @@ pub mod engine;
 pub mod tool;
 pub mod repetition;
 pub mod meta;
+pub mod board_profile;
 
 // Reserved (FASE berikutnya)
-// pub mod multimeter;
-// pub mod psu;
-// pub mod scope;
+pub mod multimeter;
+pub mod psu;
+pub mod scope;

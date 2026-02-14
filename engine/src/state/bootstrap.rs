@@ -95,6 +95,7 @@ pub fn bootstrap_state() -> PhoneState {
             rails,
             ground_integrity: 1.0,
             transient_noise: 0.01,
+            input: PowerInput::new(),
         },
 
         thermal: ThermalState {

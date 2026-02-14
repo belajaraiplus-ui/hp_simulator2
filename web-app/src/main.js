@@ -1,5 +1,5 @@
 // src/main.js
-import { bootEngine, step } from "./engine/adapter.js";
+import { applyPsuConfig, bootEngine, measureTool, snapshot, step } from "./engine/adapter.js";
 
 /*
   Production-ready UI controller for HP Repair Simulator – Proxy Dashboard.
@@ -39,6 +39,21 @@ const thermalCanvas = document.getElementById("thermalCanvas");
 const distressCanvas = document.getElementById("distressCanvas");
 
 const manualMeasureBtn = document.getElementById("manualMeasure");
+const multimeterModeEl = document.getElementById("multimeterMode");
+const multimeterTargetTypeEl = document.getElementById("multimeterTargetType");
+const multimeterRailEl = document.getElementById("multimeterRail");
+const multimeterComponentEl = document.getElementById("multimeterComponent");
+const multimeterResultEl = document.getElementById("multimeterResult");
+const boardProfileLabelEl = document.getElementById("boardProfileLabel");
+const motherboardMapEl = document.getElementById("motherboardMap");
+
+const psuEnableEl = document.getElementById("psuEnable");
+const psuVoltageEl = document.getElementById("psuVoltage");
+const psuCurrentLimitEl = document.getElementById("psuCurrentLimit");
+const psuApplyBtn = document.getElementById("psuApply");
+const psuStatusEl = document.getElementById("psuStatus");
+const psuCurrentEl = document.getElementById("psuMeasuredCurrent");
+
 const diagnosticText = document.getElementById("diagnosticText");
 const diagnosticConfidence = document.getElementById("diagnosticConfidence");
 const hypothesisList = document.getElementById("hypothesisList");
@@ -102,6 +117,7 @@ const thermalSmoothed = {};
 const distressHistory = [];
 const diagnosticHistory = [];
 const railVisibility = {};
+let selectedBoardComponent = null;
 
 /* =========================
    UTILS
@@ -115,6 +131,209 @@ function toNumber(v) {
 }
 function trim(arr) { while (arr.length > MAX_POINTS) arr.shift(); }
 function lastValue(arr) { return Array.isArray(arr) && arr.length ? arr[arr.length - 1] : null; }
+
+function formatNumber(value, digits = 3) {
+  if (!Number.isFinite(value)) return "--";
+  return value.toFixed(digits);
+}
+
+const BOARD_LAYOUT = {
+  // Area Baterai (Pojok Kanan Bawah)
+  j_vbat_main:   { x: 85, y: 75, region: "BATT_CONN" },
+  c_vbat_in:     { x: 75, y: 75, region: "BATT_CONN" },
+  r_vbat_sense:  { x: 65, y: 75, region: "BATT_CONN" },
+  tp_vbat:       { x: 65, y: 85, region: "BATT_CONN" },
+
+  // Area PMIC (Tengah Kiri - Tertutup Shield)
+  j_vcore_phase: { x: 35, y: 45, region: "PMIC_SHIELD" },
+  c_vcore_out:   { x: 25, y: 45, region: "PMIC_SHIELD" },
+  r_vcore_fb:    { x: 25, y: 55, region: "PMIC_SHIELD" },
+  tp_vcore:      { x: 15, y: 45, region: "PMIC_SHIELD" },
+
+  // Area Logic/IO (Atas)
+  tp_vio:        { x: 45, y: 25, region: "LOGIC_SHIELD" },
+};
+
+function syncMultimeterTargetUi() {
+  const useComponent = multimeterTargetTypeEl && multimeterTargetTypeEl.value === "component";
+  if (multimeterRailEl) {
+    multimeterRailEl.disabled = !!useComponent;
+  }
+  if (multimeterComponentEl) {
+    multimeterComponentEl.disabled = !useComponent;
+  }
+}
+
+function componentLayoutFor(index, componentId) {
+  const direct = BOARD_LAYOUT[componentId];
+  if (direct) return direct;
+
+  const col = index % 4;
+  const row = Math.floor(index / 4);
+  return {
+    x: 12 + col * 21,
+    y: 18 + row * 18,
+    region: "Aux",
+  };
+}
+
+function componentCatalogFallbackFromUi() {
+  if (!multimeterComponentEl) return [];
+  const list = [];
+  for (const opt of multimeterComponentEl.options) {
+    const id = (opt.value || "").toLowerCase();
+    if (!id) continue;
+    list.push({
+      id,
+      label: opt.textContent || id,
+      rail: "Unknown",
+    });
+  }
+  return list;
+}
+
+function renderMotherboardMap(snapshot) {
+  if (!motherboardMapEl) return;
+  const profile = snapshot && snapshot.board_profile ? snapshot.board_profile : null;
+  const snapshotCatalog = snapshot && Array.isArray(snapshot.component_catalog)
+    ? snapshot.component_catalog
+    : [];
+  const catalog = snapshotCatalog.length ? snapshotCatalog : componentCatalogFallbackFromUi();
+
+  if (boardProfileLabelEl) {
+    boardProfileLabelEl.textContent = profile
+      ? `Board: ${profile.display_name}`
+      : "Board: Generic Service Board";
+  }
+
+  motherboardMapEl.innerHTML = "";
+  if (!catalog.length) {
+    const empty = document.createElement("div");
+    empty.className = "small";
+    empty.style.padding = "10px";
+    empty.textContent = "No component catalog available.";
+    motherboardMapEl.appendChild(empty);
+    return;
+  }
+
+  const seenRegions = new Set();
+  catalog.forEach((item, index) => {
+    const layout = componentLayoutFor(index, item.id);
+    if (layout.region && !seenRegions.has(layout.region)) {
+      seenRegions.add(layout.region);
+      const regionEl = document.createElement("div");
+      regionEl.className = "board-region";
+      regionEl.textContent = layout.region;
+      regionEl.style.left = `${Math.max(2, layout.x - 12)}%`;
+      regionEl.style.top = `${Math.max(2, layout.y - 10)}%`;
+      motherboardMapEl.appendChild(regionEl);
+    }
+
+    const node = document.createElement("button");
+    node.type = "button";
+    node.className = "board-node";
+
+    // Tentukan kelas visual berdasarkan ID komponen
+    const idLower = item.id.toLowerCase();
+    if (idLower.startsWith("c_")) node.classList.add("comp-c");
+    else if (idLower.startsWith("r_")) node.classList.add("comp-r");
+    else if (idLower.startsWith("tp_")) node.classList.add("comp-tp");
+    else if (idLower.startsWith("j_") || idLower.startsWith("l_")) node.classList.add("comp-j");
+    else node.classList.add("comp-j"); // default
+
+    if (selectedBoardComponent === item.id) {
+      node.classList.add("active");
+    }
+    node.style.left = `${layout.x}%`;
+    node.style.top = `${layout.y}%`;
+    
+    // Label disimpan di atribut data untuk tooltip CSS
+    node.setAttribute("data-label", item.label || item.id);
+    // Text content dikosongkan untuk komponen kecil agar terlihat realistis
+    if (!node.classList.contains("comp-j")) node.textContent = "";
+    else node.textContent = (item.label || item.id).substring(0,1); // Inisial untuk konektor
+
+    node.addEventListener("click", () => {
+      selectedBoardComponent = item.id;
+      if (multimeterTargetTypeEl) {
+        multimeterTargetTypeEl.value = "component";
+        multimeterTargetTypeEl.dispatchEvent(new Event("change"));
+      }
+      if (multimeterComponentEl) {
+        multimeterComponentEl.value = item.id;
+      }
+      renderMotherboardMap(snapshot);
+    });
+    motherboardMapEl.appendChild(node);
+  });
+}
+
+function buildMultimeterLabel(mode, targetType, rail, component) {
+  const normalizedRail = (rail || "vbat").toLowerCase();
+  const normalizedComponent = (component || "tp_vbat").toLowerCase();
+
+  if (targetType === "component") {
+    if (mode === "diode") return `diode comp:${normalizedComponent}`;
+    if (mode === "ohm") return `ohm comp:${normalizedComponent}`;
+    if (mode === "continuity") return `continuity comp:${normalizedComponent}`;
+    return `voltage comp:${normalizedComponent}`;
+  }
+
+  if (mode === "diode") return `diode ${normalizedRail}`;
+  if (mode === "ohm") return `ohm ${normalizedRail}`;
+  if (mode === "continuity") return `continuity ${normalizedRail}`;
+  return normalizedRail;
+}
+
+function renderMultimeterResult(mode, value) {
+  if (!multimeterResultEl) return;
+  if (!Number.isFinite(value)) {
+    multimeterResultEl.textContent = "Reading: --";
+    return;
+  }
+
+  if (mode === "diode") {
+    multimeterResultEl.textContent = `Reading: ${formatNumber(value, 3)} V`;
+    return;
+  }
+
+  if (mode === "ohm") {
+    if (value >= 1.0e8) {
+      multimeterResultEl.textContent = "Reading: OL";
+    } else {
+      multimeterResultEl.textContent = `Reading: ${formatNumber(value, 2)} Ohm`;
+    }
+    return;
+  }
+
+  if (mode === "continuity") {
+    const beep = value < 50.0;
+    if (value >= 1.0e8) {
+      multimeterResultEl.textContent = "Reading: OL (No Beep)";
+    } else {
+      multimeterResultEl.textContent =
+        `Reading: ${formatNumber(value, 2)} Ohm (${beep ? "Beep" : "No Beep"})`;
+    }
+    return;
+  }
+
+  multimeterResultEl.textContent = `Reading: ${formatNumber(value, 3)} V`;
+}
+
+function renderPowerInput(powerInput) {
+  if (!powerInput) return;
+
+  if (psuStatusEl) {
+    const enabled = !!powerInput.enabled;
+    psuStatusEl.textContent = enabled
+      ? `PSU: ON ${formatNumber(powerInput.voltage, 2)} V / ${formatNumber(powerInput.current_limit, 2)} A`
+      : "PSU: OFF";
+  }
+
+  if (psuCurrentEl) {
+    psuCurrentEl.textContent = `Current: ${formatNumber(powerInput.measured_current, 3)} A`;
+  }
+}
 
 function hslForIndex(i, total) {
   const key = `${i}:${total}`;
@@ -177,6 +396,8 @@ function handleResize() {
 function processSnapshot(snapshot) {
   if (!snapshot) return;
   if (out) out.textContent = JSON.stringify(snapshot, null, 2);
+  renderPowerInput(snapshot.power_input);
+  renderMotherboardMap(snapshot);
 
   const distress = clamp01(snapshot.distress ?? 0);
   distressHistory.push(distress);
@@ -658,10 +879,50 @@ document.addEventListener("DOMContentLoaded", () => {
   // MANUAL MEASURE
   if (manualMeasureBtn) {
     manualMeasureBtn.addEventListener("click", () => {
-      const injected = clamp01(Math.random() * 0.2);
-      distressHistory.push(injected);
-      trim(distressHistory);
-      markDirty();
+      if (!engineReady) return;
+
+      const mode = multimeterModeEl ? multimeterModeEl.value : "voltage";
+      const targetType = multimeterTargetTypeEl ? multimeterTargetTypeEl.value : "rail";
+      const rail = multimeterRailEl ? multimeterRailEl.value : "vbat";
+      const component = multimeterComponentEl ? multimeterComponentEl.value : "tp_vbat";
+      if (targetType === "component") {
+        selectedBoardComponent = component;
+      }
+      const label = buildMultimeterLabel(mode, targetType, rail, component);
+
+      const reading = measureTool(label);
+      renderMultimeterResult(mode, Number(reading));
+
+      const snap = snapshot();
+      if (snap) {
+        State.setSnapshot(snap);
+        processSnapshot(snap);
+      }
+    });
+  }
+
+  // PSU APPLY
+  if (psuApplyBtn) {
+    psuApplyBtn.addEventListener("click", () => {
+      if (!engineReady) return;
+
+      const voltage = Number(psuVoltageEl ? psuVoltageEl.value : 4.2);
+      const currentLimit = Number(psuCurrentLimitEl ? psuCurrentLimitEl.value : 2.0);
+      const enabled = psuEnableEl ? !!psuEnableEl.checked : true;
+
+      const ok = applyPsuConfig({
+        voltage: Number.isFinite(voltage) ? voltage : 4.2,
+        currentLimit: Number.isFinite(currentLimit) ? currentLimit : 2.0,
+        enabled,
+      });
+
+      if (!ok) return;
+
+      const snap = snapshot();
+      if (snap) {
+        State.setSnapshot(snap);
+        processSnapshot(snap);
+      }
     });
   }
 
@@ -743,3 +1004,16 @@ function updateStatus(state) {
 
 /* initial dirty draw */
 markDirty();
+  if (multimeterTargetTypeEl) {
+    multimeterTargetTypeEl.addEventListener("change", () => {
+      syncMultimeterTargetUi();
+    });
+    syncMultimeterTargetUi();
+  }
+
+  if (multimeterComponentEl) {
+    multimeterComponentEl.addEventListener("change", () => {
+      selectedBoardComponent = multimeterComponentEl.value;
+      renderMotherboardMap(State.get().lastSnapshot);
+    });
+  }

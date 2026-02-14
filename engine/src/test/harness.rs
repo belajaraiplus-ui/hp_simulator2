@@ -12,10 +12,7 @@ pub fn run() {
     let mut session_state = SessionState::new();
 
     let engine = Engine { dt: 0.01 };
-    let meter = VoltageMeter {
-        input_impedance: 10_000.0,
-        internal_noise: 0.01,
-    };
+    let meter = VoltageMeter::new(crate::state::ids::RailId::Vbat);
 
     // =======================
     // SIMULATION LOOP
