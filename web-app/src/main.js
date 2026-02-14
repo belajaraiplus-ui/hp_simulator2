@@ -1,5 +1,6 @@
 // src/main.js
 import { applyPsuConfig, bootEngine, measureTool, snapshot, step } from "./engine/adapter.js";
+import { initPcbViewerPanel } from "./pcb_viewer/panel.js";
 
 /*
   Production-ready UI controller for HP Repair Simulator – Proxy Dashboard.
@@ -968,6 +969,8 @@ document.addEventListener("DOMContentLoaded", () => {
       URL.revokeObjectURL(url);
     });
   }
+
+  initPcbViewerPanel({ mountSelector: "body" });
 });
 
 /* =========================
