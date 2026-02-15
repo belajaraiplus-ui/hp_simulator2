@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "boards": [
+    {
+      "id": "hp_15_da0xx_mb_v1",
+      "name": "HP 15-da0xx Motherboard v1",
+      "board_url": "/api/boards/hp_15_da0xx_mb_v1/board"
+    }
+  ]
+}

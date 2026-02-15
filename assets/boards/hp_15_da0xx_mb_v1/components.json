@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "components": [
+    {
+      "id": "U1201",
+      "refdes": "U1201",
+      "kind": "IC",
+      "bbox": { "x": 12340, "y": 8760, "w": 420, "h": 380 },
+      "shape": {
+        "type": "poly",
+        "points": [[12340,8760],[12760,8760],[12760,9140],[12340,9140]]
+      },
+      "tags": ["pmic"],
+      "hints": {
+        "rails": ["VCORE", "VIO"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "rails": [
+    {
+      "id": "VBAT",
+      "label": "VBAT",
+      "type": "power",
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[100,200],[150,200],[150,260],[100,260]]
+        ]
+      },
+      "probe_points": [
+        { "x": 120, "y": 230, "label": "TP_VBAT" }
+      ]
+    }
+  ]
+}

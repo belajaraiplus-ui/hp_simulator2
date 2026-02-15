@@ -1,0 +1,6 @@
+[workspace]
+members = [
+  "engine",
+  "pcb-registry"
+]
+resolver = "2"
