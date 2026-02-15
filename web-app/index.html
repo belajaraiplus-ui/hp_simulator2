@@ -1,219 +1,137 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>HP Repair Simulator — Proxy Dashboard</title>
-
-<link rel="stylesheet" href="./src/style.css" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>HP Repair Simulator v2.0</title>
+  <link rel="stylesheet" href="/src/style.css" />
 </head>
-<body>
-  <div class="wrap">
-    <header>
-      <div class="brand">
-        <div class="logo" aria-hidden="true">HP</div>
-        <div>
-          <h1>HP Repair Simulator</h1>
-          <div class="subtitle">Proxy Dashboard — Workbench view</div>
-        </div>
-      </div>
 
-      <div style="display:flex;gap:12px;align-items:center">
-        <div class="small">Scenario:
-          <select id="scenarioSelect" aria-label="Choose scenario">
-            <option value="Default">Default</option>
-            <option value="Stress Test">Stress Test</option>
-            <option value="Thermal Bias">Thermal Bias</option>
-          </select>
-        </div>
-        <div class="small" style="display:flex;flex-direction:column;align-items:flex-end">
-          Status: <strong id="status" style="color:#ffcd4a">PAUSED</strong>
-        </div>
-      </div>
-    </header>
+<body style="background-color: #121212; color: #e0e0e0; font-family: sans-serif; margin: 0; padding: 20px;">
 
-    <div class="grid">
-      <!-- LEFT COLUMN: Tools & Controls -->
-      <aside class="col-side">
-        <div class="card">
-          <div style="font-weight:700; margin-bottom:8px">Simulation Control</div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <button id="step" class="btn alt">STEP</button>
-            <button id="run" class="btn">RUN</button>
-            <button id="pause" class="btn warn">PAUSE</button>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;justify-content:space-between">
-            <div>
-              <div class="small">Speed</div>
-              <select id="speed">
-                <option value="0.1">0.1x</option>
-                <option value="1" selected>1x</option>
-                <option value="3">3x</option>
-                <option value="5">5x</option>
-              </select>
-            </div>
-            <div style="text-align:right">
-              <button id="manualMeasure" class="ghost">Read Meter</button>
-              <button id="exportReport" class="ghost">Export</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="card small" style="display:flex;flex-direction:column;gap:8px;">
-            <div style="font-weight:700">Multimeter Settings</div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <label>Mode
-                <select id="multimeterMode">
-                  <option value="voltage">Voltage</option>
-                  <option value="ohm">Ohm</option>
-                  <option value="diode">Diode</option>
-                  <option value="continuity">Continuity</option>
-                </select>
-              </label>
-              <label>Target
-                <select id="multimeterTargetType">
-                  <option value="rail">Rail</option>
-                  <option value="component">Component</option>
-                </select>
-              </label>
-              <label>Rail
-                <select id="multimeterRail">
-                  <option value="vbat">VBAT</option>
-                  <option value="vcore">VCORE</option>
-                  <option value="vio">VIO</option>
-                </select>
-              </label>
-              <label>Component
-                <select id="multimeterComponent">
-                  <option value="tp_vbat">TP_VBAT</option>
-                  <option value="tp_vcore">TP_VCORE</option>
-                  <option value="tp_vio">TP_VIO</option>
-                  <option value="c_vbat_in">C_VBAT_IN</option>
-                  <option value="c_vcore_out">C_VCORE_OUT</option>
-                  <option value="r_vcore_fb">R_VCORE_FB</option>
-                  <option value="r_vbat_sense">R_VBAT_SENSE</option>
-                  <option value="j_vbat_main">J_VBAT_MAIN</option>
-                  <option value="j_vcore_phase">J_VCORE_PHASE</option>
-                </select>
-              </label>
-            </div>
-        </div>
-
-        <div class="card small" style="display:flex;flex-direction:column;gap:8px;">
-            <div style="font-weight:700">PSU Control</div>
-            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-              <label>
-                <input id="psuEnable" type="checkbox" checked />
-                Enable
-              </label>
-              <label>Voltage (V)
-                <input id="psuVoltage" type="number" min="0" max="30" step="0.01" value="4.20" style="width:90px;" />
-              </label>
-              <label>Limit (A)
-                <input id="psuCurrentLimit" type="number" min="0" max="10" step="0.01" value="2.00" style="width:90px;" />
-              </label>
-              <button id="psuApply" class="ghost">Apply PSU</button>
-            </div>
-            <div id="psuStatus">PSU: --</div>
-            <div id="psuMeasuredCurrent">Current: --</div>
-        </div>
-
-        <div class="card" style="display:flex;flex-direction:column;gap:8px;">
-            <div style="display:flex;justify-content:space-between;align-items:center">
-              <div style="font-weight:700">Smoothing</div>
-              <div class="small">EMA α = <span id="smoothingValue">0.18</span></div>
-            </div>
-            <label class="slider-label">
-              <input id="smoothingSlider" type="range" min="0" max="1" step="0.01" value="0.18" style="width:100%" />
-            </label>
-            <div class="small">Lower α → smoother / slower. Higher α → more responsive.</div>
-        </div>
-
-        <div class="card small">
-            <div><strong>Simulation Info</strong></div>
-            <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-              <div>Scenario: <strong id="scenarioName">Default</strong></div>
-              <div>Time: <strong id="simTime">0.00</strong> s</div>
-              <div>Engine: <strong>Deterministic Fixed Step</strong></div>
-            </div>
-        </div>
-
-        <div class="card small">
-            <div><strong>Coverage</strong></div>
-            <div style="margin-top:6px">Coverage: <strong id="coveragePercent">0%</strong></div>
-            <ul id="unobservedRails" style="margin:8px 0 0 14px;padding:0;color:var(--muted)"></ul>
-        </div>
-      </aside>
-
-      <!-- CENTER COLUMN: Workbench Mat -->
-      <section class="work-mat">
-        <div class="lcd-panel">
-          <div class="lcd-label">Multimeter Reading</div>
-          <div id="multimeterResult">--</div>
-        </div>
-        <div style="display:flex;justify-content:space-between;color:rgba(255,255,255,0.5);font-size:0.85rem;">
-           <div id="boardProfileLabel">Board: --</div>
-           <div>Anti-Static Work Mat</div>
-        </div>
-        <div id="motherboardMap" class="board-map" aria-label="Motherboard component map"></div>
-        <div id="pcb-viewer"></div>
-      </section>
-
-      <!-- RIGHT COLUMN: Charts & Diagnostics -->
-      <aside class="col-side">
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div><strong>Voltage (Last Observed)</strong></div>
-              <div class="small">Toggle rails below</div>
-            </div>
-            <div id="railTogglePanel" class="small" style="display:flex;flex-wrap:wrap;padding-top:8px;"></div>
-            <canvas id="voltageCanvas" aria-label="Voltage chart"></canvas>
-          </div>
-
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div><strong>Thermal (Last Observed)</strong></div>
-              <div class="small">Smoothed (EMA)</div>
-            </div>
-            <canvas id="thermalCanvas" class="small" aria-label="Thermal chart"></canvas>
-          </div>
-
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div><strong>Distress Timeline</strong></div>
-              <div class="small">Proxy 0–100%</div>
-            </div>
-            <canvas id="distressCanvas" class="small" aria-label="Distress timeline"></canvas>
-          </div>
-
-          <div class="card">
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-              <div><strong>Snapshot (Debug)</strong></div>
-              <div class="small">Latest engine snapshot</div>
-            </div>
-            <pre id="out" class="debug">Awaiting engine...</pre>
-          </div>
-
-          <div class="card">
-            <h3 style="margin:0 0 8px 0">Diagnostic Mode (Proxy Analysis)</h3>
-            <div id="diagnosticText">No analysis yet.</div>
-            <div id="diagnosticConfidence" class="small" style="margin-top:8px"></div>
-          </div>
-
-          <div class="card">
-            <h3 style="margin:0 0 8px 0">Diagnostic Hypotheses</h3>
-            <ul id="hypothesisList" class="small" style="margin:6px 0 0 14px;color:var(--muted)"></ul>
-            <h3 style="margin:12px 0 8px 0">Diagnostic History</h3>
-            <pre id="diagnosticLog" class="debug">No history yet.</pre>
-          </div>
-
-        <footer class="info">
-          <div class="small">Tip: STEP for single-step inspection; RUN for continuous simulation.</div>
-        </footer>
-      </aside>
+  <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+    <h1>HP Repair Simulator</h1>
+    <div id="boardProfileLabel" style="background: #333; padding: 8px 15px; border-radius: 4px; font-weight: bold; color: #4ec9b0;">
+      No Board Loaded
     </div>
+  </header>
+
+  <div style="display: grid; grid-template-columns: 1fr 350px; gap: 20px;">
+    
+    <section>
+      <div id="motherboardMap" style="width: 100%; height: 600px; background: #000; border: 1px solid #333; border-radius: 8px; position: relative; overflow: hidden;">
+          </div>
+
+      <div class="panel" style="margin-top: 20px; background: #1e1e1e; padding: 15px; border-radius: 8px;">
+        <strong>Live Telemetry</strong>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+          <div>
+            <small>Voltage History</small>
+            <canvas id="voltageCanvas" style="width: 100%; height: 120px; background: #000; margin-top: 5px;"></canvas>
+          </div>
+          <div>
+            <small>Thermal History</small>
+            <canvas id="thermalCanvas" style="width: 100%; height: 120px; background: #000; margin-top: 5px;"></canvas>
+          </div>
+        </div>
+        <div style="margin-top: 15px;">
+          <small>System Distress Level</small>
+          <div style="background: #000; height: 30px; position: relative; border-radius: 4px; margin-top: 5px;">
+            <canvas id="distressCanvas" style="width: 100%; height: 100%;"></canvas>
+            <div id="distressFill" style="height: 4px; background: #4ec9b0; width: 0%; position: absolute; bottom: 0; transition: width 0.3s;"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <aside style="display: flex; flex-direction: column; gap: 20px;">
+      
+      <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+        <strong>Simulation Control</strong>
+        <div style="display: flex; gap: 5px; margin-top: 10px;">
+          <button id="stepBtn">STEP</button>
+          <button id="run" style="background: #28a745; color: white; border: none;">RUN</button>
+          <button id="pause">PAUSE</button>
+          <button id="btn-reset">RESET</button>
+        </div>
+        <div style="margin-top: 10px; display: flex; justify-content: space-between;">
+          <select id="speed" style="background: #333; color: white;">
+            <option value="1" selected>Speed: 1x</option>
+            <option value="2">Speed: 2x</option>
+            <option value="5">Speed: 5x</option>
+          </select>
+          <span id="status" style="font-weight: bold; color: #ff4500;">STOPPED</span>
+        </div>
+      </div>
+
+      <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+        <strong>DC Power Supply</strong>
+        <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+          <label>V: <input type="number" id="psuVoltage" value="4.2" step="0.1" style="width: 50px; background: #333; color: #fff;"></label>
+          <label>Limit: <input type="number" id="psuCurrentLimit" value="2.0" step="0.1" style="width: 50px; background: #333; color: #fff;"></label>
+        </div>
+        <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+          <label><input type="checkbox" id="psuEnable" checked> Enable</label>
+          <button id="psuApply" style="background: #007acc; color: white; border: none; padding: 5px 15px; border-radius: 4px;">Set</button>
+        </div>
+        <div id="psuStatus" style="margin-top: 10px; font-family: monospace; color: #4ec9b0;">PSU: OFF</div>
+        <div id="psuMeasuredCurrent" style="font-family: monospace;">Current: 0.000 A</div>
+      </div>
+
+      <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+        <strong>Multimeter</strong>
+        <select id="multimeterMode" style="width: 100%; margin-top: 10px; background: #333; color: #fff;">
+          <option value="voltage">DC Voltage (V)</option>
+          <option value="diode">Diode Mode</option>
+          <option value="resistance">Resistance (Ω)</option>
+        </select>
+        
+        <div style="margin-top: 10px; display: flex; gap: 5px;">
+          <select id="multimeterTargetType" style="background: #333; color: #fff;">
+            <option value="rail">Rail</option>
+            <option value="component">Component</option>
+          </select>
+          <select id="multimeterComponent" style="flex: 1; background: #333; color: #fff;" disabled>
+            <option>Select Component</option>
+          </select>
+          <input type="text" id="multimeterRail" placeholder="Rail" value="vbat" style="width: 60px; background: #333; color: #fff;">
+        </div>
+        
+        <button id="manualMeasure" style="width: 100%; margin-top: 10px; background: #007acc; color: white; border: none; padding: 8px; border-radius: 4px;">MEASURE</button>
+        <div style="margin-top: 15px; text-align: center; border: 1px solid #444; padding: 10px; border-radius: 4px; background: #000;">
+          <span style="color: #aaa; font-size: 12px; display: block;">READING</span>
+          <strong id="multimeterResult" style="font-size: 24px; color: #ffcc00;">0.00</strong>
+        </div>
+      </div>
+
+    </aside>
   </div>
 
-  <script type="module" src="./src/main.js"></script>
+  <footer style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+      <h3>Diagnostic Intelligence</h3>
+      <div id="diagnosticText" style="color: #4ec9b0; margin-bottom: 5px;"></div>
+      <div id="diagnosticConfidence" style="font-size: 12px; color: #888;"></div>
+      <ul id="hypothesisList" style="margin-top: 10px; color: #ce9178;"></ul>
+      <button id="exportReport" style="margin-top: 10px;">Export Report</button>
+    </div>
+    
+    <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+      <small>Engine Real-time Snapshot</small>
+      <pre id="output" style="font-size: 11px; color: #888; background: #000; padding: 10px; border-radius: 4px; max-height: 150px; overflow: auto;">System Ready…</pre>
+    </div>
+  </footer>
+
+  <div style="display:none;">
+    <input type="range" id="smoothingSlider" min="0" max="1" step="0.01">
+    <span id="smoothingValue"></span>
+    <input type="range" id="timelineScrubber" min="0" max="100">
+    <select id="scenarioSelect"><option value="Default">Default</option></select>
+    <div id="scenarioName"></div>
+    <div id="simTime"></div>
+    <div id="railTogglePanel"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
 </body>
 </html>

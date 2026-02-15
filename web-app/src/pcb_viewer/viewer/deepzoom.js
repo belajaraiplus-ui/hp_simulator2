@@ -1,15 +1,14 @@
 import OpenSeadragon from "openseadragon";
 
 export async function createDeepZoomViewer({ el, board }) {
-  // board = hasil fetch dari /api/boards/:id/board
+  // board = hasil fetch dari http://127.0.0.1:8080/api/boards/:id/board
   const { tile_size, overlap, max_level, url_template } = board.tiles;
   const { full_width_px, full_height_px } = board.image;
 
-  // OSD pakai level 0 = paling kecil atau paling besar? (OSD: level 0 biasanya paling kecil)
-  // Kita “map” pakai 'maxLevel' dan buat getTileUrl manual.
   const viewer = OpenSeadragon({
     element: el,
-    prefixUrl: "/openseadragon-images/", // (lihat catatan di bawah)
+    // Menggunakan CDN untuk icon kontrol agar tidak perlu copy folder manual dulu
+    prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/", 
     showNavigator: true,
     maxZoomPixelRatio: 2,
     tileSources: {
@@ -20,9 +19,13 @@ export async function createDeepZoomViewer({ el, board }) {
       minLevel: 0,
       maxLevel: max_level,
       getTileUrl: function (level, x, y) {
-        // level yang diminta OSD = 0..maxLevel
-        // url_template Anda juga 0..max_level -> cocok
-        return url_template
+        /**
+         * SINKRONISASI PENTING:
+         * url_template Anda adalah "/api/boards/.../tiles/{level}/{x}_{y}.jpg"
+         * Kita harus menambahkan "http://127.0.0.1:8080" agar tidak mencari di port Vite (5173).
+         */
+        const baseUrl = "http://127.0.0.1:8080";
+        return `${baseUrl}${url_template}`
           .replace("{level}", String(level))
           .replace("{x}", String(x))
           .replace("{y}", String(y));
