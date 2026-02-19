@@ -5,8 +5,27 @@ mod model;
 use axum::{routing::get, Router};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::EnvFilter;
-
+use std::path::PathBuf;
 use state::AppState;
+
+fn default_data_dir() -> PathBuf {
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    let candidate = exe_dir.join("..").join("..").join("assets").join("boards");
+    if candidate.exists() {
+        return candidate;
+    }
+
+    let cwd_candidate = PathBuf::from("assets").join("boards");
+    if cwd_candidate.exists() {
+        return cwd_candidate;
+    }
+
+    PathBuf::from("../assets/boards")
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -14,9 +33,17 @@ async fn main() -> anyhow::Result<()> {
         .with_env_filter(EnvFilter::from_default_env().add_directive("info".parse()?))
         .init();
 
-    let data_dir =
-        std::env::var("PCB_DATA_DIR").unwrap_or_else(|_| "../assets/boards".to_string());
-    let state = AppState::new(data_dir.into());
+    let data_dir = std::env::var("PCB_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| default_data_dir());
+
+    tracing::info!("PCB_DATA_DIR resolved to: {}", data_dir.display());
+
+    if !data_dir.exists() {
+        anyhow::bail!("PCB_DATA_DIR does not exist: {}", data_dir.display());
+    }
+
+    let state = AppState::new(data_dir);
 
     let app = Router::new()
         .route("/api/boards", get(routes::get_boards))

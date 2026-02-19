@@ -1,4 +1,9 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+/* -------------------------
+   manifest.json
+-------------------------- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Manifest {
@@ -15,6 +20,10 @@ pub struct BoardListItem {
     #[serde(default)]
     pub board_url: Option<String>,
 }
+
+/* -------------------------
+   board.json
+-------------------------- */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoardFile {
@@ -44,6 +53,7 @@ pub struct ImageMeta {
 pub struct TilesMeta {
     #[serde(rename = "type")]
     pub kind: String,
+
     pub tile_size: u32,
     pub overlap: u32,
     pub format: String,
@@ -69,10 +79,15 @@ pub struct AffineTransform {
     pub ty: f64,
 }
 
-// components.json (minimal; cukup untuk panel Anda)
+/* -------------------------
+   components.json
+   (lebih lengkap + tetap toleran)
+-------------------------- */
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ComponentsFile {
     pub version: u32,
+    #[serde(default)]
     pub components: Vec<ComponentItem>,
 }
 
@@ -80,14 +95,52 @@ pub struct ComponentsFile {
 pub struct ComponentItem {
     pub id: String,
     pub refdes: String,
+
     #[serde(default)]
     pub kind: String,
+
+    // opsional: ada di file Anda
+    #[serde(default)]
+    pub bbox: Option<BBox>,
+
+    // opsional: ada di file Anda
+    #[serde(default)]
+    pub shape: Option<ComponentShape>,
+
+    #[serde(default)]
+    pub tags: Vec<String>,
+
+    // hints bisa berisi rails, dll. biar fleksibel, pakai Value
+    #[serde(default)]
+    pub hints: Option<Value>,
 }
 
-// rails.json sesuai file Anda
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BBox {
+    pub x: f64,
+    pub y: f64,
+    pub w: f64,
+    pub h: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ComponentShape {
+    #[serde(rename = "type")]
+    pub kind: String,
+
+    // points untuk poly, kalau bukan poly -> tetap bisa null
+    #[serde(default)]
+    pub points: Vec<[f64; 2]>,
+}
+
+/* -------------------------
+   rails.json
+-------------------------- */
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RailsFile {
     pub version: u32,
+    #[serde(default)]
     pub rails: Vec<RailItem>,
 }
 
@@ -118,7 +171,11 @@ pub struct RailOverlay {
     #[serde(rename = "type")]
     pub kind: String,
 
-    // "polys": [[[x,y],...], ...]
     #[serde(default)]
     pub polys: Vec<Vec<[f64; 2]>>,
+
+    // fallback supaya field tambahan tidak bikin parse gagal
+    #[serde(flatten)]
+    #[serde(default)]
+    pub extra: Option<Value>,
 }

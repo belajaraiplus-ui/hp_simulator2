@@ -1,37 +1,47 @@
 import OpenSeadragon from "openseadragon";
 
+class HpTileSource extends OpenSeadragon.TileSource {
+
+  constructor(board) {
+
+    super({
+      width: board.image.full_width_px,
+      height: board.image.full_height_px,
+      tileSize: board.tiles.tile_size,
+      tileOverlap: board.tiles.overlap || 0, // Default 0 to prevent grid lines
+      minLevel: 0,
+      maxLevel: board.tiles.max_level
+    });
+
+    this.board = board;
+  }
+
+  getTileUrl(level, x, y) {
+    // Use relative path so Vite proxy handles the domain/port
+    const fmt = this.board.tiles.format || 'jpg';
+    return `/api/boards/${this.board.id}/tiles/${level}/${x}_${y}.${fmt}`;
+  }
+
+}
+
 export async function createDeepZoomViewer({ el, board }) {
-  // board = hasil fetch dari http://127.0.0.1:8080/api/boards/:id/board
-  const { tile_size, overlap, max_level, url_template } = board.tiles;
-  const { full_width_px, full_height_px } = board.image;
 
   const viewer = OpenSeadragon({
     element: el,
-    // Menggunakan CDN untuk icon kontrol agar tidak perlu copy folder manual dulu
-    prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/", 
+    prefixUrl: "https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/",
     showNavigator: true,
-    maxZoomPixelRatio: 2,
-    tileSources: {
-      width: full_width_px,
-      height: full_height_px,
-      tileSize: tile_size,
-      tileOverlap: overlap,
-      minLevel: 0,
-      maxLevel: max_level,
-      getTileUrl: function (level, x, y) {
-        /**
-         * SINKRONISASI PENTING:
-         * url_template Anda adalah "/api/boards/.../tiles/{level}/{x}_{y}.jpg"
-         * Kita harus menambahkan "http://127.0.0.1:8080" agar tidak mencari di port Vite (5173).
-         */
-        const baseUrl = "http://127.0.0.1:8080";
-        return `${baseUrl}${url_template}`
-          .replace("{level}", String(level))
-          .replace("{x}", String(x))
-          .replace("{y}", String(y));
-      },
-    },
+    
+    // UX & Navigation Settings
+    animationTime: 0.5,
+    blendTime: 0.1,
+    constrainDuringPan: true,
+    visibilityRatio: 1.0,     // Keep image in viewport
+    minZoomImageRatio: 0.8,   // Prevent zooming out too far
+    maxZoomPixelRatio: 2.0,   // Prevent zooming in until pixelated
+    defaultZoomLevel: 0,      // 0 = Auto fit to screen
   });
+
+  viewer.open(new HpTileSource(board));
 
   return viewer;
 }

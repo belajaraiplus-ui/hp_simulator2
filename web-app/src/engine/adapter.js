@@ -1,4 +1,4 @@
-import init, * as engine from "../wasm/engine.js";
+import init, * as engine from "./wasm/engine.js";
 
 let initialized = false;
 

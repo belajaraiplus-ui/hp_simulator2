@@ -4,121 +4,129 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>HP Repair Simulator v2.0</title>
-  <link rel="stylesheet" href="/src/style.css" />
+  <link rel="stylesheet" href="./src/style.css" />
 </head>
 
-<body style="background-color: #121212; color: #e0e0e0; font-family: sans-serif; margin: 0; padding: 20px;">
-
-  <header style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+<body>
+  <header class="topbar">
     <h1>HP Repair Simulator</h1>
-    <div id="boardProfileLabel" style="background: #333; padding: 8px 15px; border-radius: 4px; font-weight: bold; color: #4ec9b0;">
+    <div id="boardProfileLabel" class="badge">
       No Board Loaded
     </div>
   </header>
 
-  <div style="display: grid; grid-template-columns: 1fr 350px; gap: 20px;">
-    
-    <section>
-      <div id="motherboardMap" style="width: 100%; height: 600px; background: #000; border: 1px solid #333; border-radius: 8px; position: relative; overflow: hidden;">
-          </div>
+  <div class="layout">
+    <section class="main">
+      <div id="motherboardMap" class="motherboardMap"></div>
 
-      <div class="panel" style="margin-top: 20px; background: #1e1e1e; padding: 15px; border-radius: 8px;">
+      <div class="panel">
         <strong>Live Telemetry</strong>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+
+        <div class="telemetryGrid">
           <div>
             <small>Voltage History</small>
-            <canvas id="voltageCanvas" style="width: 100%; height: 120px; background: #000; margin-top: 5px;"></canvas>
+            <canvas id="voltageCanvas" class="telemetryCanvas"></canvas>
           </div>
           <div>
             <small>Thermal History</small>
-            <canvas id="thermalCanvas" style="width: 100%; height: 120px; background: #000; margin-top: 5px;"></canvas>
+            <canvas id="thermalCanvas" class="telemetryCanvas"></canvas>
           </div>
         </div>
-        <div style="margin-top: 15px;">
+
+        <div class="distressBlock">
           <small>System Distress Level</small>
-          <div style="background: #000; height: 30px; position: relative; border-radius: 4px; margin-top: 5px;">
-            <canvas id="distressCanvas" style="width: 100%; height: 100%;"></canvas>
-            <div id="distressFill" style="height: 4px; background: #4ec9b0; width: 0%; position: absolute; bottom: 0; transition: width 0.3s;"></div>
+          <div class="distressBar">
+            <canvas id="distressCanvas" class="distressCanvas"></canvas>
+            <div id="distressFill" class="distressFill"></div>
           </div>
         </div>
       </div>
     </section>
 
-    <aside style="display: flex; flex-direction: column; gap: 20px;">
-      
-      <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+    <aside class="sidebar">
+      <div class="panel">
         <strong>Simulation Control</strong>
-        <div style="display: flex; gap: 5px; margin-top: 10px;">
+
+        <div class="btnRow">
           <button id="stepBtn">STEP</button>
-          <button id="run" style="background: #28a745; color: white; border: none;">RUN</button>
+          <button id="run" class="btnRun">RUN</button>
           <button id="pause">PAUSE</button>
-          <button id="btn-reset">RESET</button>
+          <button id="btn-reset" class="btnReset">RESET</button>
         </div>
-        <div style="margin-top: 10px; display: flex; justify-content: space-between;">
-          <select id="speed" style="background: #333; color: white;">
+
+        <div class="rowBetween">
+          <select id="speed" class="selectDark">
             <option value="1" selected>Speed: 1x</option>
             <option value="2">Speed: 2x</option>
             <option value="5">Speed: 5x</option>
           </select>
-          <span id="status" style="font-weight: bold; color: #ff4500;">STOPPED</span>
+          <span id="status" class="statusStopped">STOPPED</span>
         </div>
       </div>
 
-      <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+      <div class="panel">
         <strong>DC Power Supply</strong>
-        <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-          <label>V: <input type="number" id="psuVoltage" value="4.2" step="0.1" style="width: 50px; background: #333; color: #fff;"></label>
-          <label>Limit: <input type="number" id="psuCurrentLimit" value="2.0" step="0.1" style="width: 50px; background: #333; color: #fff;"></label>
+
+        <div class="grid2">
+          <label>V:
+            <input type="number" id="psuVoltage" value="4.2" step="0.1" class="inputDark smallInput">
+          </label>
+          <label>Limit:
+            <input type="number" id="psuCurrentLimit" value="2.0" step="0.1" class="inputDark smallInput">
+          </label>
         </div>
-        <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+
+        <div class="rowBetween">
           <label><input type="checkbox" id="psuEnable" checked> Enable</label>
-          <button id="psuApply" style="background: #007acc; color: white; border: none; padding: 5px 15px; border-radius: 4px;">Set</button>
+          <button id="psuApply" class="btnPrimary">Set</button>
         </div>
-        <div id="psuStatus" style="margin-top: 10px; font-family: monospace; color: #4ec9b0;">PSU: OFF</div>
-        <div id="psuMeasuredCurrent" style="font-family: monospace;">Current: 0.000 A</div>
+
+        <div id="psuStatus" class="mono accent">PSU: OFF</div>
+        <div id="psuMeasuredCurrent" class="mono">Current: 0.000 A</div>
       </div>
 
-      <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+      <div class="panel">
         <strong>Multimeter</strong>
-        <select id="multimeterMode" style="width: 100%; margin-top: 10px; background: #333; color: #fff;">
+
+        <select id="multimeterMode" class="selectDark fullWidth">
           <option value="voltage">DC Voltage (V)</option>
           <option value="diode">Diode Mode</option>
           <option value="resistance">Resistance (Ω)</option>
         </select>
-        
-        <div style="margin-top: 10px; display: flex; gap: 5px;">
-          <select id="multimeterTargetType" style="background: #333; color: #fff;">
+
+        <div class="mmRow">
+          <select id="multimeterTargetType" class="selectDark">
             <option value="rail">Rail</option>
             <option value="component">Component</option>
           </select>
-          <select id="multimeterComponent" style="flex: 1; background: #333; color: #fff;" disabled>
+          <select id="multimeterComponent" class="selectDark flex1" disabled>
             <option>Select Component</option>
           </select>
-          <input type="text" id="multimeterRail" placeholder="Rail" value="vbat" style="width: 60px; background: #333; color: #fff;">
+          <input type="text" id="multimeterRail" placeholder="Rail" value="vbat" class="inputDark railInput">
         </div>
-        
-        <button id="manualMeasure" style="width: 100%; margin-top: 10px; background: #007acc; color: white; border: none; padding: 8px; border-radius: 4px;">MEASURE</button>
-        <div style="margin-top: 15px; text-align: center; border: 1px solid #444; padding: 10px; border-radius: 4px; background: #000;">
-          <span style="color: #aaa; font-size: 12px; display: block;">READING</span>
-          <strong id="multimeterResult" style="font-size: 24px; color: #ffcc00;">0.00</strong>
+
+        <button id="manualMeasure" class="btnPrimary fullWidth">MEASURE</button>
+
+        <div class="meterReadout">
+          <span class="meterLabel">READING</span>
+          <strong id="multimeterResult" class="meterValue">0.00</strong>
         </div>
       </div>
-
     </aside>
   </div>
 
-  <footer style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
-    <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+  <footer class="footerGrid">
+    <div class="panel">
       <h3>Diagnostic Intelligence</h3>
-      <div id="diagnosticText" style="color: #4ec9b0; margin-bottom: 5px;"></div>
-      <div id="diagnosticConfidence" style="font-size: 12px; color: #888;"></div>
-      <ul id="hypothesisList" style="margin-top: 10px; color: #ce9178;"></ul>
-      <button id="exportReport" style="margin-top: 10px;">Export Report</button>
+      <div id="diagnosticText" class="accent"></div>
+      <div id="diagnosticConfidence" class="muted small"></div>
+      <ul id="hypothesisList" class="hypothesis"></ul>
+      <button id="exportReport" class="btnGhost">Export Report</button>
     </div>
-    
-    <div class="panel" style="background: #1e1e1e; padding: 15px; border-radius: 8px;">
+
+    <div class="panel">
       <small>Engine Real-time Snapshot</small>
-      <pre id="output" style="font-size: 11px; color: #888; background: #000; padding: 10px; border-radius: 4px; max-height: 150px; overflow: auto;">System Ready…</pre>
+      <pre id="output" class="preBox">System Ready…</pre>
     </div>
   </footer>
 
@@ -132,6 +140,6 @@
     <div id="railTogglePanel"></div>
   </div>
 
-  <script type="module" src="/src/main.js"></script>
+  <script type="module" src="./src/main.js"></script>
 </body>
 </html>

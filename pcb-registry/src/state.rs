@@ -43,6 +43,10 @@ impl AppState {
 
     pub fn tile_path(&self, board_id: &str, level: u32, x: u32, y: u32, ext: &str) -> PathBuf {
         let filename = format!("{}_{}.{}", x, y, ext);
-        self.data_dir.join(board_id).join("tiles").join(level.to_string()).join(filename)
+        self.data_dir
+            .join(board_id)
+            .join("tiles")
+            .join(level.to_string())
+            .join(filename)
     }
 }
