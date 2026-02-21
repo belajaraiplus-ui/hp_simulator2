@@ -1,12 +1,37 @@
 use rand::seq::SliceRandom;
 use rand::thread_rng;
+use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "UPPERCASE")]
 pub enum RailId {
-    Vcore,
     Vbat,
+    Vsys,
+    Vcore,
     Vio,
     Vddr,
+    Vpa,
+    Vcam,
+    Vdisp,
+    #[serde(alias = "VBUS_5V")]
+    Vchg,
+}
+
+impl RailId {
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "vbat" | "Vbat" | "VBAT" => Some(RailId::Vbat),
+            "vsys" | "Vsys" | "VSYS" => Some(RailId::Vsys),
+            "vcore" | "Vcore" | "VCORE" => Some(RailId::Vcore),
+            "vio" | "Vio" | "VIO" => Some(RailId::Vio),
+            "vddr" | "Vddr" | "VDDR" => Some(RailId::Vddr),
+            "vpa" | "Vpa" | "VPA" => Some(RailId::Vpa),
+            "vcam" | "Vcam" | "VCAM" => Some(RailId::Vcam),
+            "vdisp" | "Vdisp" | "VDISP" => Some(RailId::Vdisp),
+            "vchg" | "Vchg" | "VCHG" | "VBUS_5V" => Some(RailId::Vchg),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

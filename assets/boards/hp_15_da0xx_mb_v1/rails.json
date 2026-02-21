@@ -1,10 +1,44 @@
 {
   "version": 1,
+  "defaults": {
+    "continuity": {
+      "beep_below_ohms": 50.0,
+      "open_above_ohms": 200.0
+    }
+  },
   "rails": [
+    {
+      "id": "VBUS_5V",
+      "label": "VBUS 5V",
+      "type": "input",
+      "expected": {
+        "voltage_v": { "min": 4.75, "max": 5.25 },
+        "diode_drop_v": { "min": 0.45, "max": 0.80 },
+        "r2g_ohms": { "nominal": 500.0 },
+        "continuity": { "beep_below_ohms": 30.0, "open_above_ohms": 150.0 }
+      },
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[20,40],[70,40],[70,90],[20,90]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VBUS", "x": 45, "y": 65, "label": "TP_VBUS" }
+      ]
+    },
+
     {
       "id": "VBAT",
       "label": "VBAT",
       "type": "power",
+      "expected": {
+        "voltage_v": { "min": 3.0, "max": 4.4 },
+        "diode_drop_v": { "min": 0.35, "max": 0.65 },
+        "r2g_ohms": { "nominal": 120.0 },
+        "continuity": { "beep_below_ohms": 50.0, "open_above_ohms": 200.0 }
+      },
+      "depends_on": ["VBUS_5V"],
       "overlay": {
         "type": "multi_poly",
         "polys": [
@@ -12,7 +46,29 @@
         ]
       },
       "probe_points": [
-        { "x": 120, "y": 230, "label": "TP_VBAT" }
+        { "id": "TP_VBAT", "x": 120, "y": 230, "label": "TP_VBAT" }
+      ]
+    },
+
+    {
+      "id": "VCORE",
+      "label": "VCORE",
+      "type": "core",
+      "expected": {
+        "voltage_v": { "min": 0.80, "max": 1.10 },
+        "diode_drop_v": { "min": 0.25, "max": 0.55 },
+        "r2g_ohms": { "nominal": 20.0 },
+        "continuity": { "beep_below_ohms": 10.0, "open_above_ohms": 60.0 }
+      },
+      "depends_on": ["VBAT"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[220,110],[280,110],[280,170],[220,170]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VCORE", "x": 250, "y": 140, "label": "TP_VCORE" }
       ]
     }
   ]

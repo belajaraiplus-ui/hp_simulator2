@@ -16,11 +16,11 @@ impl MeasurementTool for Oscilloscope {
         let rail = s.electrical.rails.values_mut().next().unwrap();
 
         // Probe loading (kapasitansi bertambah)
-        rail.capacitance += self.probe_capacitance * (1.0 + 0.1 * rep.min(10.0));
+        rail.health.capacitance += self.probe_capacitance * (1.0 + 0.1 * rep.min(10.0));
 
         // Noise/jitter akibat probe
         let jitter_like = rail.noise * (1.0 + 0.2 * rep.min(10.0));
-        let observed = rail.voltage + jitter_like;
+        let observed = rail.state.voltage + jitter_like;
 
         // 3️⃣ Stress akibat pengukuran
         let stress = jitter_like.abs() * 0.03 * rep;

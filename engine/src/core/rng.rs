@@ -8,6 +8,12 @@ pub struct SimRng {
     state: u64,
 }
 
+impl Default for SimRng {
+    fn default() -> Self {
+        SimRng::new(12345)
+    }
+}
+
 impl SimRng {
     /// Create RNG with a seed. Zero seeds are allowed; if zero, jump to nonzero state.
     pub fn new(mut seed: u64) -> Self {

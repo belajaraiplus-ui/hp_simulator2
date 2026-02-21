@@ -9,6 +9,7 @@ mod physics;
 mod measurement;
 mod fault;
 mod session;
+pub mod power;
 mod analysis;
 mod postmortem;
 pub mod scenario_dsl;

@@ -5,8 +5,8 @@ pub fn assert_invariants(s: &PhoneState) {
     // ELECTRICAL SANITY
     // =======================
     for (_id, r) in s.electrical.rails.iter() {
-        assert!(r.capacitance > 0.0, "Capacitance must be > 0");
-        assert!(r.esr >= 0.0, "ESR must be >= 0");
+        assert!(r.health.capacitance > 0.0, "Capacitance must be > 0");
+        assert!(r.health.esr >= 0.0, "ESR must be >= 0");
     }
 
     // =======================

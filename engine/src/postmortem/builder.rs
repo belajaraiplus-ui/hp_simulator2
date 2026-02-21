@@ -15,11 +15,11 @@ pub fn build_postmortem(
     // =======================
     // ROOT CAUSE CHAIN
     // =======================
-    for (fid, inst) in state.faults.active.iter() {
+    for (_fid, inst) in state.faults.active.iter() {
         if inst.intensity > 0.5 {
             causes.push(format!(
                 "Fault {:?} reached {:?} phase with intensity {:.2}",
-                fid,
+                _fid,
                 inst.phase,
                 inst.intensity
             ));

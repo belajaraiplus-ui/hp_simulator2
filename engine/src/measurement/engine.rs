@@ -1,7 +1,6 @@
-use crate::state::phone_state::*;
-use crate::state::ids::{RailId, ThermalZoneId};
 use crate::measurement::meta::apply_meta_effects;
-
+use crate::state::ids::{RailId, ThermalZoneId};
+use crate::state::phone_state::*;
 
 /// Semua observasi HARUS lewat sini.
 /// Measurement adalah INTERAKSI LISTRIK, bukan pembacaan pasif.
@@ -32,72 +31,71 @@ impl MeasurementEngine {
                 id: "c_vbat_in",
                 rail: RailId::Vbat,
                 kind: ComponentKind::Capacitor,
-                parasitic_ohm: 0.08,
-                diode_offset: 0.15,
+                parasitic_ohm: 0.08_f64,
+                diode_offset: 0.15_f64,
             }),
             "c_vcore_out" => Some(ComponentProbe {
                 id: "c_vcore_out",
                 rail: RailId::Vcore,
                 kind: ComponentKind::Capacitor,
-                parasitic_ohm: 0.05,
-                diode_offset: 0.12,
+                parasitic_ohm: 0.05_f64,
+                diode_offset: 0.12_f64,
             }),
             "r_vcore_fb" => Some(ComponentProbe {
                 id: "r_vcore_fb",
                 rail: RailId::Vcore,
                 kind: ComponentKind::Resistor,
-                parasitic_ohm: 47.0,
-                diode_offset: -0.05,
+                parasitic_ohm: 47.0_f64,
+                diode_offset: -0.05_f64,
             }),
             "r_vbat_sense" => Some(ComponentProbe {
                 id: "r_vbat_sense",
                 rail: RailId::Vbat,
                 kind: ComponentKind::Resistor,
-                parasitic_ohm: 0.01, // REVISI: Sense resistor harusnya sangat kecil (10mOhm)
-                diode_offset: -0.06,
+                parasitic_ohm: 0.01_f64, // sense resistor ~10mΩ
+                diode_offset: -0.06_f64,
             }),
             "j_vbat_main" => Some(ComponentProbe {
                 id: "j_vbat_main",
                 rail: RailId::Vbat,
                 kind: ComponentKind::Trace,
-                parasitic_ohm: 0.02,
-                diode_offset: -0.10,
+                parasitic_ohm: 0.02_f64,
+                diode_offset: -0.10_f64,
             }),
             "j_vcore_phase" => Some(ComponentProbe {
                 id: "j_vcore_phase",
                 rail: RailId::Vcore,
                 kind: ComponentKind::Trace,
-                parasitic_ohm: 0.03,
-                diode_offset: -0.08,
+                parasitic_ohm: 0.03_f64,
+                diode_offset: -0.08_f64,
             }),
-            // TAMBAHAN: Induktor VCORE (Komponen fisik besar di area PMIC)
             "l_vcore" => Some(ComponentProbe {
                 id: "l_vcore",
                 rail: RailId::Vcore,
                 kind: ComponentKind::Inductor,
-                parasitic_ohm: 0.005, // DCR sangat rendah
-                diode_offset: -0.02,
+                parasitic_ohm: 0.005_f64, // DCR rendah
+                diode_offset: -0.02_f64,
             }),
             "tp_vbat" => Some(ComponentProbe {
                 id: "tp_vbat",
                 rail: RailId::Vbat,
                 kind: ComponentKind::TestPoint,
-                parasitic_ohm: 0.01,
-                diode_offset: 0.0,
+                parasitic_ohm: 0.01_f64,
+                diode_offset: 0.0_f64,
             }),
             "tp_vcore" => Some(ComponentProbe {
                 id: "tp_vcore",
                 rail: RailId::Vcore,
                 kind: ComponentKind::TestPoint,
-                parasitic_ohm: 0.01,
-                diode_offset: 0.0,
+                parasitic_ohm: 0.01_f64,
+                diode_offset: 0.0_f64,
             }),
             "tp_vio" => Some(ComponentProbe {
                 id: "tp_vio",
                 rail: RailId::Vio,
                 kind: ComponentKind::TestPoint,
-                parasitic_ohm: 0.01,
-                diode_offset: 0.0,
+                parasitic_ohm: 0.01_f64,
+                diode_offset: 0.0_f64,
             }),
             _ => None,
         }
@@ -110,11 +108,9 @@ impl MeasurementEngine {
         if mode_key.contains("diode") {
             return Some(Self::measure_component_diode(state, probe));
         }
-
         if mode_key.contains("ohm") || mode_key.contains("resistance") {
             return Some(Self::measure_component_resistance(state, probe));
         }
-
         if mode_key.contains("continuity") || mode_key.contains("beep") {
             return Some(Self::measure_component_continuity(state, probe));
         }
@@ -136,49 +132,44 @@ impl MeasurementEngine {
         // MEASUREMENT FATIGUE
         // =======================
         let key = ("voltage".to_string(), format!("{:?}", rail));
-        let count = state.fatigue.counts.entry(key.clone()).or_insert(0);
+        let count = state.fatigue.counts.entry(key).or_insert(0);
         *count += 1;
 
-        let fatigue_factor = (*count as f64).min(10.0) * 0.05;
+        let fatigue_factor: f64 = (*count as f64).min(10.0_f64) * 0.05_f64;
 
         // =======================
         // ENERGY INJECTION
         // =======================
-        let injected = 0.002 + fatigue_factor * 0.002;
+        let injected: f64 = 0.002_f64 + fatigue_factor * 0.002_f64;
         state.stress.measurement += injected;
 
         // =======================
         // ELECTRICAL INTERACTION
         // Probe menambah beban & memicu drop kecil
         // =======================
-        let probe_load = 0.01 + fatigue_factor * 0.02;
-        rail_state.load_current += probe_load;
+        let probe_load: f64 = 0.01_f64 + fatigue_factor * 0.02_f64;
+        rail_state.state.current += probe_load;
 
         // voltage sag akibat probe (non-ideal)
-        rail_state.voltage -= probe_load * rail_state.esr;
+        rail_state.state.voltage -= probe_load * rail_state.health.esr;
 
         // =======================
         // NOISE MODEL (CONTEXTUAL)
         // =======================
-        let stress_noise =
-            state.stress.electrical * 0.02 +
-            state.stress.measurement * 0.03;
+        let stress_noise: f64 =
+            state.stress.electrical * 0.02_f64 +
+            state.stress.measurement * 0.03_f64;
 
-        let fatigue_noise = fatigue_factor * 0.05;
+        let fatigue_noise: f64 = fatigue_factor * 0.05_f64;
 
-        let noise = rail_state.noise
+        let noise: f64 = rail_state.noise
             + state.electrical.transient_noise
             + stress_noise
             + fatigue_noise;
 
-        // =======================
-        // OBSERVED VALUE
-        // =======================
-        let observed = rail_state.voltage + noise;
+        let observed: f64 = rail_state.state.voltage + noise;
 
-        // =======================
-        // LOG & LAST-SEEN (UI PROXY)
-        // =======================
+        // LOG
         state.measurements.history.push(MeasurementEvent {
             time: state.time,
             target: format!("V({:?})", rail),
@@ -189,9 +180,8 @@ impl MeasurementEngine {
         });
 
         state.last_voltage.insert(rail, observed);
-        // META-FAULT PSIKOLOGIS
-        apply_meta_effects(state);
 
+        apply_meta_effects(state);
         observed
     }
 
@@ -205,40 +195,25 @@ impl MeasurementEngine {
             .get_mut(&zone)
             .expect("measure_temperature: requested thermal zone not found");
 
-        // =======================
-        // MEASUREMENT FATIGUE
-        // =======================
         let key = ("temperature".to_string(), format!("{:?}", zone));
-        let count = state.fatigue.counts.entry(key.clone()).or_insert(0);
+        let count = state.fatigue.counts.entry(key).or_insert(0);
         *count += 1;
 
-        let fatigue_factor = (*count as f64).min(10.0) * 0.03;
+        let fatigue_factor: f64 = (*count as f64).min(10.0_f64) * 0.03_f64;
 
-        // =======================
-        // ENERGY INJECTION
-        // =======================
-        let injected = 0.001 + fatigue_factor * 0.0015;
+        let injected: f64 = 0.001_f64 + fatigue_factor * 0.0015_f64;
         state.stress.measurement += injected;
 
-        // =======================
-        // THERMAL DISTORTION
-        // Probe dapat mengganggu local equilibrium
-        // =======================
-        z.temperature += fatigue_factor * 0.1;
+        // probe distortion
+        z.temperature += fatigue_factor * 0.1_f64;
 
-        // =======================
-        // NOISE MODEL
-        // =======================
-        let noise =
-            state.electrical.transient_noise * 0.5 +
-            state.stress.thermal * 0.02 +
-            fatigue_factor * 0.1;
+        let noise: f64 =
+            state.electrical.transient_noise * 0.5_f64 +
+            state.stress.thermal * 0.02_f64 +
+            fatigue_factor * 0.1_f64;
 
-        let observed = z.temperature + noise;
+        let observed: f64 = z.temperature + noise;
 
-        // =======================
-        // LOG & LAST-SEEN
-        // =======================
         state.measurements.history.push(MeasurementEvent {
             time: state.time,
             target: format!("T({:?})", zone),
@@ -250,9 +225,7 @@ impl MeasurementEngine {
 
         state.last_temperature.insert(zone, observed);
 
-        // META-FAULT PSIKOLOGIS
         apply_meta_effects(state);
-
         observed
     }
 
@@ -267,68 +240,41 @@ impl MeasurementEngine {
             .expect("measure_diode: rail not found");
 
         // Typical diode test current
-        let test_current = 0.002; // 2mA
+        let test_current: f64 = 0.002_f64; // 2mA
+        rail_state.state.current += test_current;
 
-        rail_state.load_current += test_current;
+        // Baseline dari expected profile
+        let mut forward_voltage: f64 = rail_state.diode_drop_nominal();
 
-        let total_current = rail_state.load_current + rail_state.leakage_current;
-
-        let epsilon = 0.000_001;
-
-        // =======================
-        // Base diode drop model
-        // =======================
-        let mut forward_voltage = if total_current < 0.001 + epsilon {
-            // Open circuit (simulate OL)
-            3.0
-        } else if total_current > 2.0 {
-            // Short condition
-            0.02
-        } else {
-            // Normal semiconductor drop
-            0.2 + (rail_state.esr * 0.5)
-        };
-
-        // =======================
         // Stress influence
-        // =======================
-        if state.stress.electrical > 0.7 {
-            forward_voltage *= 1.05;
+        if state.stress.electrical > 0.7_f64 {
+            forward_voltage *= 1.05_f64;
         }
 
-        // =======================
         // Noise & jitter
-        // =======================
-        let noise =
-            state.electrical.transient_noise * 0.1 +
-            state.stress.measurement * 0.02;
+        let noise: f64 =
+            state.electrical.transient_noise * 0.1_f64 +
+            state.stress.measurement * 0.02_f64;
 
-        let jitter = (state.rng_f64() - 0.5) * 0.01;
+        let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.01_f64;
 
         forward_voltage += noise + jitter;
 
-        // Clamp display range
         if forward_voltage.is_nan() {
-            forward_voltage = 3.0;
+            forward_voltage = 3.0_f64;
         }
+        forward_voltage = forward_voltage.clamp(0.0_f64, 3.0_f64);
 
-        forward_voltage = forward_voltage.clamp(0.0, 3.0);
+        state.measurements.history.push(MeasurementEvent {
+            time: state.time,
+            target: format!("DIODE_{:?}", rail),
+            observed_value: forward_voltage,
+            noise,
+            injected_energy: test_current,
+            stress_added: 0.001_f64,
+        });
 
-        // =======================
-        // Log event
-        // =======================
-        state.measurements.history.push(
-            crate::state::phone_state::MeasurementEvent {
-                time: state.time,
-                target: format!("DIODE_{:?}", rail),
-                observed_value: forward_voltage,
-                noise,
-                injected_energy: test_current,
-                stress_added: 0.001,
-            }
-        );
-
-        state.stress.measurement += 0.001;
+        state.stress.measurement += 0.001_f64;
 
         forward_voltage
     }
@@ -343,66 +289,60 @@ impl MeasurementEngine {
             .get_mut(&rail)
             .expect("measure_resistance: rail not found");
 
-        // Measurement fatigue
         let key = ("resistance".to_string(), format!("{:?}", rail));
-        let count = state.fatigue.counts.entry(key.clone()).or_insert(0);
+        let count = state.fatigue.counts.entry(key).or_insert(0);
         *count += 1;
-        let fatigue_factor = (*count as f64).min(10.0) * 0.04;
 
-        // Small constant current source (typical DMM)
-        let test_current = 0.001 + fatigue_factor * 0.0005; // 1.0mA -> 1.5mA
-        rail_state.load_current += test_current;
+        let fatigue_factor: f64 = (*count as f64).min(10.0_f64) * 0.04_f64;
 
-        // If circuit is powered, reading becomes unreliable (OL)
-        let live_voltage = rail_state.voltage.abs();
-        let mut resistance = if live_voltage > 0.2 {
-            1.0e9
+        // DMM current source
+        let test_current: f64 = 0.001_f64 + fatigue_factor * 0.0005_f64;
+        rail_state.state.current += test_current;
+
+        // If powered, DMM ohm mode jadi OL / unreliable
+        let live_voltage: f64 = rail_state.state.voltage.abs();
+
+        let mut resistance: f64 = if live_voltage > 0.2_f64 {
+            1.0e9_f64
         } else {
-            // Approximate equivalent resistance to ground from leakage
-            let nominal_v = rail_state.target_voltage.max(0.1);
-            let leakage = rail_state.leakage_current.max(1e-6);
-            let mut r_eq = nominal_v / leakage;
+            // R2G is source of truth
+            let mut r_eq: f64 = rail_state.health.resistance_to_ground.max(1e-6_f64);
 
-            // Add test lead/contact resistance
-            r_eq += 0.2;
+            // Lead/contact resistance
+            r_eq += 0.2_f64;
 
-            // Compliance limit (~2V for many DMMs)
-            if test_current * r_eq > 2.0 {
-                r_eq = 1.0e9;
+            // compliance limit (approx 2V)
+            if test_current * r_eq > 2.0_f64 {
+                1.0e9_f64
+            } else {
+                r_eq
             }
-
-            r_eq
         };
 
-        // Noise & jitter (ohms)
-        let noise =
-            (state.electrical.transient_noise * 5.0) +
-            (state.stress.measurement * 1.5) +
-            fatigue_factor * 0.5;
+        let noise: f64 =
+            (state.electrical.transient_noise * 5.0_f64) +
+            (state.stress.measurement * 1.5_f64) +
+            fatigue_factor * 0.5_f64;
 
-        let jitter = (state.rng_f64() - 0.5) * (resistance * 0.02).min(5.0);
+        let jitter: f64 = (state.rng_f64() - 0.5_f64) * (resistance * 0.02_f64).min(5.0_f64);
 
         resistance += noise + jitter;
 
         if resistance.is_nan() {
-            resistance = 1.0e9;
+            resistance = 1.0e9_f64;
         }
+        resistance = resistance.clamp(0.0_f64, 1.0e9_f64);
 
-        resistance = resistance.clamp(0.0, 1.0e9);
+        state.measurements.history.push(MeasurementEvent {
+            time: state.time,
+            target: format!("R({:?})", rail),
+            observed_value: resistance,
+            noise,
+            injected_energy: test_current,
+            stress_added: test_current * 0.5_f64,
+        });
 
-        // Log event
-        state.measurements.history.push(
-            crate::state::phone_state::MeasurementEvent {
-                time: state.time,
-                target: format!("R({:?})", rail),
-                observed_value: resistance,
-                noise,
-                injected_energy: test_current,
-                stress_added: test_current * 0.5,
-            }
-        );
-
-        state.stress.measurement += test_current * 0.5;
+        state.stress.measurement += test_current * 0.5_f64;
 
         resistance
     }
@@ -410,6 +350,8 @@ impl MeasurementEngine {
     /// =======================
     /// CONTINUITY MEASUREMENT
     /// =======================
+    /// Return value: "ohms display".
+    /// - Jika > threshold, dianggap OL (1e9) → tidak beep.
     pub fn measure_continuity(state: &mut PhoneState, rail: RailId) -> f64 {
         let rail_state = state
             .electrical
@@ -417,70 +359,62 @@ impl MeasurementEngine {
             .get_mut(&rail)
             .expect("measure_continuity: rail not found");
 
-        // Measurement fatigue
         let key = ("continuity".to_string(), format!("{:?}", rail));
-        let count = state.fatigue.counts.entry(key.clone()).or_insert(0);
+        let count = state.fatigue.counts.entry(key).or_insert(0);
         *count += 1;
-        let fatigue_factor = (*count as f64).min(10.0) * 0.03;
 
-        // Higher test current for continuity beeper
-        let test_current = 0.003 + fatigue_factor * 0.001; // 3mA -> 4mA
-        rail_state.load_current += test_current;
+        let fatigue_factor: f64 = (*count as f64).min(10.0_f64) * 0.03_f64;
 
-        // Treat live circuit as open (no beep)
-        let live_voltage = rail_state.voltage.abs();
-        let mut resistance = if live_voltage > 0.2 {
-            1.0e9
+        // continuity current sedikit lebih tinggi
+        let test_current: f64 = 0.003_f64 + fatigue_factor * 0.001_f64;
+        rail_state.state.current += test_current;
+
+        let live_voltage: f64 = rail_state.state.voltage.abs();
+
+        let mut resistance: f64 = if live_voltage > 0.2_f64 {
+            1.0e9_f64
         } else {
-            let nominal_v = rail_state.target_voltage.max(0.1);
-            let leakage = rail_state.leakage_current.max(1e-6);
-            let mut r_eq = nominal_v / leakage;
+            let mut r_eq: f64 = rail_state.health.resistance_to_ground.max(1e-6_f64);
+            r_eq += 0.2_f64;
 
-            // Add contact resistance
-            r_eq += 0.2;
-
-            // Compliance limit
-            if test_current * r_eq > 2.0 {
-                r_eq = 1.0e9;
+            if test_current * r_eq > 2.0_f64 {
+                1.0e9_f64
+            } else {
+                r_eq
             }
-
-            r_eq
         };
 
-        // Continuity threshold (typical 30-50 ohm)
-        let continuity_threshold = 50.0;
+        let continuity_threshold: f64 = rail_state.expected.continuity_beep_below_ohms.max(1.0_f64);
+
+        // Tidak beep → tampilkan OL
         if resistance > continuity_threshold {
-            resistance = 1.0e9;
+            resistance = 1.0e9_f64;
         }
 
-        let noise =
-            (state.electrical.transient_noise * 3.0) +
-            (state.stress.measurement * 1.0) +
-            fatigue_factor * 0.3;
+        let noise: f64 =
+            (state.electrical.transient_noise * 3.0_f64) +
+            (state.stress.measurement * 1.0_f64) +
+            fatigue_factor * 0.3_f64;
 
-        let jitter = (state.rng_f64() - 0.5) * 0.5;
+        let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.5_f64;
 
         resistance += noise + jitter;
 
         if resistance.is_nan() {
-            resistance = 1.0e9;
+            resistance = 1.0e9_f64;
         }
+        resistance = resistance.clamp(0.0_f64, 1.0e9_f64);
 
-        resistance = resistance.clamp(0.0, 1.0e9);
+        state.measurements.history.push(MeasurementEvent {
+            time: state.time,
+            target: format!("CONT({:?})", rail),
+            observed_value: resistance,
+            noise,
+            injected_energy: test_current,
+            stress_added: test_current * 0.4_f64,
+        });
 
-        // Log event
-        state.measurements.history.push(
-            crate::state::phone_state::MeasurementEvent {
-                time: state.time,
-                target: format!("CONT({:?})", rail),
-                observed_value: resistance,
-                noise,
-                injected_energy: test_current,
-                stress_added: test_current * 0.4,
-            }
-        );
-
-        state.stress.measurement += test_current * 0.4;
+        state.stress.measurement += test_current * 0.4_f64;
 
         resistance
     }
@@ -495,30 +429,31 @@ impl MeasurementEngine {
         let key = ("component_voltage".to_string(), probe.id.to_string());
         let count = state.fatigue.counts.entry(key).or_insert(0);
         *count += 1;
-        let fatigue_factor = (*count as f64).min(10.0) * 0.04;
 
-        let base_probe_load = match probe.kind {
-            ComponentKind::Capacitor => 0.008,
-            ComponentKind::Resistor => 0.004,
-            ComponentKind::Inductor => 0.005,
-            ComponentKind::Trace => 0.002,
-            ComponentKind::TestPoint => 0.001,
+        let fatigue_factor: f64 = (*count as f64).min(10.0_f64) * 0.04_f64;
+
+        let base_probe_load: f64 = match probe.kind {
+            ComponentKind::Capacitor => 0.008_f64,
+            ComponentKind::Resistor => 0.004_f64,
+            ComponentKind::Inductor => 0.005_f64,
+            ComponentKind::Trace => 0.002_f64,
+            ComponentKind::TestPoint => 0.001_f64,
         };
 
-        let probe_load = base_probe_load + fatigue_factor * 0.01;
-        rail_state.load_current += probe_load;
+        let probe_load: f64 = base_probe_load + fatigue_factor * 0.01_f64;
+        rail_state.state.current += probe_load;
 
-        let local_drop = probe_load * (rail_state.esr + probe.parasitic_ohm);
-        rail_state.voltage -= local_drop;
+        let local_drop: f64 = probe_load * (rail_state.health.esr + probe.parasitic_ohm);
+        rail_state.state.voltage -= local_drop;
 
-        let noise =
+        let noise: f64 =
             rail_state.noise +
-            state.electrical.transient_noise * 0.8 +
-            fatigue_factor * 0.03;
+            state.electrical.transient_noise * 0.8_f64 +
+            fatigue_factor * 0.03_f64;
 
-        let mut observed = rail_state.voltage + noise;
+        let mut observed: f64 = rail_state.state.voltage + noise;
         if observed.is_nan() {
-            observed = 0.0;
+            observed = 0.0_f64;
         }
 
         state.measurements.history.push(MeasurementEvent {
@@ -532,8 +467,8 @@ impl MeasurementEngine {
 
         state.last_voltage.insert(probe.rail, observed);
         state.stress.measurement += probe_load;
-        apply_meta_effects(state);
 
+        apply_meta_effects(state);
         observed
     }
 
@@ -547,42 +482,46 @@ impl MeasurementEngine {
         let key = ("component_resistance".to_string(), probe.id.to_string());
         let count = state.fatigue.counts.entry(key).or_insert(0);
         *count += 1;
-        let fatigue_factor = (*count as f64).min(10.0) * 0.03;
 
-        let test_current = 0.001 + fatigue_factor * 0.0004;
-        rail_state.load_current += test_current;
+        let fatigue_factor: f64 = (*count as f64).min(10.0_f64) * 0.03_f64;
 
-        let live_voltage = rail_state.voltage.abs();
-        let mut resistance = if live_voltage > 0.2 {
-            1.0e9
+        let test_current: f64 = 0.001_f64 + fatigue_factor * 0.0004_f64;
+        rail_state.state.current += test_current;
+
+        let live_voltage: f64 = rail_state.state.voltage.abs();
+        let mut resistance: f64 = if live_voltage > 0.2_f64 {
+            1.0e9_f64
         } else {
-            // Hitung resistansi ekuivalen rail (V / Leakage) untuk simulasi kapasitor
-            let nominal_v = rail_state.target_voltage.max(0.1);
-            let leakage = rail_state.leakage_current.max(1e-6);
-            let rail_resistance = nominal_v / leakage;
+            // NODE/RAIL based: pakai R2G rail + parasitik kecil
+            let mut r_eq: f64 = rail_state.health.resistance_to_ground.max(1e-6_f64);
 
-            match probe.kind {
-                // REVISI: Kapasitor membaca resistansi rail, bukan 3 ohm (kecuali short)
-                ComponentKind::Capacitor => rail_resistance + probe.parasitic_ohm,
-                ComponentKind::Resistor => probe.parasitic_ohm + (rail_state.esr * 2.0),
-                ComponentKind::Inductor => probe.parasitic_ohm + rail_state.esr,
-                ComponentKind::Trace => probe.parasitic_ohm + 0.05 + rail_state.esr,
-                ComponentKind::TestPoint => 0.2 + rail_state.esr + probe.parasitic_ohm,
+            // parasitik sesuai titik probe (trace/coil/pad)
+            r_eq += probe.parasitic_ohm;
+
+            // contact/lead
+            r_eq += 0.2_f64;
+
+            // compliance
+            if test_current * r_eq > 2.0_f64 {
+                1.0e9_f64
+            } else {
+                r_eq
             }
         };
 
-        let noise =
-            state.electrical.transient_noise * 2.0 +
-            state.stress.measurement * 0.8 +
-            fatigue_factor * 0.2;
+        let noise: f64 =
+            state.electrical.transient_noise * 2.0_f64 +
+            state.stress.measurement * 0.8_f64 +
+            fatigue_factor * 0.2_f64;
 
-        let jitter = (state.rng_f64() - 0.5) * 0.4;
+        let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.4_f64;
+
         resistance += noise + jitter;
 
         if resistance.is_nan() {
-            resistance = 1.0e9;
+            resistance = 1.0e9_f64;
         }
-        resistance = resistance.clamp(0.0, 1.0e9);
+        resistance = resistance.clamp(0.0_f64, 1.0e9_f64);
 
         state.measurements.history.push(MeasurementEvent {
             time: state.time,
@@ -590,12 +529,12 @@ impl MeasurementEngine {
             observed_value: resistance,
             noise,
             injected_energy: test_current,
-            stress_added: test_current * 0.4,
+            stress_added: test_current * 0.4_f64,
         });
 
-        state.stress.measurement += test_current * 0.4;
-        apply_meta_effects(state);
+        state.stress.measurement += test_current * 0.4_f64;
 
+        apply_meta_effects(state);
         resistance
     }
 
@@ -606,28 +545,35 @@ impl MeasurementEngine {
             .get_mut(&probe.rail)
             .expect("measure_component_diode: rail not found");
 
-        let test_current = 0.002;
-        rail_state.load_current += test_current;
+        let test_current: f64 = 0.002_f64;
+        rail_state.state.current += test_current;
 
-        let mut forward_voltage = match probe.kind {
-            ComponentKind::Capacitor => 1.8 + probe.diode_offset,
-            ComponentKind::Resistor => 0.03 + probe.diode_offset,
-            ComponentKind::Inductor => 0.005 + probe.diode_offset, // Hampir short
-            ComponentKind::Trace => 0.02 + probe.diode_offset,
-            ComponentKind::TestPoint => 0.25 + (rail_state.esr * 0.3) + probe.diode_offset,
-        };
+        // NODE-based baseline: gunakan rail expected nominal, lalu offset parasitik probe
+        let mut forward_voltage: f64 = rail_state.diode_drop_nominal() + probe.diode_offset;
 
-        if state.stress.electrical > 0.7 {
-            forward_voltage *= 1.03;
+        // jenis komponen hanya mempengaruhi sedikit (parasitik), bukan nilai utama
+        match probe.kind {
+            ComponentKind::Inductor => forward_voltage -= 0.02_f64,
+            ComponentKind::Trace => forward_voltage -= 0.01_f64,
+            _ => {}
         }
 
-        let noise =
-            state.electrical.transient_noise * 0.08 +
-            state.stress.measurement * 0.015;
-        let jitter = (state.rng_f64() - 0.5) * 0.01;
+        if state.stress.electrical > 0.7_f64 {
+            forward_voltage *= 1.03_f64;
+        }
+
+        let noise: f64 =
+            state.electrical.transient_noise * 0.08_f64 +
+            state.stress.measurement * 0.015_f64;
+
+        let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.01_f64;
 
         forward_voltage += noise + jitter;
-        forward_voltage = forward_voltage.clamp(0.0, 3.0);
+
+        if forward_voltage.is_nan() {
+            forward_voltage = 3.0_f64;
+        }
+        forward_voltage = forward_voltage.clamp(0.0_f64, 3.0_f64);
 
         state.measurements.history.push(MeasurementEvent {
             time: state.time,
@@ -635,12 +581,12 @@ impl MeasurementEngine {
             observed_value: forward_voltage,
             noise,
             injected_energy: test_current,
-            stress_added: 0.001,
+            stress_added: 0.001_f64,
         });
 
-        state.stress.measurement += 0.001;
-        apply_meta_effects(state);
+        state.stress.measurement += 0.001_f64;
 
+        apply_meta_effects(state);
         forward_voltage
     }
 
@@ -651,30 +597,43 @@ impl MeasurementEngine {
             .get_mut(&probe.rail)
             .expect("measure_component_continuity: rail not found");
 
-        let test_current = 0.003;
-        rail_state.load_current += test_current;
+        let test_current: f64 = 0.003_f64;
+        rail_state.state.current += test_current;
 
-        let live_voltage = rail_state.voltage.abs();
-        let mut resistance = if live_voltage > 0.2 {
-            1.0e9
+        let live_voltage: f64 = rail_state.state.voltage.abs();
+
+        let mut resistance: f64 = if live_voltage > 0.2_f64 {
+            1.0e9_f64
         } else {
-            match probe.kind {
-                ComponentKind::Capacitor => 1.0e9,
-                ComponentKind::Resistor => probe.parasitic_ohm + 2.0,
-                ComponentKind::Inductor => probe.parasitic_ohm + 0.1,
-                ComponentKind::Trace => probe.parasitic_ohm + 0.2,
-                ComponentKind::TestPoint => 0.8 + probe.parasitic_ohm,
+            // continuity pada node rail: pakai R2G + parasitik probe kecil
+            let mut r_eq: f64 = rail_state.health.resistance_to_ground.max(1e-6_f64);
+            r_eq += probe.parasitic_ohm;
+            r_eq += 0.2_f64;
+
+            if test_current * r_eq > 2.0_f64 {
+                1.0e9_f64
+            } else {
+                r_eq
             }
         };
 
-        if resistance > 50.0 {
-            resistance = 1.0e9;
+        let threshold: f64 = rail_state.expected.continuity_beep_below_ohms.max(1.0_f64);
+        if resistance > threshold {
+            resistance = 1.0e9_f64;
         }
 
-        let noise = state.electrical.transient_noise * 1.5 + state.stress.measurement * 0.5;
-        let jitter = (state.rng_f64() - 0.5) * 0.3;
+        let noise: f64 =
+            state.electrical.transient_noise * 1.5_f64 +
+            state.stress.measurement * 0.5_f64;
+
+        let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.3_f64;
+
         resistance += noise + jitter;
-        resistance = resistance.clamp(0.0, 1.0e9);
+
+        if resistance.is_nan() {
+            resistance = 1.0e9_f64;
+        }
+        resistance = resistance.clamp(0.0_f64, 1.0e9_f64);
 
         state.measurements.history.push(MeasurementEvent {
             time: state.time,
@@ -682,12 +641,12 @@ impl MeasurementEngine {
             observed_value: resistance,
             noise,
             injected_energy: test_current,
-            stress_added: test_current * 0.3,
+            stress_added: test_current * 0.3_f64,
         });
 
-        state.stress.measurement += test_current * 0.3;
-        apply_meta_effects(state);
+        state.stress.measurement += test_current * 0.3_f64;
 
+        apply_meta_effects(state);
         resistance
     }
 }

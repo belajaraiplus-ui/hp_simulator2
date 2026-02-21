@@ -18,7 +18,7 @@ pub fn analyze(input: AnalysisInput) -> AnalysisReport {
             m.iter().map(|e| e.noise.abs()).sum::<f64>() / m.len() as f64;
 
         // Noise rendah TIDAK menjamin kualitas tinggi
-        (1.0 / (1.0 + noise_avg * 1.5)).clamp(0.1, 0.8)
+        (1.0 / (1.0 + noise_avg * 1.5)).clamp(0.1_f64, 0.8_f64)
     };
 
     let mut hypotheses = Vec::new();

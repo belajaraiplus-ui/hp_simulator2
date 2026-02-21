@@ -26,7 +26,7 @@ impl MeasurementTool for PSU {
 
         // 3) Inject PSU ripple deterministically on VBAT
         let rail_noise = if let Some(vbat) = s.electrical.rails.get_mut(&RailId::Vbat) {
-            vbat.ripple += self.ripple * (1.0 + 0.2 * rep.min(10.0));
+            vbat.state.ripple += self.ripple * (1.0 + 0.2 * rep.min(10.0));
             vbat.noise
         } else {
             0.0

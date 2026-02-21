@@ -1,5 +1,4 @@
 use crate::state::phone_state::*;
-use crate::state::ids::{RailId, ThermalZoneId};
 
 /// World Profile = kondisi dunia kerja.
 /// BUKAN difficulty. BUKAN mode.

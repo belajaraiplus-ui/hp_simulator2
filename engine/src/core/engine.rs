@@ -2,6 +2,7 @@
 use crate::state::phone_state::PhoneState;
 use crate::state::invariants::assert_invariants;
 
+use crate::fault::apply::apply_faults;
 use crate::physics::electrical::step_electrical;
 use crate::physics::thermal::step_thermal;
 
@@ -21,7 +22,7 @@ impl Engine {
     /// `snapshot` can return null when no explicit measurement command is issued.
     fn sync_snapshot_observables(state: &mut PhoneState) {
         for (rail_id, rail) in state.electrical.rails.iter() {
-            state.last_voltage.insert(*rail_id, rail.voltage);
+            state.last_voltage.insert(*rail_id, rail.state.voltage);
         }
 
         for (zone_id, zone) in state.thermal.zones.iter() {
@@ -64,6 +65,22 @@ impl Engine {
         check_termination(state, session);
         assert_invariants(state);
     }
+}
+
+pub fn sim_tick(state: &mut PhoneState, dt: f64) {
+
+    // 1. Apply fault dulu (ubah health/status)
+    apply_faults(state);
+
+    // 2. Dependency causal layer
+    // TODO: Need to add power_graph field to PhoneState
+    // PowerEvaluator::evaluate(
+    //     &state.power_graph,
+    //     &mut state.electrical.rails,
+    // );
+
+    // 3. Physics layer
+    step_electrical(state, dt);
 }
 
 #[cfg(test)]

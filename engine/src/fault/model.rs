@@ -5,7 +5,7 @@ use crate::state::ids::*;
 /// Fault adalah PERILAKU DINAMIS, bukan status.
 /// =======================
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FaultInstance {
     /// Identitas fault (tetap)
     pub id: FaultId,
@@ -40,7 +40,7 @@ pub enum FaultPhase {
 
 /// Kopling fault ke dunia fisik.
 /// Nilai lebih besar = lebih sensitif terhadap domain tsb.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FaultCoupling {
     pub thermal: f64,
     pub electrical: f64,
