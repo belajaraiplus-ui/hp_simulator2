@@ -1,13 +1,14 @@
-use std::collections::HashMap;
-use crate::state::ids::{RailId, ThermalZoneId, FaultId};
-use crate::state::electrical::{ElectricalState, PowerInput};
-use crate::state::thermal::ThermalState;
-use crate::state::stress::StressState;
-pub use crate::state::measurement_log::{MeasurementLog, MeasurementEvent};
-use crate::state::fatigue::MeasurementFatigue;
-use crate::fault::model::FaultInstance;
-use crate::state::material::MaterialState;
 use crate::core::rng::SimRng;
+use crate::fault::model::FaultInstance;
+use crate::power::graph::DependencyGraph;
+use crate::state::electrical::{ElectricalState, PowerInput};
+use crate::state::fatigue::MeasurementFatigue;
+use crate::state::ids::{FaultId, RailId, ThermalZoneId};
+use crate::state::material::MaterialState;
+pub use crate::state::measurement_log::{MeasurementEvent, MeasurementLog};
+use crate::state::stress::StressState;
+use crate::state::thermal::ThermalState;
+use std::collections::HashMap;
 
 #[derive(Debug, Default)]
 pub struct FaultRegistry {
@@ -27,6 +28,7 @@ pub struct PhoneState {
     pub last_temperature: HashMap<ThermalZoneId, f64>,
     pub material: MaterialState,
     pub rng: SimRng,
+    pub power_graph: DependencyGraph,
 }
 
 impl PhoneState {
@@ -39,6 +41,7 @@ impl PhoneState {
                 rails: HashMap::new(),
                 ground_integrity: 1.0,
                 transient_noise: 0.0,
+                extra_load_a: 0.0,
                 input: PowerInput::new(),
             },
             thermal: ThermalState {
@@ -55,6 +58,7 @@ impl PhoneState {
                 aging_map: HashMap::new(),
             },
             rng: SimRng::new(123_456_789), // deterministic seed
+            power_graph: DependencyGraph::new(),
         }
     }
 

@@ -1,5 +1,5 @@
-use crate::state::phone_state::*;
 use crate::state::ids::ThermalZoneId;
+use crate::state::phone_state::*;
 
 /// Thermal update berbasis:
 /// - heat_generation lokal
@@ -7,24 +7,35 @@ use crate::state::ids::ThermalZoneId;
 /// - coupling antar zona
 /// Stress thermal dicatat, bukan dipakai sebagai sumber panas.
 pub fn step_thermal(s: &mut PhoneState, dt: f64) {
-    const AMBIENT: f64 = 35.0;
+    // ✅ ambient dinamis dari state (world/profile bisa set ini)
+    let ambient = s.thermal.ambient;
 
     // snapshot suhu lama untuk coupling
-    let prev_temps: Vec<(ThermalZoneId, f64)> =
-        s.thermal.zones.iter().map(|(id, z)| (*id, z.temperature)).collect();
+    let prev_temps: Vec<(ThermalZoneId, f64)> = s
+        .thermal
+        .zones
+        .iter()
+        .map(|(id, z)| (*id, z.temperature))
+        .collect();
 
     for (_id, z) in s.thermal.zones.iter_mut() {
-
         // =======================
         // NUMERICAL SAFETY
         // =======================
-        let mass = if z.thermal_mass < 1.0 { 50.0 } else { z.thermal_mass };
+        let mass = if z.thermal_mass < 1.0 {
+            50.0
+        } else {
+            z.thermal_mass
+        };
 
         // =======================
         // LOCAL HEAT GENERATION
         // =======================
         // heat_generation sudah diisi dari domain electrical / fault
         let local_heat = z.heat_generation;
+
+        // ✅ reset setiap step (penting!)
+        z.heat_generation = 0.0;
 
         // =======================
         // COUPLING ANTAR ZONE
@@ -39,13 +50,19 @@ pub fn step_thermal(s: &mut PhoneState, dt: f64) {
         // =======================
         // DISSIPATION KE AMBIENT
         // =======================
-        let heat_out = 0.003 * (z.temperature - AMBIENT);
+        let heat_out = 0.003 * (z.temperature - ambient);
 
         // =======================
         // TEMPERATURE UPDATE
         // =======================
         let d_t = (local_heat + coupled_heat - heat_out) * dt / mass;
         z.temperature += d_t;
+
+        // ✅ optional clamp biar stabil
+        if z.temperature.is_nan() {
+            z.temperature = ambient;
+        }
+        z.temperature = z.temperature.clamp(-50.0, 200.0);
 
         // =======================
         // THERMAL STRESS ACCUMULATION

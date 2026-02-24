@@ -1,5 +1,5 @@
-use serde_json::{json, Value};
 use crate::state::phone_state::PhoneState;
+use serde_json::{json, Value};
 
 pub trait MeasurementTool {
     fn perform(&self, s: &mut PhoneState, dt: f64) -> f64;
@@ -8,7 +8,6 @@ pub trait MeasurementTool {
 pub struct MeasurementDispatcher;
 
 impl MeasurementDispatcher {
-
     pub fn dispatch(tool: &str, _phone: &mut PhoneState) -> Value {
         match tool {
             "multimeter" => Self::multimeter(),

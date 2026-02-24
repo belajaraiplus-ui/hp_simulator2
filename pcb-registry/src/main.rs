@@ -50,6 +50,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/boards/:id/board", get(routes::get_board))
         .route("/api/boards/:id/components", get(routes::get_components))
         .route("/api/boards/:id/rails", get(routes::get_rails))
+        .route("/api/boards/:id/topology", get(routes::get_topology))
+        .route("/api/boards/:id/thermal", get(routes::get_thermal))
         .route("/api/boards/:id/tiles/:level/:tile", get(routes::get_tile))
         .with_state(state)
         .layer(CorsLayer::permissive())

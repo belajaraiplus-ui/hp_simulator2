@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "hp_250_g7",
+  "name": "HP 250 G7 Motherboard",
+  "image": {
+    "full_width_px": 22000,
+    "full_height_px": 14000
+  },
+  "tiles": {
+    "type": "dzi-like",
+    "tile_size": 256,
+    "overlap": 0,
+    "format": "jpg",
+    "max_level": 16,
+    "url_template": "/api/boards/hp_250_g7/tiles/{level}/{x}_{y}.jpg"
+  },
+  "units": {
+    "mm_per_px": 0.005,
+    "origin": "top_left"
+  },
+  "transform": {
+    "type": "affine",
+    "a": 0.005,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 0.005,
+    "tx": 0.0,
+    "ty": 0.0
+  },
+  "components_url": "/api/boards/hp_250_g7/components",
+  "rails_url": "/api/boards/hp_250_g7/rails",
+  "topology_url": "/api/boards/hp_250_g7/topology",
+  "thermal_url": "/api/boards/hp_250_g7/thermal"
+}

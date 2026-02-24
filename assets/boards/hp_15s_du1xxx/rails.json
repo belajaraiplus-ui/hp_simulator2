@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "defaults": {
+    "continuity": {
+      "beep_below_ohms": 50.0,
+      "open_above_ohms": 200.0
+    }
+  },
+  "rails": [
+    {
+      "id": "VBUS",
+      "label": "VBUS (USB Power)",
+      "type": "input",
+      "expected": {
+        "voltage_v": { "min": 4.75, "max": 5.25 },
+        "diode_drop_v": { "min": 0.45, "max": 0.80 },
+        "r2g_ohms": { "nominal": 450.0 },
+        "continuity": { "beep_below_ohms": 30.0, "open_above_ohms": 150.0 }
+      },
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[30,50],[80,50],[80,100],[30,100]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VBUS", "x": 55, "y": 75, "label": "VBUS" }
+      ]
+    },
+    {
+      "id": "VBAT_SUM",
+      "label": "VBAT_SUM (Battery)",
+      "type": "power",
+      "expected": {
+        "voltage_v": { "min": 3.0, "max": 4.4 },
+        "diode_drop_v": { "min": 0.35, "max": 0.65 },
+        "r2g_ohms": { "nominal": 100.0 },
+        "continuity": { "beep_below_ohms": 50.0, "open_above_ohms": 200.0 }
+      },
+      "depends_on": ["VBUS"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[120,180],[170,180],[170,240],[120,240]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VBAT_SUM", "x": 145, "y": 210, "label": "VBAT_SUM" }
+      ]
+    },
+    {
+      "id": "VCPU",
+      "label": "VCPU",
+      "type": "core",
+      "expected": {
+        "voltage_v": { "min": 0.70, "max": 1.20 },
+        "diode_drop_v": { "min": 0.25, "max": 0.55 },
+        "r2g_ohms": { "nominal": 15.0 },
+        "continuity": { "beep_below_ohms": 10.0, "open_above_ohms": 60.0 }
+      },
+      "depends_on": ["VBAT_SUM"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[200,80],[260,80],[260,140],[200,140]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VCPU", "x": 230, "y": 110, "label": "VCPU" }
+      ]
+    }
+  ]
+}

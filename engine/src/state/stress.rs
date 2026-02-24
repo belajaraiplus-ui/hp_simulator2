@@ -7,6 +7,10 @@ pub struct StressState {
 
 impl StressState {
     pub fn new() -> Self {
-        Self { electrical: 0.0, thermal: 0.0, measurement: 0.0 }
+        Self {
+            electrical: 0.0,
+            thermal: 0.0,
+            measurement: 0.0,
+        }
     }
 }

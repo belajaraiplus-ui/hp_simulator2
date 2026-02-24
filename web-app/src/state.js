@@ -2,13 +2,17 @@ import { MAX_POINTS } from "./config.js";
 import { trim, lastValue } from "./utils.js";
 
 export const State = (() => {
-  let data = { lastSnapshot: null };
+  let data = { lastSnapshot: null, scenario: null };
   const listeners = new Set();
   return {
     get: () => data,
     setSnapshot: (snap) => {
       data.lastSnapshot = snap;
       listeners.forEach(fn => { try { fn(snap); } catch (e) { console.error(e); } });
+    },
+    setScenario: (scenario) => {
+      data.scenario = scenario;
+      listeners.forEach(fn => { try { fn(null); } catch (e) { console.error(e); } });
     },
     subscribe: (fn) => { listeners.add(fn); return () => listeners.delete(fn); }
   };
@@ -65,4 +69,12 @@ export function resmoothAll() {
     thermalSmoothed[name] = out;
     trim(thermalSmoothed[name], MAX_POINTS);
   });
+}
+
+export function resetBoardState() {
+  Object.keys(voltageHistory).forEach(k => { voltageHistory[k] = []; voltageSmoothed[k] = []; });
+  Object.keys(thermalHistory).forEach(k => { thermalHistory[k] = []; thermalSmoothed[k] = []; });
+  distressHistory.length = 0;
+  diagnosticHistory.length = 0;
+  Object.keys(railVisibility).forEach(k => railVisibility[k] = true);
 }

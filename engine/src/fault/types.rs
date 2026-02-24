@@ -12,8 +12,8 @@ pub struct FaultTemplate {
 
 #[derive(Clone)]
 pub struct FaultInstance {
-    pub intensity: f64,          // kontinu
-    pub active: bool,            // aktif ≠ terlihat
+    pub intensity: f64, // kontinu
+    pub active: bool,   // aktif ≠ terlihat
 }
 
 #[derive(Clone)]
@@ -27,4 +27,3 @@ pub struct AnalysisReport {
     pub hypotheses: Vec<Hypothesis>,
     pub data_quality: f64, // seberapa konsisten data (bisa menipu)
 }
-

@@ -9,134 +9,230 @@
 
 <body>
   <header class="topbar">
-    <h1>HP Repair Simulator</h1>
-    <div id="boardProfileLabel" class="badge">
-      No Board Loaded
+    <div class="topbar-left">
+      <h1>HP Repair Simulator</h1>
+      <span class="version-badge">v2.0</span>
+    </div>
+    <div class="topbar-right">
+      <div id="boardSelector" class="board-selector"></div>
+      <div id="boardProfileLabel" class="board-badge">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="4" y="4" width="16" height="16" rx="2"/>
+          <path d="M9 9h6M9 12h6M9 15h4"/>
+        </svg>
+        <span>No Board Loaded</span>
+      </div>
     </div>
   </header>
 
   <div class="layout">
     <section class="main">
-      <div id="motherboardMap" class="motherboardMap"></div>
-
-      <div class="panel">
-        <strong>Live Telemetry</strong>
-
-        <div class="telemetryGrid">
-          <div>
-            <small>Voltage History</small>
-            <canvas id="voltageCanvas" class="telemetryCanvas"></canvas>
-          </div>
-          <div>
-            <small>Thermal History</small>
-            <canvas id="thermalCanvas" class="telemetryCanvas"></canvas>
+      <div class="card">
+        <div class="card-header">
+          <h2>Motherboard View</h2>
+          <div class="card-actions">
+            <span id="simTime" class="time-badge">Frame: 0</span>
           </div>
         </div>
+        <div id="motherboardMap" class="motherboardMap"></div>
+      </div>
 
-        <div class="distressBlock">
-          <small>System Distress Level</small>
-          <div class="distressBar">
-            <canvas id="distressCanvas" class="distressCanvas"></canvas>
-            <div id="distressFill" class="distressFill"></div>
+      <div class="telemetry-section">
+        <div class="card">
+          <div class="card-header">
+            <h2>Voltage History</h2>
           </div>
+          <canvas id="voltageCanvas" class="telemetryCanvas"></canvas>
+        </div>
+        <div class="card">
+          <div class="card-header">
+            <h2>Thermal History</h2>
+          </div>
+          <canvas id="thermalCanvas" class="telemetryCanvas"></canvas>
+        </div>
+      </div>
+
+      <div class="card distress-card">
+        <div class="card-header">
+          <h2>System Distress Level</h2>
+          <span id="distressPercent" class="distress-percent">0%</span>
+        </div>
+        <div class="distressBar">
+          <canvas id="distressCanvas" class="distressCanvas"></canvas>
+          <div id="distressFill" class="distressFill"></div>
+        </div>
+        <div class="distress-legend">
+          <span class="legend-item"><span class="legend-dot healthy"></span>Healthy</span>
+          <span class="legend-item"><span class="legend-dot warning"></span>Warning</span>
+          <span class="legend-item"><span class="legend-dot critical"></span>Critical</span>
         </div>
       </div>
     </section>
 
     <aside class="sidebar">
-      <div class="panel">
-        <strong>Simulation Control</strong>
-
-        <div class="btnRow">
-          <button id="stepBtn">STEP</button>
-          <button id="run" class="btnRun">RUN</button>
-          <button id="pause">PAUSE</button>
-          <button id="btn-reset" class="btnReset">RESET</button>
+      <div class="card">
+        <div class="card-header">
+          <h2>Simulation Control</h2>
         </div>
-
-        <div class="rowBetween">
-          <select id="speed" class="selectDark">
-            <option value="1" selected>Speed: 1x</option>
-            <option value="2">Speed: 2x</option>
-            <option value="5">Speed: 5x</option>
+        <div class="control-grid">
+          <button id="stepBtn" class="btn btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 4v16l10-8z"/></svg>
+            STEP
+          </button>
+          <button id="run" class="btn btn-success">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            RUN
+          </button>
+          <button id="pause" class="btn btn-warning">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+            PAUSE
+          </button>
+          <button id="btn-reset" class="btn btn-danger">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            RESET
+          </button>
+        </div>
+        <div class="control-row">
+          <select id="speed" class="select-dark">
+            <option value="1" selected>1x Speed</option>
+            <option value="2">2x Speed</option>
+            <option value="5">5x Speed</option>
           </select>
-          <span id="status" class="statusStopped">STOPPED</span>
+          <span id="status" class="status-badge status-stopped">STOPPED</span>
+        </div>
+        <div class="timeline-section">
+          <label>Timeline</label>
+          <input type="range" id="timelineScrubber" min="0" max="100" value="0" class="slider">
         </div>
       </div>
 
-      <div class="panel">
-        <strong>DC Power Supply</strong>
-
-        <div class="grid2">
-          <label>V:
-            <input type="number" id="psuVoltage" value="4.2" step="0.1" class="inputDark smallInput">
-          </label>
-          <label>Limit:
-            <input type="number" id="psuCurrentLimit" value="2.0" step="0.1" class="inputDark smallInput">
-          </label>
+      <div class="card">
+        <div class="card-header">
+          <h2>Scenario</h2>
         </div>
-
-        <div class="rowBetween">
-          <label><input type="checkbox" id="psuEnable" checked> Enable</label>
-          <button id="psuApply" class="btnPrimary">Set</button>
-        </div>
-
-        <div id="psuStatus" class="mono accent">PSU: OFF</div>
-        <div id="psuMeasuredCurrent" class="mono">Current: 0.000 A</div>
+        <select id="scenarioSelect" class="select-dark full-width">
+          <option value="default">Default - Free Play</option>
+        </select>
+        <div id="scenarioInfo" class="scenario-info"></div>
       </div>
 
-      <div class="panel">
-        <strong>Multimeter</strong>
+      <div class="card">
+        <div class="card-header">
+          <h2>DC Power Supply</h2>
+        </div>
+        <div class="psu-grid">
+          <div class="input-group">
+            <label>Voltage (V)</label>
+            <input type="number" id="psuVoltage" value="4.2" step="0.1" class="input-dark">
+          </div>
+          <div class="input-group">
+            <label>Current Limit (A)</label>
+            <input type="number" id="psuCurrentLimit" value="2.0" step="0.1" class="input-dark">
+          </div>
+        </div>
+        <div class="psu-controls">
+          <label class="checkbox-label">
+            <input type="checkbox" id="psuEnable" checked>
+            <span>Enable PSU</span>
+          </label>
+          <button id="psuApply" class="btn btn-primary">Apply</button>
+        </div>
+        <div class="psu-status">
+          <div id="psuStatus" class="status-text">PSU: OFF</div>
+          <div id="psuMeasuredCurrent" class="current-text">Current: 0.000 A</div>
+        </div>
+      </div>
 
-        <select id="multimeterMode" class="selectDark fullWidth">
+      <div class="card">
+        <div class="card-header">
+          <h2>Multimeter</h2>
+        </div>
+        <select id="multimeterMode" class="select-dark full-width">
           <option value="voltage">DC Voltage (V)</option>
           <option value="diode">Diode Mode</option>
           <option value="resistance">Resistance (Ω)</option>
+          <option value="continuity">Continuity (∿)</option>
         </select>
-
-        <div class="mmRow">
-          <select id="multimeterTargetType" class="selectDark">
+        <div class="mm-row">
+          <select id="multimeterTargetType" class="select-dark">
             <option value="rail">Rail</option>
             <option value="component">Component</option>
           </select>
-          <select id="multimeterComponent" class="selectDark flex1" disabled>
+          <select id="multimeterComponent" class="select-dark flex-1" disabled>
             <option>Select Component</option>
           </select>
-          <input type="text" id="multimeterRail" placeholder="Rail" value="vbat" class="inputDark railInput">
         </div>
-
-        <button id="manualMeasure" class="btnPrimary fullWidth">MEASURE</button>
-
-        <div class="meterReadout">
-          <span class="meterLabel">READING</span>
-          <strong id="multimeterResult" class="meterValue">0.00</strong>
+        <input type="text" id="multimeterRail" placeholder="Rail" value="vbat" class="input-dark full-width">
+        <button id="manualMeasure" class="btn btn-primary btn-lg full-width">MEASURE</button>
+        <div class="meter-readout">
+          <span class="meter-label">READING</span>
+          <strong id="multimeterResult" class="meter-value">0.00 V</strong>
         </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Measurement History</h2>
+          <button id="clearHistory" class="btn-icon" title="Clear history">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+          </button>
+        </div>
+        <div id="measurementHistory" class="measurement-history">
+          <div class="meas-empty">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 2v20M2 12h20M4.93 4.93l14.14 14.14M19.07 4.93L4.93 19.07"/>
+            </svg>
+            <span>No measurements yet</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-header">
+          <h2>Session</h2>
+        </div>
+        <div class="btn-group">
+          <button id="saveSession" class="btn btn-secondary">Save</button>
+          <button id="loadSession" class="btn btn-secondary">Load</button>
+          <button id="clearSave" class="btn btn-ghost">Clear</button>
+        </div>
+        <button id="showOutcome" class="btn btn-outline full-width">Show Outcome</button>
       </div>
     </aside>
   </div>
 
-  <footer class="footerGrid">
-    <div class="panel">
-      <h3>Diagnostic Intelligence</h3>
-      <div id="diagnosticText" class="accent"></div>
-      <div id="diagnosticConfidence" class="muted small"></div>
-      <ul id="hypothesisList" class="hypothesis"></ul>
-      <button id="exportReport" class="btnGhost">Export Report</button>
+  <footer class="footer">
+    <div class="card diagnostic-card">
+      <div class="card-header">
+        <h2>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <path d="M12 16v-4M12 8h.01"/>
+          </svg>
+          Diagnostic Intelligence
+        </h2>
+      </div>
+      <div class="diagnostic-content">
+        <div id="diagnosticText" class="diagnostic-message"></div>
+        <div id="diagnosticConfidence" class="diagnostic-confidence"></div>
+        <ul id="hypothesisList" class="hypothesis-list"></ul>
+      </div>
+      <button id="exportReport" class="btn btn-ghost">Export Report</button>
     </div>
 
-    <div class="panel">
-      <small>Engine Real-time Snapshot</small>
-      <pre id="output" class="preBox">System Ready…</pre>
+    <div class="card debug-card">
+      <div class="card-header">
+        <h2>Engine Snapshot</h2>
+      </div>
+      <pre id="output" class="pre-box">System Ready…</pre>
     </div>
   </footer>
 
   <div style="display:none;">
     <input type="range" id="smoothingSlider" min="0" max="1" step="0.01">
     <span id="smoothingValue"></span>
-    <input type="range" id="timelineScrubber" min="0" max="100">
     <select id="scenarioSelect"><option value="Default">Default</option></select>
     <div id="scenarioName"></div>
-    <div id="simTime"></div>
     <div id="railTogglePanel"></div>
   </div>
 

@@ -6,5 +6,9 @@ pub struct MeasurementFatigue {
 }
 
 impl MeasurementFatigue {
-    pub fn new() -> Self { Self { counts: HashMap::new() } }
+    pub fn new() -> Self {
+        Self {
+            counts: HashMap::new(),
+        }
+    }
 }

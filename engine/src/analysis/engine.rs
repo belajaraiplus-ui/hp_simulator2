@@ -1,5 +1,5 @@
-use crate::analysis::types::*;
 use crate::analysis::input::AnalysisInput;
+use crate::analysis::types::*;
 
 /// Analysis Engine:
 /// - Tidak tahu ground truth
@@ -14,8 +14,7 @@ pub fn analyze(input: AnalysisInput) -> AnalysisReport {
     let data_quality = if m.len() < 3 {
         0.15
     } else {
-        let noise_avg: f64 =
-            m.iter().map(|e| e.noise.abs()).sum::<f64>() / m.len() as f64;
+        let noise_avg: f64 = m.iter().map(|e| e.noise.abs()).sum::<f64>() / m.len() as f64;
 
         // Noise rendah TIDAK menjamin kualitas tinggi
         (1.0 / (1.0 + noise_avg * 1.5)).clamp(0.1_f64, 0.8_f64)
@@ -30,7 +29,8 @@ pub fn analyze(input: AnalysisInput) -> AnalysisReport {
         // Tegangan rendah → indikasi umum, BUKAN diagnosis
         if last.observed_value < 0.8 {
             hypotheses.push(Hypothesis {
-                description: "Teramati nilai pengukuran lebih rendah dari ekspektasi umum".to_string(),
+                description: "Teramati nilai pengukuran lebih rendah dari ekspektasi umum"
+                    .to_string(),
                 confidence: (0.25 + data_quality * 0.4).min(0.85),
             });
         }
@@ -38,7 +38,8 @@ pub fn analyze(input: AnalysisInput) -> AnalysisReport {
         // Noise tinggi → ketidakstabilan observasi, bukan sistem
         if last.noise > 0.05 {
             hypotheses.push(Hypothesis {
-                description: "Observasi menunjukkan fluktuasi yang sulit diinterpretasikan".to_string(),
+                description: "Observasi menunjukkan fluktuasi yang sulit diinterpretasikan"
+                    .to_string(),
                 confidence: (0.3 + data_quality * 0.3).min(0.8),
             });
         }

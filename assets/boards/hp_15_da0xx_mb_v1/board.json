@@ -33,5 +33,6 @@
   },
 
   "components_url": "/api/boards/hp_15_da0xx_mb_v1/components",
-  "rails_url": "/api/boards/hp_15_da0xx_mb_v1/rails"
+  "rails_url": "/api/boards/hp_15_da0xx_mb_v1/rails",
+  "topology_url": "/api/boards/hp_15_da0xx_mb_v1/topology"
 }

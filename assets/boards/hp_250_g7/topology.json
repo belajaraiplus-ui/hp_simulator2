@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "nodes": [
+    "VCCIN",
+    "VCCSA",
+    "VCC_CPU"
+  ],
+  "edges": [
+    {
+      "from": "VCCIN",
+      "to": "VCCSA",
+      "kind": "switch"
+    },
+    {
+      "from": "VCCIN",
+      "to": "VCC_CPU",
+      "kind": "switch"
+    }
+  ]
+}

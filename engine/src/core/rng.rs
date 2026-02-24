@@ -46,7 +46,7 @@ impl SimRng {
     pub fn f64(&mut self) -> f64 {
         // use top 53 bits
         let v = self.u64() >> 11; // 53 bits
-        (v as f64) / ( (1u64 << 53) as f64 )
+        (v as f64) / ((1u64 << 53) as f64)
     }
 
     /// Convenience: draw boolean with probability p (0.0..1.0)

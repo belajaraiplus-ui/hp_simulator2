@@ -1,46 +1,57 @@
-use serde_json::{json, Value};
-use crate::state::phone_state::PhoneState;
 use crate::measurement::board_profile;
+use crate::state::phone_state::PhoneState;
+use serde_json::{json, Value};
 
 /// Build a snapshot JSON value from the internal PhoneState.
 /// Snapshot visual: gunakan last-seen measurements (proxy), bukan ground truth.
 pub fn build_snapshot(state: &PhoneState) -> Value {
-
     // =======================
     // POWER RAILS (last observed only)
     // =======================
 
-    let rails = state.electrical.rails.iter().map(|(id, _)| {
-        let val = state
-            .last_voltage
-            .get(id)
-            .cloned()
-            .map(|v| json!(v))
-            .unwrap_or(Value::Null);
+    let rails = state
+        .electrical
+        .rails
+        .iter()
+        .map(|(id, _)| {
+            let val = state
+                .last_voltage
+                .get(id)
+                .cloned()
+                .or_else(|| state.electrical.rails.get(id).map(|r| r.state.voltage))
+                .map(|v| json!(v))
+                .unwrap_or(Value::Null);
 
-        json!({
-            "name": format!("{:?}", id),
-            "voltage": val
+            json!({
+                "name": format!("{:?}", id),
+                "voltage": val
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     // =======================
     // THERMALS (last observed only)
     // =======================
 
-    let thermals = state.thermal.zones.iter().map(|(id, _)| {
-        let val = state
-            .last_temperature
-            .get(id)
-            .cloned()
-            .map(|v| json!(v))
-            .unwrap_or(Value::Null);
+    let thermals = state
+        .thermal
+        .zones
+        .iter()
+        .map(|(id, _)| {
+            let val = state
+                .last_temperature
+                .get(id)
+                .cloned()
+                .or_else(|| state.thermal.zones.get(id).map(|z| z.temperature))
+                .map(|v| json!(v))
+                .unwrap_or(Value::Null);
 
-        json!({
-            "zone": format!("{:?}", id),
-            "temperature": val
+            json!({
+                "zone": format!("{:?}", id),
+                "temperature": val
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     // =======================
     // MEASUREMENT HISTORY (observable effects only)
@@ -87,7 +98,8 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
                 .rev()
                 .take(n)
                 .map(|m| m.noise.abs())
-                .sum::<f64>() / (n as f64)
+                .sum::<f64>()
+                / (n as f64)
         }
     };
 
@@ -106,12 +118,11 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
         0.0
     };
 
-    let mut distress =
-        state.stress.electrical * 0.5 +
-        state.stress.thermal * 0.3 +
-        state.electrical.transient_noise * 0.2 +
-        noise_avg * 0.4 +
-        observability_penalty * 0.6;
+    let mut distress = state.stress.electrical * 0.5
+        + state.stress.thermal * 0.3
+        + state.electrical.transient_noise * 0.2
+        + noise_avg * 0.4
+        + observability_penalty * 0.6;
 
     if distress.is_nan() {
         distress = 0.0;
@@ -124,13 +135,17 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
     // =======================
 
     let profile = board_profile::active_profile();
-    let component_catalog = profile.components.iter().map(|c| {
-        json!({
-            "id": c.id,
-            "label": c.label,
-            "rail": format!("{:?}", c.rail)
+    let component_catalog = profile
+        .components
+        .iter()
+        .map(|c| {
+            json!({
+                "id": c.id,
+                "label": c.label,
+                "rail": format!("{:?}", c.rail)
+            })
         })
-    }).collect::<Vec<_>>();
+        .collect::<Vec<_>>();
 
     json!({
         "time": state.time,

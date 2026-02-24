@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "hp_pavilion_x360",
+  "name": "HP Pavilion x360 Motherboard",
+  "image": {
+    "full_width_px": 18000,
+    "full_height_px": 11000
+  },
+  "tiles": {
+    "type": "dzi-like",
+    "tile_size": 256,
+    "overlap": 0,
+    "format": "jpg",
+    "max_level": 15,
+    "url_template": "/api/boards/hp_pavilion_x360/tiles/{level}/{x}_{y}.jpg"
+  },
+  "units": {
+    "mm_per_px": 0.005,
+    "origin": "top_left"
+  },
+  "transform": {
+    "type": "affine",
+    "a": 0.005,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 0.005,
+    "tx": 0.0,
+    "ty": 0.0
+  },
+  "components_url": "/api/boards/hp_pavilion_x360/components",
+  "rails_url": "/api/boards/hp_pavilion_x360/rails",
+  "topology_url": "/api/boards/hp_pavilion_x360/topology",
+  "thermal_url": "/api/boards/hp_pavilion_x360/thermal"
+}

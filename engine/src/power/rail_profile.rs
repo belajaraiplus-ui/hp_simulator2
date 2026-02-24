@@ -1,6 +1,6 @@
+use crate::power::rail::RailExpected;
 use crate::state::ids::RailId;
 use std::collections::HashMap;
-use crate::power::rail::RailExpected;
 
 /// Profile expected rail dari rails.json.
 /// Ini hanya DTO → nanti langsung di-inject ke Rail.expected

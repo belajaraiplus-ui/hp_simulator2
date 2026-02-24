@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::state::ids::RailId;
+use serde::{Deserialize, Serialize};
 
 /// Status logika rail (hasil dependency evaluator + fault engine).
 /// Ini layer "PMIC / sequence / causal".
@@ -85,6 +85,9 @@ pub struct RailState {
 
     /// Flag stabilitas (biasanya dihitung dari expected range & ripple)
     pub is_stable: bool,
+
+    /// Beban tambahan (Ampere) dari alat ukur atau injeksi
+    pub extra_load_a: f64,
 }
 
 impl Default for RailState {
@@ -94,6 +97,7 @@ impl Default for RailState {
             current: 0.0,
             ripple: 0.0,
             is_stable: false,
+            extra_load_a: 0.0,
         }
     }
 }

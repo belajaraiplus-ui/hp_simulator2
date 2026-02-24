@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "defaults": {
+    "continuity": {
+      "beep_below_ohms": 50.0,
+      "open_above_ohms": 200.0
+    }
+  },
+  "rails": [
+    {
+      "id": "VGG",
+      "label": "VGG (Graphics Gate)",
+      "type": "input",
+      "expected": {
+        "voltage_v": { "min": 11.4, "max": 12.6 },
+        "diode_drop_v": { "min": 0.45, "max": 0.80 },
+        "r2g_ohms": { "nominal": 350.0 },
+        "continuity": { "beep_below_ohms": 25.0, "open_above_ohms": 120.0 }
+      },
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[50,70],[110,70],[110,130],[50,130]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VGG", "x": 80, "y": 100, "label": "VGG" }
+      ]
+    },
+    {
+      "id": "VCCCV",
+      "label": "VCCCV (CPU Core)",
+      "type": "core",
+      "expected": {
+        "voltage_v": { "min": 0.65, "max": 1.30 },
+        "diode_drop_v": { "min": 0.25, "max": 0.55 },
+        "r2g_ohms": { "nominal": 10.0 },
+        "continuity": { "beep_below_ohms": 6.0, "open_above_ohms": 40.0 }
+      },
+      "depends_on": ["VGG"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[180,220],[250,220],[250,290],[180,290]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VCCCV", "x": 215, "y": 255, "label": "VCCCV" }
+      ]
+    },
+    {
+      "id": "VCCFN",
+      "label": "VCCFN (CPU Fabric)",
+      "type": "core",
+      "expected": {
+        "voltage_v": { "min": 0.90, "max": 1.10 },
+        "diode_drop_v": { "min": 0.25, "max": 0.55 },
+        "r2g_ohms": { "nominal": 18.0 },
+        "continuity": { "beep_below_ohms": 10.0, "open_above_ohms": 55.0 }
+      },
+      "depends_on": ["VGG"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[300,180],[360,180],[360,240],[300,240]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VCCFN", "x": 330, "y": 210, "label": "VCCFN" }
+      ]
+    }
+  ]
+}

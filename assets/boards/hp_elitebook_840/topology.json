@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "nodes": [
+    "VGG",
+    "VCCCV",
+    "VCCFN"
+  ],
+  "edges": [
+    {
+      "from": "VGG",
+      "to": "VCCCV",
+      "kind": "switch"
+    },
+    {
+      "from": "VGG",
+      "to": "VCCFN",
+      "kind": "switch"
+    }
+  ]
+}

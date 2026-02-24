@@ -1,16 +1,18 @@
 // engine/src/core/engine.rs
-use crate::state::phone_state::PhoneState;
 use crate::state::invariants::assert_invariants;
+use crate::state::phone_state::PhoneState;
 
 use crate::fault::apply::apply_faults;
 use crate::physics::electrical::step_electrical;
 use crate::physics::thermal::step_thermal;
 
-use crate::fault::engine::{step_faults, propagate_faults};
+use crate::fault::engine::{propagate_faults, step_faults};
+use crate::power::evaluator::PowerEvaluator;
+use crate::power::propagate::propagate_power;
 
+use crate::session::guard::check_termination;
 use crate::session::state::SessionState;
 use crate::session::types::SessionStatus;
-use crate::session::guard::check_termination;
 
 pub struct Engine {
     pub dt: f64,
@@ -38,6 +40,16 @@ impl Engine {
         // =======================
         // ELECTRICAL DOMAIN
         // =======================
+
+        // 1. Evaluasi Topologi (Logic Layer)
+        // Menghitung target voltage berdasarkan graph dependency + root inputs (VCHG)
+        PowerEvaluator::evaluate(&state.power_graph, &mut state.electrical);
+
+        // 2. Propagasi daya (RC curve untuk voltage settling)
+        propagate_power(&state.power_graph, &mut state.electrical, self.dt);
+
+        // 3. Evaluasi Fisika (Physics Layer)
+        // Menghitung thermal heating, noise, derating
         step_electrical(state, self.dt);
 
         // =======================
@@ -68,7 +80,6 @@ impl Engine {
 }
 
 pub fn sim_tick(state: &mut PhoneState, dt: f64) {
-
     // 1. Apply fault dulu (ubah health/status)
     apply_faults(state);
 
@@ -127,15 +138,11 @@ mod tests {
 
         assert!(!rails.is_empty());
         assert!(!thermals.is_empty());
-        assert!(rails.iter().all(|r| {
-            r.get("voltage")
-                .map(Value::is_number)
-                .unwrap_or(false)
-        }));
-        assert!(thermals.iter().all(|z| {
-            z.get("temperature")
-                .map(Value::is_number)
-                .unwrap_or(false)
-        }));
+        assert!(rails
+            .iter()
+            .all(|r| { r.get("voltage").map(Value::is_number).unwrap_or(false) }));
+        assert!(thermals
+            .iter()
+            .all(|z| { z.get("temperature").map(Value::is_number).unwrap_or(false) }));
     }
 }

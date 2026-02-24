@@ -1,7 +1,7 @@
 use dashmap::DashMap;
 use std::{path::PathBuf, sync::Arc};
 
-use crate::model::{BoardFile, ComponentsFile, Manifest, RailsFile};
+use crate::model::{BoardFile, ComponentsFile, Manifest, RailsFile, ThermalFile, TopologyFile};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -12,6 +12,8 @@ pub struct AppState {
     pub board_cache: Arc<DashMap<String, Arc<BoardFile>>>,
     pub components_cache: Arc<DashMap<String, Arc<ComponentsFile>>>,
     pub rails_cache: Arc<DashMap<String, Arc<RailsFile>>>,
+    pub topology_cache: Arc<DashMap<String, Arc<TopologyFile>>>,
+    pub thermal_cache: Arc<DashMap<String, Arc<ThermalFile>>>,
 }
 
 impl AppState {
@@ -22,6 +24,8 @@ impl AppState {
             board_cache: Arc::new(DashMap::new()),
             components_cache: Arc::new(DashMap::new()),
             rails_cache: Arc::new(DashMap::new()),
+            topology_cache: Arc::new(DashMap::new()),
+            thermal_cache: Arc::new(DashMap::new()),
         }
     }
 
@@ -39,6 +43,14 @@ impl AppState {
 
     pub fn rails_path(&self, board_id: &str) -> PathBuf {
         self.data_dir.join(board_id).join("rails.json")
+    }
+
+    pub fn topology_path(&self, board_id: &str) -> PathBuf {
+        self.data_dir.join(board_id).join("topology.json")
+    }
+
+    pub fn thermal_path(&self, board_id: &str) -> PathBuf {
+        self.data_dir.join(board_id).join("thermal.json")
     }
 
     pub fn tile_path(&self, board_id: &str, level: u32, x: u32, y: u32, ext: &str) -> PathBuf {

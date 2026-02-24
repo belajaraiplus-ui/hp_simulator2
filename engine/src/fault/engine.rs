@@ -1,6 +1,6 @@
-use crate::state::phone_state::PhoneState;
 use crate::fault::model::*;
 use crate::state::ids::FaultId;
+use crate::state::phone_state::PhoneState;
 
 /// =======================
 /// FAULT ENGINE — FASE 10.1
@@ -100,8 +100,7 @@ fn spawn_secondary_fault(state: &mut PhoneState, source: FaultId) {
     }
 
     let instance = FaultInstance::new(
-        new_id,
-        0.02, // escalation rate default
+        new_id, 0.02, // escalation rate default
         0.5,  // thermal coupling default
         0.5,  // electrical coupling default
     );

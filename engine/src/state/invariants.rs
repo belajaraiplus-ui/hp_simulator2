@@ -17,9 +17,15 @@ pub fn assert_invariants(s: &PhoneState) {
     // =======================
     // STRESS DOMAINS NON-NEGATIVE
     // =======================
-    assert!(s.stress.electrical >= 0.0, "Electrical stress cannot be negative");
+    assert!(
+        s.stress.electrical >= 0.0,
+        "Electrical stress cannot be negative"
+    );
     assert!(s.stress.thermal >= 0.0, "Thermal stress cannot be negative");
-    assert!(s.stress.measurement >= 0.0, "Measurement stress cannot be negative");
+    assert!(
+        s.stress.measurement >= 0.0,
+        "Measurement stress cannot be negative"
+    );
 
     // =======================
     // FAULT INTENSITY SANITY

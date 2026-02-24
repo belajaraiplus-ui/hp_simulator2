@@ -1,20 +1,18 @@
 use std::fs;
 use std::path::Path;
 
-use crate::scenario_dsl::model::ScenarioDsl;
 use crate::scenario::scenario::Scenario;
+use crate::scenario_dsl::model::ScenarioDsl;
 use crate::world::presets;
 
 /// Load DSL scenario dari file JSON.
 /// Tidak boleh gagal diam-diam.
-pub fn load_scenario_from_json<P: AsRef<Path>>(
-    path: P,
-) -> Result<Scenario, String> {
-    let raw = fs::read_to_string(&path)
-        .map_err(|e| format!("Failed to read scenario file: {}", e))?;
+pub fn load_scenario_from_json<P: AsRef<Path>>(path: P) -> Result<Scenario, String> {
+    let raw =
+        fs::read_to_string(&path).map_err(|e| format!("Failed to read scenario file: {}", e))?;
 
-    let dsl: ScenarioDsl = serde_json::from_str(&raw)
-        .map_err(|e| format!("Invalid scenario DSL: {}", e))?;
+    let dsl: ScenarioDsl =
+        serde_json::from_str(&raw).map_err(|e| format!("Invalid scenario DSL: {}", e))?;
 
     // =======================
     // WORLD PROFILE RESOLUTION
@@ -23,12 +21,7 @@ pub fn load_scenario_from_json<P: AsRef<Path>>(
         "IDEAL_BENCH" => &presets::IDEAL_BENCH,
         "HOT_HUMID_WORKSHOP" => &presets::HOT_HUMID_WORKSHOP,
         "PREVIOUSLY_REPAIRED_DEVICE" => &presets::PREVIOUSLY_REPAIRED_DEVICE,
-        _ => {
-            return Err(format!(
-                "Unknown world_profile: {}",
-                dsl.world_profile
-            ))
-        }
+        _ => return Err(format!("Unknown world_profile: {}", dsl.world_profile)),
     };
 
     // =======================
@@ -60,4 +53,3 @@ pub fn load_scenario_from_json<P: AsRef<Path>>(
             .unwrap_or(""),
     })
 }
-

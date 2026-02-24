@@ -18,8 +18,7 @@ impl MeasurementTool for PSU {
         // 2) Update canonical PSU input state with finite response speed
         let previous_setpoint = s.electrical.input.voltage;
         let alpha = self.response_speed.clamp(0.01, 1.0);
-        let commanded_voltage =
-            previous_setpoint + (self.set_voltage - previous_setpoint) * alpha;
+        let commanded_voltage = previous_setpoint + (self.set_voltage - previous_setpoint) * alpha;
 
         s.electrical
             .apply_psu_config(commanded_voltage, self.current_limit, true);
@@ -33,10 +32,7 @@ impl MeasurementTool for PSU {
         };
 
         // 4) Observe output current under configured limit
-        let current = s
-            .electrical
-            .total_load()
-            .min(self.current_limit.max(0.0));
+        let current = s.electrical.total_load().min(self.current_limit.max(0.0));
         s.electrical.set_input_measured_current(current);
 
         let noise = rail_noise * (1.0 + 0.1 * rep.min(10.0));

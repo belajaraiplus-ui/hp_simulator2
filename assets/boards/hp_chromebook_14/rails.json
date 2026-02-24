@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "defaults": {
+    "continuity": {
+      "beep_below_ohms": 50.0,
+      "open_above_ohms": 200.0
+    }
+  },
+  "rails": [
+    {
+      "id": "V3P3",
+      "label": "V3P3 (3.3V Rail)",
+      "type": "power",
+      "expected": {
+        "voltage_v": { "min": 3.14, "max": 3.47 },
+        "diode_drop_v": { "min": 0.35, "max": 0.65 },
+        "r2g_ohms": { "nominal": 200.0 },
+        "continuity": { "beep_below_ohms": 20.0, "open_above_ohms": 100.0 }
+      },
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[20,35],[60,35],[60,75],[20,75]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_V3P3", "x": 40, "y": 55, "label": "V3P3" }
+      ]
+    },
+    {
+      "id": "V1P8",
+      "label": "V1P8 (1.8V Rail)",
+      "type": "power",
+      "expected": {
+        "voltage_v": { "min": 1.71, "max": 1.89 },
+        "diode_drop_v": { "min": 0.30, "max": 0.50 },
+        "r2g_ohms": { "nominal": 150.0 },
+        "continuity": { "beep_below_ohms": 15.0, "open_above_ohms": 80.0 }
+      },
+      "depends_on": ["V3P3"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[80,120],[120,120],[120,160],[80,160]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_V1P8", "x": 100, "y": 140, "label": "V1P8" }
+      ]
+    }
+  ]
+}

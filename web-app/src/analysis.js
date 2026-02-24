@@ -1,15 +1,34 @@
-import { voltageSmoothed, thermalSmoothed, distressHistory } from "./state.js";
+import { voltageSmoothed, thermalSmoothed, distressHistory, diagnosticHistory } from "./state.js";
 
 export function computeDiagnostic({ rails = [], thermals = [], distress = 0, time = 0 }) {
   const voltageIssues = detectVoltageIssuesFromSmoothed();
   const thermalIssues = detectThermalIssuesFromSmoothed();
   const distressTrend = analyzeDistressTrend();
+  const systemHealth = assessSystemHealth(rails, thermals, distress);
   let score = 0;
   const messages = [];
+  const hypotheses = [];
 
-  if (voltageIssues.length) { messages.push("Voltage instability: " + voltageIssues.join(", ")); score += 0.4; }
-  if (thermalIssues.length) { messages.push("Thermal anomaly: " + thermalIssues.join(", ")); score += 0.3; }
-  if (distressTrend === "rising") { messages.push("Distress trend increasing."); score += 0.2; }
+  if (voltageIssues.length) { 
+    messages.push("Voltage instability: " + voltageIssues.join(", ")); 
+    hypotheses.push({ text: "Fluktuasi tegangan terdeteksi pada: " + voltageIssues.join(", "), type: "voltage" });
+    score += 0.4; 
+  }
+  if (thermalIssues.length) { 
+    messages.push("Thermal anomaly: " + thermalIssues.join(", ")); 
+    hypotheses.push({ text: "Suhu tinggi terdeteksi di zona: " + thermalIssues.join(", "), type: "thermal" });
+    score += 0.3; 
+  }
+  if (distressTrend === "rising") { 
+    messages.push("Distress trend increasing."); 
+    hypotheses.push({ text: "Tingkat distress meningkat - risiko kerusakan meningkat", type: "distress" });
+    score += 0.2; 
+  }
+  if (systemHealth.status === "critical") {
+    messages.push("System in critical condition.");
+    hypotheses.push({ text: "Kondisi sistem kritis - pertimbangkan untuk berhenti", type: "critical" });
+    score += 0.5;
+  }
   if (!messages.length) messages.push("System appears stable based on observable proxy.");
 
   const confidence = Math.min(1, score + distress * 0.4);
@@ -20,8 +39,34 @@ export function computeDiagnostic({ rails = [], thermals = [], distress = 0, tim
     distressTrend,
     distress,
     confidence,
-    message: messages.join(" ")
+    message: messages.join(" "),
+    hypotheses,
+    systemHealth
   };
+}
+
+function assessSystemHealth(rails, thermals, distress) {
+  let status = "healthy";
+  let factors = [];
+  
+  if (distress > 0.7) {
+    status = "critical";
+    factors.push("distress");
+  } else if (distress > 0.4) {
+    status = "warning";
+    factors.push("distress");
+  }
+  
+  thermals.forEach(t => {
+    if (t.temperature > 90) {
+      status = "critical";
+      factors.push("thermal");
+    } else if (t.temperature > 70) {
+      status = "warning";
+    }
+  });
+  
+  return { status, factors };
 }
 
 function detectVoltageIssuesFromSmoothed() {

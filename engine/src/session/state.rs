@@ -1,4 +1,4 @@
-use crate::session::types::{SessionStatus, SessionEndReason, SessionEvent};
+use crate::session::types::{SessionEndReason, SessionEvent, SessionStatus};
 
 pub struct SessionState {
     pub status: SessionStatus,

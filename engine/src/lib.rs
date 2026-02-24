@@ -1,25 +1,25 @@
-use wasm_bindgen::prelude::*;
-use serde_json::json;
 use std::sync::Mutex;
+use wasm_bindgen::prelude::*;
 
+mod analysis;
 mod api;
 mod core;
-mod state;
-mod physics;
-mod measurement;
 mod fault;
-mod session;
-pub mod power;
-mod analysis;
+mod measurement;
+mod physics;
 mod postmortem;
-pub mod scenario_dsl;
+pub mod power;
 pub mod scenario;
+pub mod scenario_dsl;
+mod session;
+mod state;
 pub mod world;
 
-use api::types::ActionRequest;
-use api::context::WasmContext;
-use api::snapshot::build_snapshot;
 use crate::session::types::SessionEndReason;
+use api::context::WasmContext;
+use api::contract::ApiContract;
+use api::snapshot::build_snapshot;
+use api::types::{ActionKind, ApiError, ApiResponse};
 
 static CTX: once_cell::sync::Lazy<Mutex<Option<WasmContext>>> =
     once_cell::sync::Lazy::new(|| Mutex::new(None));
@@ -32,110 +32,132 @@ pub fn init(dt: f64) {
 
 #[wasm_bindgen]
 pub fn dispatch(action_json: &str) -> String {
-
-    // ===============================
-    // Parse JSON
-    // ===============================
-    let req: ActionRequest = match serde_json::from_str(action_json) {
-        Ok(v) => v,
-        Err(e) => {
-            return json!({
-                "ok": false,
-                "message": format!("Invalid JSON: {}", e)
-            }).to_string()
-        }
+    let req = match ApiContract::validate_request(action_json) {
+        Ok(r) => r,
+        Err(e) => return e.to_json_string(),
     };
 
-    // ===============================
-    // Acquire context
-    // ===============================
     let mut guard = match CTX.lock() {
         Ok(g) => g,
         Err(_) => {
-            return json!({
-                "ok": false,
-                "message": "Context lock failed"
-            }).to_string()
+            return ApiError::lock_failed().to_json_string();
         }
     };
 
     let ctx = match guard.as_mut() {
         Some(c) => c,
         None => {
-            return json!({
-                "ok": false,
-                "message": "Engine not initialized"
-            }).to_string()
+            return ApiError::not_initialized().to_json_string();
         }
     };
 
-    // ===============================
-    // Validate allowed kinds
-    // ===============================
-    if !matches!(
-        req.kind.as_str(),
-        "step" | "measure" | "snapshot" | "stop" | "tool"
-    ) {
-        return json!({
-            "ok": false,
-            "message": "Invalid action kind"
-        }).to_string();
-    }
+    let kind = match ActionKind::from_str(&req.kind) {
+        Some(k) => k,
+        None => {
+            return ApiError::invalid_kind(&req.kind).to_json_string();
+        }
+    };
 
-    // ===============================
-    // Dispatch
-    // ===============================
-    match req.kind.as_str() {
-
-        // --------------------------------
-        // STEP
-        // --------------------------------
-        "step" => {
+    match kind {
+        ActionKind::Step => {
+            crate::power::propagate::propagate_power(
+                &ctx.phone.power_graph,
+                &mut ctx.phone.electrical,
+                ctx.engine.dt,
+            );
             ctx.engine.step(&mut ctx.phone, &mut ctx.session);
-            json!({ "ok": true }).to_string()
+            ApiResponse::ok().to_json_string()
         }
 
-        // --------------------------------
-        // MEASURE (Multimeter)
-        // --------------------------------
-        "measure" => {
+        ActionKind::Measure => {
             let m = ctx.measure(&req);
-            json!({
-                "ok": true,
-                "measurement": m
-            }).to_string()
+            ApiResponse::ok().with_measurement(m).to_json_string()
         }
 
-        // --------------------------------
-        // SNAPSHOT
-        // --------------------------------
-        "snapshot" => {
+        ActionKind::Snapshot => {
             let s = build_snapshot(&ctx.phone);
-            json!({
-                "ok": true,
-                "snapshot": s
-            }).to_string()
+            ApiResponse::ok().with_snapshot(s).to_json_string()
         }
 
-        // --------------------------------
-        // STOP SESSION
-        // --------------------------------
-        "stop" => {
+        ActionKind::Stop => {
             ctx.session.terminate(SessionEndReason::UserStop);
-            json!({ "ok": true }).to_string()
+            ApiResponse::ok()
+                .with_message("Session stopped")
+                .to_json_string()
         }
 
-        // --------------------------------
-        // TOOL CONTROL (PSU etc.)
-        // --------------------------------
-        "tool" => {
+        ActionKind::Tool => {
             let result = ctx.apply_tool_action(&req);
             result.to_string()
         }
 
-        _ => json!({
-            "ok": false,
-            "message": "Unhandled action"
-        }).to_string(),
+        ActionKind::Scenario => {
+            let scenario_id = req.scenario.as_deref().unwrap_or("default");
+            let result = ctx.load_scenario(scenario_id);
+            result.to_string()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{json, Value};
+
+    #[test]
+    fn test_propagate_power_integration() {
+        // 1. Initialize Engine (dt = 0.1s)
+        init(0.1);
+
+        // 2. Enable VCHG (USB Charger)
+        let enable_vchg = json!({
+            "version": 1,
+            "kind": "tool",
+            "tool_action": {
+                "ToggleVCHG": { "enabled": true }
+            }
+        })
+        .to_string();
+        dispatch(&enable_vchg);
+
+        // 3. Set Voltage to 5.0V
+        let set_voltage = json!({
+            "version": 1,
+            "kind": "tool",
+            "tool_action": {
+                "SetVCHGVoltage": { "voltage": 5.0 }
+            }
+        })
+        .to_string();
+        dispatch(&set_voltage);
+
+        // 4. Step simulation multiple times
+        // propagate_power menggunakan kurva RC, jadi butuh beberapa tick untuk naik
+        let step_req = json!({ "version": 1, "kind": "step" }).to_string();
+        for _ in 0..10 {
+            dispatch(&step_req);
+        }
+
+        // 5. Snapshot to verify voltage
+        let snap_req = json!({ "version": 1, "kind": "snapshot" }).to_string();
+        let snap_res = dispatch(&snap_req);
+        let snap_json: Value = serde_json::from_str(&snap_res).unwrap();
+
+        // 6. Find Vchg rail & Verify
+        let rails = snap_json["snapshot"]["rails"]
+            .as_array()
+            .expect("Rails not found");
+        let vchg = rails
+            .iter()
+            .find(|r| r["name"] == "Vchg")
+            .expect("Vchg missing");
+        let voltage = vchg["voltage"].as_f64().expect("Voltage invalid");
+
+        println!("VCHG Voltage: {}", voltage);
+        assert!(
+            voltage > 4.0,
+            "VCHG voltage should rise near 5.0V, got {}",
+            voltage
+        );
     }
 }

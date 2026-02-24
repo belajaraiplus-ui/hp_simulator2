@@ -14,5 +14,9 @@ pub struct MeasurementLog {
 }
 
 impl MeasurementLog {
-    pub fn new() -> Self { Self { history: Vec::new() } }
+    pub fn new() -> Self {
+        Self {
+            history: Vec::new(),
+        }
+    }
 }

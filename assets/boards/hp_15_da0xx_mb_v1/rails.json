@@ -70,6 +70,48 @@
       "probe_points": [
         { "id": "TP_VCORE", "x": 250, "y": 140, "label": "TP_VCORE" }
       ]
+    },
+    {
+      "id": "VSYS",
+      "label": "VSYS",
+      "type": "system",
+      "expected": {
+        "voltage_v": { "min": 3.5, "max": 4.2 },
+        "diode_drop_v": { "min": 0.30, "max": 0.60 },
+        "r2g_ohms": { "nominal": 200.0 },
+        "continuity": { "beep_below_ohms": 40.0, "open_above_ohms": 150.0 }
+      },
+      "depends_on": ["VBAT"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[180,300],[240,300],[240,360],[180,360]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VSYS", "x": 210, "y": 330, "label": "TP_VSYS" }
+      ]
+    },
+    {
+      "id": "VIO",
+      "label": "VIO",
+      "type": "logic",
+      "expected": {
+        "voltage_v": { "min": 1.7, "max": 1.9 },
+        "diode_drop_v": { "min": 0.20, "max": 0.45 },
+        "r2g_ohms": { "nominal": 80.0 },
+        "continuity": { "beep_below_ohms": 30.0, "open_above_ohms": 120.0 }
+      },
+      "depends_on": ["VSYS"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[300,200],[360,200],[360,260],[300,260]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VIO", "x": 330, "y": 230, "label": "TP_VIO" }
+      ]
     }
   ]
 }

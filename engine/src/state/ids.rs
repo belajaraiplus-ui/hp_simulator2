@@ -55,8 +55,8 @@ pub enum ComponentId {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FaultId {
     SoftShort,           // soft short pada rail
-    LocalThermalRunaway,// hotspot lokal
-    PowerInstability,   // rail noise / drop
+    LocalThermalRunaway, // hotspot lokal
+    PowerInstability,    // rail noise / drop
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

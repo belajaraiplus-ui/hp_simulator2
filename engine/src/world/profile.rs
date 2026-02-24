@@ -10,31 +10,31 @@ pub struct WorldProfile {
     // ENVIRONMENT
     // =======================
     pub ambient_temperature: f64,
-    pub humidity_factor: f64,          // affects leakage & corrosion
+    pub humidity_factor: f64, // affects leakage & corrosion
     pub emi_noise_floor: f64,
 
     // =======================
     // DEVICE HISTORY
     // =======================
-    pub device_age_factor: f64,         // material aging baseline
-    pub prior_repair_factor: f64,       // solder / pad fatigue
+    pub device_age_factor: f64,   // material aging baseline
+    pub prior_repair_factor: f64, // solder / pad fatigue
 
     // =======================
     // ELECTRICAL QUALITY
     // =======================
-    pub psu_quality: f64,               // <1.0 = noisy / unstable
+    pub psu_quality: f64, // <1.0 = noisy / unstable
     pub ground_integrity: f64,
 
     // =======================
     // THERMAL CHARACTERISTICS
     // =======================
-    pub thermal_dissipation: f64,        // <1.0 = worse cooling
-    pub thermal_coupling: f64,           // >1.0 = heat spreads faster
+    pub thermal_dissipation: f64, // <1.0 = worse cooling
+    pub thermal_coupling: f64,    // >1.0 = heat spreads faster
 
     // =======================
     // OBSERVABILITY BIAS
     // =======================
-    pub measurement_bias: f64,           // baseline distortion
+    pub measurement_bias: f64, // baseline distortion
 }
 
 /// =======================

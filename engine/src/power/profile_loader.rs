@@ -5,7 +5,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct JsonRail {
-    pub id: RailId,              // langsung enum! no String
+    pub id: RailId, // langsung enum! no String
     pub expected: JsonExpected,
 }
 
@@ -35,21 +35,16 @@ pub struct Threshold {
 
 /// rails.json → inject langsung ke PhoneState.electrical.rails
 pub fn load_into_state(json_data: &str, state: &mut PhoneState) {
-    let raw_rails: Vec<JsonRail> =
-        serde_json::from_str(json_data)
-        .expect("Invalid rails.json");
+    let raw_rails: Vec<JsonRail> = serde_json::from_str(json_data).expect("Invalid rails.json");
 
     for r in raw_rails {
         let target_voltage = (r.expected.voltage_v.min + r.expected.voltage_v.max) / 2.0;
 
-        let rail = state.electrical
-            .rails
-            .entry(r.id)
-            .or_insert_with(|| {
-                let mut rail = Rail::new(r.id);
-                rail.target_voltage = target_voltage;
-                rail
-            });
+        let rail = state.electrical.rails.entry(r.id).or_insert_with(|| {
+            let mut rail = Rail::new(r.id);
+            rail.target_voltage = target_voltage;
+            rail
+        });
 
         rail.expected.v_min = r.expected.voltage_v.min;
         rail.expected.v_max = r.expected.voltage_v.max;

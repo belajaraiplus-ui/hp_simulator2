@@ -3,6 +3,7 @@ use std::collections::{HashMap, VecDeque};
 
 /// Merepresentasikan struktur pohon/jaringan distribusi daya.
 /// Menentukan bagaimana dependency merambat dari sumber (VBAT/USB) ke beban.
+#[derive(Debug, Default)]
 pub struct DependencyGraph {
     /// Mapping: Source Rail -> List of Dependent Rails
     /// Contoh: Vsys -> [Vcore, Vio, Vddr]
@@ -69,8 +70,7 @@ impl DependencyGraph {
         let rails = self.all_rails();
 
         // indegree init 0
-        let mut indegree: HashMap<RailId, usize> =
-            rails.iter().map(|&r| (r, 0usize)).collect();
+        let mut indegree: HashMap<RailId, usize> = rails.iter().map(|&r| (r, 0usize)).collect();
 
         // hitung indegree dari adjacency
         for (&src, deps) in self.adjacency.iter() {

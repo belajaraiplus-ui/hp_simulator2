@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "nodes": [
+    "VBUS",
+    "VBAT_SUM",
+    "VCPU"
+  ],
+  "edges": [
+    {
+      "from": "VBUS",
+      "to": "VBAT_SUM",
+      "kind": "switch"
+    },
+    {
+      "from": "VBAT_SUM",
+      "to": "VCPU",
+      "kind": "switch"
+    }
+  ]
+}

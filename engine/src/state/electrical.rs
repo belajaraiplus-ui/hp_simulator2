@@ -8,6 +8,8 @@ pub struct PowerInput {
     pub current_limit: f64,
     pub enabled: bool,
     pub measured_current: f64,
+    pub vchg_enabled: bool,
+    pub vchg_voltage: f64,
 }
 
 impl PowerInput {
@@ -17,6 +19,8 @@ impl PowerInput {
             current_limit: 0.0,
             enabled: false,
             measured_current: 0.0,
+            vchg_enabled: false,
+            vchg_voltage: 5.0,
         }
     }
 }
@@ -26,20 +30,17 @@ pub struct ElectricalState {
     pub rails: HashMap<RailId, Rail>,
     pub ground_integrity: f64,
     pub transient_noise: f64,
+    pub extra_load_a: f64,
     pub input: PowerInput,
 }
 
 impl ElectricalState {
-
     pub fn ensure_rail(&mut self, id: RailId) -> &mut Rail {
         self.rails.entry(id).or_insert_with(|| Rail::new(id))
     }
 
     pub fn total_load(&self) -> f64 {
-        self.rails
-            .values()
-            .map(|r| r.state.current)
-            .sum()
+        self.rails.values().map(|r| r.state.current).sum()
     }
 
     pub fn set_input_measured_current(&mut self, current: f64) {
@@ -59,6 +60,7 @@ impl Default for ElectricalState {
             rails: HashMap::new(),
             ground_integrity: 1.0,
             transient_noise: 0.0,
+            extra_load_a: 0.0,
             input: PowerInput::new(),
         }
     }

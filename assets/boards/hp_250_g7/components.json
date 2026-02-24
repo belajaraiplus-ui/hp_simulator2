@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "components": [
+    {
+      "id": "U2100",
+      "refdes": "U2100",
+      "kind": "IC",
+      "bbox": { "x": 10000, "y": 7000, "w": 400, "h": 360 },
+      "shape": {
+        "type": "poly",
+        "points": [[10000,7000],[10400,7000],[10400,7360],[10000,7360]]
+      },
+      "tags": ["pmic", "power"],
+      "hints": {
+        "rails": ["VCCSA", "VCCIO"]
+      }
+    },
+    {
+      "id": "U2200",
+      "refdes": "U2200",
+      "kind": "IC",
+      "bbox": { "x": 11500, "y": 6800, "w": 320, "h": 280 },
+      "shape": {
+        "type": "poly",
+        "points": [[11500,6800],[11820,6800],[11820,7080],[11500,7080]]
+      },
+      "tags": ["cpu", "vr"],
+      "hints": {
+        "rails": ["VCC_CPU"]
+      }
+    }
+  ]
+}

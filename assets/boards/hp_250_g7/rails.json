@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "defaults": {
+    "continuity": {
+      "beep_below_ohms": 50.0,
+      "open_above_ohms": 200.0
+    }
+  },
+  "rails": [
+    {
+      "id": "VCCIN",
+      "label": "VCCIN (Main Input)",
+      "type": "input",
+      "expected": {
+        "voltage_v": { "min": 19.0, "max": 21.0 },
+        "diode_drop_v": { "min": 0.45, "max": 0.80 },
+        "r2g_ohms": { "nominal": 600.0 },
+        "continuity": { "beep_below_ohms": 30.0, "open_above_ohms": 150.0 }
+      },
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[40,60],[100,60],[100,120],[40,120]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VCCIN", "x": 70, "y": 90, "label": "VCCIN" }
+      ]
+    },
+    {
+      "id": "VCCSA",
+      "label": "VCCSA (System Agent)",
+      "type": "core",
+      "expected": {
+        "voltage_v": { "min": 1.05, "max": 1.25 },
+        "diode_drop_v": { "min": 0.25, "max": 0.55 },
+        "r2g_ohms": { "nominal": 25.0 },
+        "continuity": { "beep_below_ohms": 10.0, "open_above_ohms": 60.0 }
+      },
+      "depends_on": ["VCCIN"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[150,200],[210,200],[210,260],[150,260]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VCCSA", "x": 180, "y": 230, "label": "VCCSA" }
+      ]
+    },
+    {
+      "id": "VCC_CPU",
+      "label": "VCC_CPU",
+      "type": "core",
+      "expected": {
+        "voltage_v": { "min": 0.80, "max": 1.30 },
+        "diode_drop_v": { "min": 0.25, "max": 0.55 },
+        "r2g_ohms": { "nominal": 12.0 },
+        "continuity": { "beep_below_ohms": 8.0, "open_above_ohms": 50.0 }
+      },
+      "depends_on": ["VCCIN"],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[260,150],[320,150],[320,210],[260,210]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VCC_CPU", "x": 290, "y": 180, "label": "VCC_CPU" }
+      ]
+    }
+  ]
+}

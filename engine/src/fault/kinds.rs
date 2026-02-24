@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::state::ids::RailId;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FaultKind {

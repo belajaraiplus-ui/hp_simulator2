@@ -1,13 +1,10 @@
-use crate::state::phone_state::PhoneState;
-use crate::session::state::SessionState;
 use crate::postmortem::types::PostMortem;
+use crate::session::state::SessionState;
+use crate::state::phone_state::PhoneState;
 
 /// Postmortem adalah forensik.
 /// Di sinilah ground truth boleh muncul.
-pub fn build_postmortem(
-    state: &PhoneState,
-    session: &SessionState,
-) -> PostMortem {
+pub fn build_postmortem(state: &PhoneState, session: &SessionState) -> PostMortem {
     let mut causes = Vec::new();
     let mut errors = Vec::new();
     let mut damage = Vec::new();
@@ -19,9 +16,7 @@ pub fn build_postmortem(
         if inst.intensity > 0.5 {
             causes.push(format!(
                 "Fault {:?} reached {:?} phase with intensity {:.2}",
-                _fid,
-                inst.phase,
-                inst.intensity
+                _fid, inst.phase, inst.intensity
             ));
         }
     }
@@ -40,10 +35,7 @@ pub fn build_postmortem(
     // =======================
     // IRREVERSIBLE DAMAGE (heuristik awal)
     // =======================
-    let total_stress =
-        state.stress.electrical +
-        state.stress.thermal +
-        state.stress.measurement;
+    let total_stress = state.stress.electrical + state.stress.thermal + state.stress.measurement;
 
     if total_stress > 30.0 {
         damage.push("Combined electrical and thermal degradation became irreversible".to_string());
@@ -54,8 +46,7 @@ pub fn build_postmortem(
     // =======================
     let timeline = format!(
         "Session ended at t={:.2}s with reason {:?}",
-        state.time,
-        session.end_reason
+        state.time, session.end_reason
     );
 
     PostMortem {

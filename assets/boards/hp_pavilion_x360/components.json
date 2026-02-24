@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "components": [
+    {
+      "id": "U3100",
+      "refdes": "U3100",
+      "kind": "IC",
+      "bbox": { "x": 7500, "y": 5000, "w": 320, "h": 300 },
+      "shape": {
+        "type": "poly",
+        "points": [[7500,5000],[7820,5000],[7820,5300],[7500,5300]]
+      },
+      "tags": ["pmic", "bq2471"],
+      "hints": {
+        "rails": ["VSB", "VRTC"]
+      }
+    }
+  ]
+}

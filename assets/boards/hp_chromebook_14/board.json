@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "hp_chromebook_14",
+  "name": "HP Chromebook 14 G5 Motherboard",
+  "image": {
+    "full_width_px": 16000,
+    "full_height_px": 10000
+  },
+  "tiles": {
+    "type": "dzi-like",
+    "tile_size": 256,
+    "overlap": 0,
+    "format": "jpg",
+    "max_level": 15,
+    "url_template": "/api/boards/hp_chromebook_14/tiles/{level}/{x}_{y}.jpg"
+  },
+  "units": {
+    "mm_per_px": 0.005,
+    "origin": "top_left"
+  },
+  "transform": {
+    "type": "affine",
+    "a": 0.005,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 0.005,
+    "tx": 0.0,
+    "ty": 0.0
+  },
+  "components_url": "/api/boards/hp_chromebook_14/components",
+  "rails_url": "/api/boards/hp_chromebook_14/rails",
+  "topology_url": "/api/boards/hp_chromebook_14/topology",
+  "thermal_url": "/api/boards/hp_chromebook_14/thermal"
+}

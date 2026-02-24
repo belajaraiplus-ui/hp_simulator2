@@ -1,8 +1,12 @@
-use crate::state::phone_state::*;
+use crate::power::rail::RailStatus;
 use crate::state::ids::{RailId, ThermalZoneId};
+use crate::state::phone_state::*;
 
 /// Model perilaku PSU bench sederhana (CV/CC + derating + internal resistance)
 pub fn apply_psu_behavior(state: &mut PhoneState) {
+    // ============================
+    // BENCH PSU INPUT (VBAT)
+    // ============================
     if !state.electrical.input.enabled {
         return;
     }
@@ -25,7 +29,8 @@ pub fn apply_psu_behavior(state: &mut PhoneState) {
     // THERMAL / STRESS DERATING
     // ============================
     // Jika stress listrik tinggi, current limit turun sedikit
-    let thermal_factor: f64 = (1.0_f64 - state.stress.electrical * 0.02_f64).clamp(0.7_f64, 1.0_f64);
+    let thermal_factor: f64 =
+        (1.0_f64 - state.stress.electrical * 0.02_f64).clamp(0.7_f64, 1.0_f64);
     current_limit *= thermal_factor;
 
     // ============================
@@ -132,6 +137,45 @@ pub fn step_electrical(s: &mut PhoneState, dt: f64) {
     // reset heat generation dulu
     for (_id, zone) in s.thermal.zones.iter_mut() {
         zone.heat_generation = 0.0_f64;
+    }
+
+    // ===========================
+    // ELECTRICAL -> THERMAL COUPLING
+    // ===========================
+    for (rid, rail) in s.electrical.rails.iter() {
+        let i = rail.state.current.abs();
+
+        // skip kalau tidak ada arus
+        if i < 0.001_f64 {
+            continue;
+        }
+
+        // resistansi estimasi (Ohm)
+        let r = rail.health.esr.max(1e-6_f64);
+
+        // heat = I^2R
+        let heat = i * i * r;
+
+        // ===========================
+        // MAPPING RAIL -> ZONE
+        // ===========================
+        let zone = match rid {
+            // core rail -> SoC
+            RailId::Vcore => ThermalZoneId::Soc,
+
+            // power distribution
+            RailId::Vbat => ThermalZoneId::Pmic,
+
+            // input rail
+            RailId::Vchg => ThermalZoneId::Board,
+
+            // default
+            _ => ThermalZoneId::Board,
+        };
+
+        if let Some(z) = s.thermal.zones.get_mut(&zone) {
+            z.heat_generation += heat;
+        }
     }
 
     // VBAT + VCORE terutama memanaskan SoC

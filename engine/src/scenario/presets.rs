@@ -39,27 +39,22 @@ pub const SCENARIO_FAKE_CHARGING_DROP: Scenario = Scenario {
     id: "fake_charging_drop",
     title: "Indikator Cas Ada, Baterai Tetap Drop",
 
-    customer_complaint:
-        "Kalau dicas ada tanda petir, tapi persentase tidak naik. \
+    customer_complaint: "Kalau dicas ada tanda petir, tapi persentase tidak naik. \
          Kadang dari 80% tiba-tiba turun ke 20%.",
 
-    background_story:
-        "Perangkat sering dicas di mobil dan power bank murah. \
+    background_story: "Perangkat sering dicas di mobil dan power bank murah. \
          Pernah mati total lalu hidup lagi setelah dicas lama.",
 
     world: &PREVIOUSLY_REPAIRED_DEVICE,
 
     tool_limit: Some(
         "PSU bench tersedia, tapi kabel USB sering longgar. \
-         Oscilloscope ada, namun jarang dipakai untuk charging case."
+         Oscilloscope ada, namun jarang dipakai untuk charging case.",
     ),
 
-    time_pressure: Some(
-        "Pemilik butuh cepat karena perangkat dipakai untuk kerja."
-    ),
+    time_pressure: Some("Pemilik butuh cepat karena perangkat dipakai untuk kerja."),
 
-    notes:
-        "Gejala mengarah ke baterai, tapi jalur charging dan logika USB berpotensi menipu.",
+    notes: "Gejala mengarah ke baterai, tapi jalur charging dan logika USB berpotensi menipu.",
 };
 
 /// =======================
@@ -73,8 +68,7 @@ pub const SCENARIO_NO_SERVICE_INTERMITTENT: Scenario = Scenario {
     customer_complaint:
         "SIM terbaca, tapi tidak ada sinyal. Kadang muncul sebentar lalu hilang lagi.",
 
-    background_story:
-        "Perangkat pernah jatuh dan lama dipakai panas. \
+    background_story: "Perangkat pernah jatuh dan lama dipakai panas. \
          Pernah diservis ringan tanpa catatan jelas.",
 
     // RF sangat sensitif terhadap panas, ground, dan noise
@@ -82,15 +76,12 @@ pub const SCENARIO_NO_SERVICE_INTERMITTENT: Scenario = Scenario {
 
     tool_limit: Some(
         "Multimeter & PSU tersedia. Oscilloscope ada tapi jarang dipakai untuk RF. \
-         Tidak ada RF tester khusus."
+         Tidak ada RF tester khusus.",
     ),
 
-    time_pressure: Some(
-        "Pemilik ingin cepat karena perangkat dipakai untuk komunikasi utama."
-    ),
+    time_pressure: Some("Pemilik ingin cepat karena perangkat dipakai untuk komunikasi utama."),
 
-    notes:
-        "Gejala RF sering tidak meninggalkan jejak listrik yang jelas. \
+    notes: "Gejala RF sering tidak meninggalkan jejak listrik yang jelas. \
          Pengukuran agresif dapat mempersempit margin timing & memperburuk kondisi.",
 };
 
@@ -125,4 +116,3 @@ pub const RF_UNSTABLE_ENVIRONMENT: WorldProfile = WorldProfile {
     thermal_coupling: 1.35,
     measurement_bias: 0.25,
 };
-

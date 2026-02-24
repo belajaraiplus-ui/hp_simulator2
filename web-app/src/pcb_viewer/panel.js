@@ -1,35 +1,162 @@
 // web-app/src/pcb_viewer/panel.js
 import { createDeepZoomViewer } from "./viewer/deepzoom.js";
+import OpenSeadragon from "openseadragon";
+import { getBoardList, loadBoard as loadBoardData, loadComponents, loadRails, getTileUrl, clearCache } from "../assets/loader.js";
+import { measureRail } from "../engine/adapter.js";
 
 let viewerInstance = null;
+let railOverlays = [];
+let currentBoard = null;
+let activeRail = null;
+let probeMode = false;
+let probeOverlays = [];
 
-// Prefer relative "/api" so Vite proxy works (recommended).
-// Fallback to absolute for direct backend access if needed.
-const API_BASE = "/api";
-const API_FALLBACK = "http://127.0.0.1:8080/api";
-
-async function fetchJson(url) {
-  const res = await fetch(url);
-  const text = await res.text();
-
-  if (!res.ok) {
-    throw new Error(`${url} -> ${res.status}: ${text}`);
-  }
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    throw new Error(`${url} returned non-JSON: ${text}`);
-  }
+function boardDimensions() {
+  const width = currentBoard?.image?.full_width_px || 2048;
+  const height = currentBoard?.image?.full_height_px || 2048;
+  return { width, height };
 }
 
-async function fetchJsonWithFallback(path) {
-  // path harus diawali dengan "/"
-  try {
-    return await fetchJson(`${API_BASE}${path}`);
-  } catch (_e) {
-    return await fetchJson(`${API_FALLBACK}${path}`);
+export function getBoardSize() {
+  const w = currentBoard?.image?.full_width_px;
+  const h = currentBoard?.image?.full_height_px;
+  return { w, h };
+}
+
+export function clearScene() {
+  if (viewerInstance) {
+    probeOverlays.forEach(p => {
+      try { viewerInstance.removeOverlay(p.element); } catch {}
+    });
+    probeOverlays = [];
+    
+    railOverlays.forEach((el) => {
+      try { viewerInstance.removeOverlay(el); } catch {}
+    });
+    railOverlays = [];
+    
+    safeDestroyViewer();
   }
+  
+  currentBoard = null;
+  activeRail = null;
+  probeMode = false;
+  
+  clearCache();
+  
+  const railSelect = document.querySelector("#rail-select");
+  if (railSelect) railSelect.innerHTML = '<option value="">-- Select Rail --</option>';
+}
+
+export function drawRailOverlay(viewer, rail) {
+  if (!viewer || !rail.overlay) return;
+  let { w, h } = getBoardSize();
+  w = w || 2048;
+  h = h || 2048;
+
+  railOverlays.forEach((el) => {
+    try { viewer.removeOverlay(el); } catch {}
+  });
+  railOverlays = [];
+  const polys = Array.isArray(rail.overlay) ? rail.overlay : [];
+  polys.forEach(poly => {
+    const el = document.createElement("div");
+    el.style.position = "absolute";
+    el.style.border = "2px solid rgba(255,200,0,0.7)";
+    el.style.background = "rgba(255,200,0,0.2)";
+    el.style.pointerEvents = "none";
+    const xs = poly.map(p => p[0]);
+    const ys = poly.map(p => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const rect = new OpenSeadragon.Rect(
+      minX / w,
+      minY / h,
+      (maxX - minX) / w,
+      (maxY - minY) / h
+    );
+    viewer.addOverlay({
+      element: el,
+      location: rect
+    });
+    railOverlays.push(el);
+  });
+}
+
+export function drawProbePoints(viewer, rails) {
+  let { w, h } = getBoardSize();
+  w = w || 2048;
+  h = h || 2048;
+
+  probeOverlays.forEach(p => viewer.removeOverlay(p.element));
+  probeOverlays = [];
+  
+  if (!viewer || !rails) return;
+  
+  rails.forEach(rail => {
+    const probePoints = rail.probe_points || [];
+    probePoints.forEach(tp => {
+      const el = document.createElement("div");
+      el.style.width = "12px";
+      el.style.height = "12px";
+      el.style.background = "#ff4444";
+      el.style.border = "2px solid white";
+      el.style.borderRadius = "50%";
+      el.style.cursor = "pointer";
+      el.style.boxShadow = "0 0 4px rgba(0,0,0,0.5)";
+      el.style.pointerEvents = "auto";
+      el.dataset.probeId = tp.id;
+      el.title = tp.label || tp.id;
+      
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const railId = rail.id;
+        console.log("Probe target:", tp.id, "rail:", railId);
+        measureRail(railId).then((measurement) => {
+          window.dispatchEvent(new CustomEvent("pcb:probe-measured", {
+            detail: { probeId: tp.id, railId, measurement }
+          }));
+        }).catch((err) => {
+          console.error("Probe measurement failed:", err);
+        });
+      });
+      
+      const rect = new OpenSeadragon.Rect(
+        tp.x / w - 6 / w,
+        tp.y / h - 6 / h,
+        12 / w,
+        12 / h
+      );
+      
+      viewer.addOverlay({
+        element: el,
+        location: rect
+      });
+      probeOverlays.push({ element: el, railId: rail.id });
+    });
+  });
+}
+
+export function toggleProbeMode(viewer, rails) {
+  probeMode = !probeMode;
+  if (probeMode) {
+    drawProbePoints(viewer, rails);
+  } else {
+    probeOverlays.forEach(p => viewer.removeOverlay(p.element));
+    probeOverlays = [];
+  }
+  return probeMode;
+}
+export function onRailSelected(railId) {
+  if (!currentBoard || !currentBoard.rails) return;
+
+  const rail = currentBoard.rails.find(r => r.id === railId);
+  if (!rail) return;
+
+  activeRail = railId;
+  drawRailOverlay(viewerInstance, rail);
 }
 
 function setStatus(mountPoint, msg) {
@@ -84,6 +211,16 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         LOAD
       </button>
 
+      <select id="rail-select"
+        style="background:#333; color:white; border:1px solid #555; padding:5px; pointer-events:auto;">
+        <option value="">-- Select Rail --</option>
+      </select>
+
+      <button id="btn-probe"
+        style="background:#28a745; color:white; border:none; padding:5px 15px; cursor:pointer; border-radius:4px; pointer-events:auto;">
+        PROBE
+      </button>
+
       <span id="pcb-status" style="color:#bbb; font-size:12px; margin-left:6px;">
         Loading boards...
       </span>
@@ -93,7 +230,9 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   `;
 
   const select = mountPoint.querySelector("#board-select");
+  const railSelect = mountPoint.querySelector("#rail-select");
   const loadBtn = mountPoint.querySelector("#btn-load-pcb");
+  const probeBtn = mountPoint.querySelector("#btn-probe");
   const canvasTarget = mountPoint.querySelector("#pcb-canvas-target");
 
   // extra safety
@@ -107,9 +246,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     loadBtn.disabled = true;
 
     try {
-      // /api/boards -> { version, boards: [...] }
-      const manifest = await fetchJsonWithFallback("/boards");
-      boards = Array.isArray(manifest?.boards) ? manifest.boards : [];
+      boards = await getBoardList();
 
       if (!boards.length) {
         select.innerHTML = "";
@@ -137,39 +274,53 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       return;
     }
 
+    probeMode = false;
+    probeBtn.style.background = "#28a745";
+    
     setStatus(mountPoint, `Loading board: ${boardId}...`);
     loadBtn.disabled = true;
 
     try {
-      // board.json
-      const boardData = await fetchJsonWithFallback(`/boards/${encodeURIComponent(boardId)}/board`);
+      const boardData = await loadBoardData(boardId);
 
-      // destroy viewer lama (jika ada)
       safeDestroyViewer();
 
-      // init deep zoom viewer
       viewerInstance = await createDeepZoomViewer({
         el: canvasTarget,
         board: boardData,
+        getTileUrl: (level, x, y) => getTileUrl(boardId, level, x, y),
       });
 
-      // components.json -> { version, components: [...] }
-      let componentsFile = null;
-      try {
-        componentsFile = await fetchJsonWithFallback(`/boards/${encodeURIComponent(boardId)}/components`);
-      } catch (e) {
-        console.warn("components load failed (non-fatal):", e);
-      }
+      const components = await loadComponents(boardId);
+      const rails = await loadRails(boardId);
+      currentBoard = { ...boardData, components, rails };
 
-      const components = Array.isArray(componentsFile?.components)
-        ? componentsFile.components
-        : [];
+      railSelect.innerHTML = '<option value="">-- Select Rail --</option>' +
+        rails.map(r => `<option value="${r.id}">${r.label || r.id}</option>`).join("");
+
+      railSelect.onchange = () => {
+        if (railSelect.value) {
+          onRailSelected(railSelect.value);
+        }
+      };
+
+      probeBtn.onclick = () => {
+        const isActive = toggleProbeMode(viewerInstance, rails);
+        probeBtn.style.background = isActive ? "#1e7e34" : "#28a745";
+      };
 
       setStatus(mountPoint, `Loaded: ${boardData?.name || boardId}`);
 
       if (typeof onBoardReady === "function") {
-        onBoardReady({ board: boardData, components });
+        onBoardReady({ board: boardData, components, rails });
       }
+
+      document.querySelectorAll(".rail-item").forEach(el => {
+        el.addEventListener("click", () => {
+          const id = el.dataset.rail;
+          onRailSelected(id);
+        });
+      });
     } catch (e) {
       console.error("Load board failed:", e);
       setStatus(mountPoint, `Load failed: ${e.message}`);
@@ -181,10 +332,15 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
 
   // bind click
   loadBtn.onclick = () => loadBoard(select.value);
+  
+  // Auto-load on selection change
+  select.addEventListener("change", () => loadBoard(select.value));
 
   // init
   loadBoardsList().then(() => {
     // auto-load first board so UI doesn't feel dead
     if (select.value) loadBoard(select.value);
   });
+  
+  return { loadBoard, clearScene, getBoardList };
 }

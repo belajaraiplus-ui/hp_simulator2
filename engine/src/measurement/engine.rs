@@ -101,7 +101,11 @@ impl MeasurementEngine {
         }
     }
 
-    pub fn measure_component(state: &mut PhoneState, mode: &str, component_id: &str) -> Option<f64> {
+    pub fn measure_component(
+        state: &mut PhoneState,
+        mode: &str,
+        component_id: &str,
+    ) -> Option<f64> {
         let probe = Self::component_probe(component_id)?;
         let mode_key = mode.trim().to_lowercase();
 
@@ -157,15 +161,12 @@ impl MeasurementEngine {
         // NOISE MODEL (CONTEXTUAL)
         // =======================
         let stress_noise: f64 =
-            state.stress.electrical * 0.02_f64 +
-            state.stress.measurement * 0.03_f64;
+            state.stress.electrical * 0.02_f64 + state.stress.measurement * 0.03_f64;
 
         let fatigue_noise: f64 = fatigue_factor * 0.05_f64;
 
-        let noise: f64 = rail_state.noise
-            + state.electrical.transient_noise
-            + stress_noise
-            + fatigue_noise;
+        let noise: f64 =
+            rail_state.noise + state.electrical.transient_noise + stress_noise + fatigue_noise;
 
         let observed: f64 = rail_state.state.voltage + noise;
 
@@ -207,10 +208,9 @@ impl MeasurementEngine {
         // probe distortion
         z.temperature += fatigue_factor * 0.1_f64;
 
-        let noise: f64 =
-            state.electrical.transient_noise * 0.5_f64 +
-            state.stress.thermal * 0.02_f64 +
-            fatigue_factor * 0.1_f64;
+        let noise: f64 = state.electrical.transient_noise * 0.5_f64
+            + state.stress.thermal * 0.02_f64
+            + fatigue_factor * 0.1_f64;
 
         let observed: f64 = z.temperature + noise;
 
@@ -253,8 +253,7 @@ impl MeasurementEngine {
 
         // Noise & jitter
         let noise: f64 =
-            state.electrical.transient_noise * 0.1_f64 +
-            state.stress.measurement * 0.02_f64;
+            state.electrical.transient_noise * 0.1_f64 + state.stress.measurement * 0.02_f64;
 
         let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.01_f64;
 
@@ -319,10 +318,9 @@ impl MeasurementEngine {
             }
         };
 
-        let noise: f64 =
-            (state.electrical.transient_noise * 5.0_f64) +
-            (state.stress.measurement * 1.5_f64) +
-            fatigue_factor * 0.5_f64;
+        let noise: f64 = (state.electrical.transient_noise * 5.0_f64)
+            + (state.stress.measurement * 1.5_f64)
+            + fatigue_factor * 0.5_f64;
 
         let jitter: f64 = (state.rng_f64() - 0.5_f64) * (resistance * 0.02_f64).min(5.0_f64);
 
@@ -391,10 +389,9 @@ impl MeasurementEngine {
             resistance = 1.0e9_f64;
         }
 
-        let noise: f64 =
-            (state.electrical.transient_noise * 3.0_f64) +
-            (state.stress.measurement * 1.0_f64) +
-            fatigue_factor * 0.3_f64;
+        let noise: f64 = (state.electrical.transient_noise * 3.0_f64)
+            + (state.stress.measurement * 1.0_f64)
+            + fatigue_factor * 0.3_f64;
 
         let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.5_f64;
 
@@ -446,10 +443,9 @@ impl MeasurementEngine {
         let local_drop: f64 = probe_load * (rail_state.health.esr + probe.parasitic_ohm);
         rail_state.state.voltage -= local_drop;
 
-        let noise: f64 =
-            rail_state.noise +
-            state.electrical.transient_noise * 0.8_f64 +
-            fatigue_factor * 0.03_f64;
+        let noise: f64 = rail_state.noise
+            + state.electrical.transient_noise * 0.8_f64
+            + fatigue_factor * 0.03_f64;
 
         let mut observed: f64 = rail_state.state.voltage + noise;
         if observed.is_nan() {
@@ -509,10 +505,9 @@ impl MeasurementEngine {
             }
         };
 
-        let noise: f64 =
-            state.electrical.transient_noise * 2.0_f64 +
-            state.stress.measurement * 0.8_f64 +
-            fatigue_factor * 0.2_f64;
+        let noise: f64 = state.electrical.transient_noise * 2.0_f64
+            + state.stress.measurement * 0.8_f64
+            + fatigue_factor * 0.2_f64;
 
         let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.4_f64;
 
@@ -563,8 +558,7 @@ impl MeasurementEngine {
         }
 
         let noise: f64 =
-            state.electrical.transient_noise * 0.08_f64 +
-            state.stress.measurement * 0.015_f64;
+            state.electrical.transient_noise * 0.08_f64 + state.stress.measurement * 0.015_f64;
 
         let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.01_f64;
 
@@ -623,8 +617,7 @@ impl MeasurementEngine {
         }
 
         let noise: f64 =
-            state.electrical.transient_noise * 1.5_f64 +
-            state.stress.measurement * 0.5_f64;
+            state.electrical.transient_noise * 1.5_f64 + state.stress.measurement * 0.5_f64;
 
         let jitter: f64 = (state.rng_f64() - 0.5_f64) * 0.3_f64;
 

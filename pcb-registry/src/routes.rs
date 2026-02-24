@@ -9,7 +9,7 @@ use axum::body::Body;
 use std::sync::Arc;
 
 use crate::{
-    model::{BoardFile, ComponentsFile, Manifest, RailsFile},
+    model::{BoardFile, ComponentsFile, Manifest, RailsFile, TopologyFile, ThermalFile},
     state::AppState,
 };
 
@@ -149,6 +149,76 @@ pub async fn get_rails(Path(board_id): Path<String>, State(st): State<AppState>)
     (StatusCode::OK, Json(arc.as_ref().clone())).into_response()
 }
 
+pub async fn get_topology(
+    Path(board_id): Path<String>,
+    State(st): State<AppState>,
+) -> impl IntoResponse {
+    if !valid_board_id(&board_id) {
+        return (StatusCode::BAD_REQUEST, "invalid board id").into_response();
+    }
+
+    if let Some(v) = st.topology_cache.get(&board_id) {
+        return (StatusCode::OK, Json(v.value().as_ref().clone())).into_response();
+    }
+
+    let path = st.topology_path(&board_id);
+
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("topology read failed: id={} path={} err={}", board_id, path.display(), e);
+            return (StatusCode::NOT_FOUND, "topology.json not found").into_response();
+        }
+    };
+
+    let parsed: TopologyFile = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("topology parse failed: id={} err={}", board_id, e);
+            return (StatusCode::BAD_REQUEST, "invalid topology.json").into_response();
+        }
+    };
+
+    let arc = Arc::new(parsed);
+    st.topology_cache.insert(board_id.clone(), arc.clone());
+    (StatusCode::OK, Json(arc.as_ref().clone())).into_response()
+}
+
+pub async fn get_thermal(
+    Path(board_id): Path<String>,
+    State(st): State<AppState>,
+) -> impl IntoResponse {
+    if !valid_board_id(&board_id) {
+        return (StatusCode::BAD_REQUEST, "invalid board id").into_response();
+    }
+
+    if let Some(v) = st.thermal_cache.get(&board_id) {
+        return (StatusCode::OK, Json(v.value().as_ref().clone())).into_response();
+    }
+
+    let path = st.thermal_path(&board_id);
+
+    let bytes = match tokio::fs::read(&path).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!("thermal read failed: id={} path={} err={}", board_id, path.display(), e);
+            return (StatusCode::NOT_FOUND, "thermal.json not found").into_response();
+        }
+    };
+
+    let parsed: ThermalFile = match serde_json::from_slice(&bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("thermal parse failed: id={} err={}", board_id, e);
+            return (StatusCode::BAD_REQUEST, "invalid thermal.json").into_response();
+        }
+    };
+
+    let arc = Arc::new(parsed);
+    st.thermal_cache.insert(board_id.clone(), arc.clone());
+    (StatusCode::OK, Json(arc.as_ref().clone())).into_response()
+}
+
 pub async fn get_tile(
     Path((board_id, level, tile_name)): Path<(String, u32, String)>,
     State(st): State<AppState>,
@@ -175,7 +245,7 @@ pub async fn get_tile(
     //
     // Maka kita map: disk_level = MAX_LEVEL - requested_level
     // ==========================================================
-    const MAX_LEVEL: u32 = 11; // karena folder tiles kamu 0..11
+    const MAX_LEVEL: u32 = 17;
 
     if level > MAX_LEVEL {
         return (StatusCode::NOT_FOUND, "tile not found").into_response();

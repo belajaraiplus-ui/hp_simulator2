@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "defaults": {
+    "continuity": {
+      "beep_below_ohms": 50.0,
+      "open_above_ohms": 200.0
+    }
+  },
+  "rails": [
+    {
+      "id": "VSB_5V",
+      "label": "VSB 5V (Standby)",
+      "type": "standby",
+      "expected": {
+        "voltage_v": { "min": 4.75, "max": 5.25 },
+        "diode_drop_v": { "min": 0.45, "max": 0.80 },
+        "r2g_ohms": { "nominal": 800.0 },
+        "continuity": { "beep_below_ohms": 30.0, "open_above_ohms": 150.0 }
+      },
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[25,40],[70,40],[70,85],[25,85]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VSB_5V", "x": 47, "y": 62, "label": "VSB_5V" }
+      ]
+    },
+    {
+      "id": "VRTC",
+      "label": "VRTC (RTC Battery)",
+      "type": "rtc",
+      "expected": {
+        "voltage_v": { "min": 2.5, "max": 3.3 },
+        "diode_drop_v": { "min": 0.25, "max": 0.45 },
+        "r2g_ohms": { "nominal": 5000.0 },
+        "continuity": { "beep_below_ohms": 1000.0, "open_above_ohms": 10000.0 }
+      },
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[100,150],[140,150],[140,190],[100,190]]
+        ]
+      },
+      "probe_points": [
+        { "id": "TP_VRTC", "x": 120, "y": 170, "label": "VRTC" }
+      ]
+    }
+  ]
+}

@@ -26,9 +26,13 @@ impl MeasurementTool for Multimeter {
     fn perform(&self, s: &mut PhoneState, _dt: f64) -> f64 {
         match self.mode {
             MultimeterMode::Voltage => MeasurementEngine::measure_voltage(s, self.target_rail),
-            MultimeterMode::Resistance => MeasurementEngine::measure_resistance(s, self.target_rail),
+            MultimeterMode::Resistance => {
+                MeasurementEngine::measure_resistance(s, self.target_rail)
+            }
             MultimeterMode::Diode => MeasurementEngine::measure_diode(s, self.target_rail),
-            MultimeterMode::Continuity => MeasurementEngine::measure_continuity(s, self.target_rail),
+            MultimeterMode::Continuity => {
+                MeasurementEngine::measure_continuity(s, self.target_rail)
+            }
         }
     }
 }

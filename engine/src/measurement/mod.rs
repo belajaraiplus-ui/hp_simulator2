@@ -4,10 +4,10 @@
 pub mod engine;
 
 // Tool & behavior berada di bawah engine secara konseptual
-pub mod tool;
-pub mod repetition;
-pub mod meta;
 pub mod board_profile;
+pub mod meta;
+pub mod repetition;
+pub mod tool;
 
 // Reserved (FASE berikutnya)
 pub mod multimeter;

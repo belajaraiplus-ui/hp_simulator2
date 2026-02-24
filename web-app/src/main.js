@@ -11,6 +11,7 @@ import {
   railVisibility,
   setSelectedBoardComponent,
   smoothingAlpha,
+  resetBoardState,
 } from "./state.js";
 import { computeDiagnostic } from "./analysis.js";
 import {
@@ -22,6 +23,13 @@ import {
   drawDistressChart
 } from "./ui/charts.js";
 import { buildMultimeterLabel, renderMultimeterResult } from "./ui/multimeter.js";
+import { showAIPanel } from "./ai/panel.js";
+import { initScenarioSelector, updateScenarioDisplay } from "./ui/scenario_selector.js";
+import { initExportReport } from "./export/report.js";
+import { initTimeline, saveSnapshot } from "./ui/timeline.js";
+import { initSaveLoad } from "./persistence/storage.js";
+import { showOutcomeModal } from "./outcome/display.js";
+import { showOscilloscope, toggleOscilloscope } from "./ui/oscilloscope.js";
 
 /* ==========================================================
    DOM REFERENCES
@@ -57,6 +65,81 @@ const psuCurrentEl = document.getElementById("psuMeasuredCurrent");
 const diagnosticText = document.getElementById("diagnosticText");
 const diagnosticConfidence = document.getElementById("diagnosticConfidence");
 const railTogglePanel = document.getElementById("railTogglePanel");
+
+/* ==========================================================
+   MEASUREMENT HISTORY
+   ========================================================== */
+let measurementHistoryData = [];
+
+function formatTime(t) {
+  if (t == null) return "0.0s";
+  return t.toFixed(1) + "s";
+}
+
+function formatValue(val, mode) {
+  if (val == null) return "---";
+  if (mode?.includes("continuity")) {
+    return val > 0 ? "BEEP" : "OL";
+  }
+  if (mode?.includes("diode")) {
+    return val > 0 ? val.toFixed(3) + "V" : "OL";
+  }
+  if (mode?.includes("ohm") || mode?.includes("resistance")) {
+    return val > 1000000 ? "OL" : val.toFixed(1) + "Ω";
+  }
+  return val.toFixed(3) + "V";
+}
+
+function renderMeasurementHistory() {
+  const container = document.getElementById("measurementHistory");
+  if (!container) return;
+
+  if (!measurementHistoryData || measurementHistoryData.length === 0) {
+    container.innerHTML = '<div class="measEmpty">No measurements yet</div>';
+    return;
+  }
+
+  const recent = measurementHistoryData.slice(-20).reverse();
+  
+  container.innerHTML = `
+    <div class="measHeader">
+      <span>Time</span>
+      <span>Target</span>
+      <span>Value</span>
+    </div>
+    ${recent.map(m => `
+      <div class="measItem">
+        <span class="measTime">${formatTime(m.time)}</span>
+        <span class="measTarget">${m.target || "?"}</span>
+        <span class="measValue">${formatValue(m.observed_value, m.target)}</span>
+        ${(m.noise > 0 || m.stress_added > 0) ? `
+          <div class="measMeta">
+            ${m.noise > 0 ? `<span class="measNoise">±${m.noise.toFixed(3)}</span>` : ""}
+            ${m.stress_added > 0 ? `<span class="measStress">⚡${(m.stress_added * 100).toFixed(1)}%</span>` : ""}
+          </div>
+        ` : ""}
+      </div>
+    `).join("")}
+  `;
+}
+
+function toProbeNumeric(measurement) {
+  if (Number.isFinite(measurement)) return measurement;
+  if (measurement && typeof measurement === "object") {
+    const candidates = [
+      measurement.observed_value,
+      measurement.value,
+      measurement.measurement,
+      measurement.voltage,
+    ];
+    for (const c of candidates) {
+      const n = Number(c);
+      if (Number.isFinite(n)) return n;
+    }
+  }
+  const n = Number(measurement);
+  return Number.isFinite(n) ? n : NaN;
+}
 
 /* ==========================================================
    SMALL HELPERS
@@ -128,8 +211,16 @@ function handleResize() {
 function processSnapshot(snap) {
   if (!snap) return;
 
+  console.log("processSnapshot - rails:", snap.rails, "thermals:", snap.thermals);
+
   // show raw snapshot for debugging
   if (out) out.textContent = JSON.stringify(snap, null, 2);
+
+  // Measurement History
+  if (snap.measurements && Array.isArray(snap.measurements)) {
+    measurementHistoryData = snap.measurements;
+    renderMeasurementHistory();
+  }
 
   // PSU panel
   renderPowerInput(snap.power_input);
@@ -220,6 +311,18 @@ function updatePanelsFromLatestDiagnostic() {
     diagnosticConfidence.textContent = `Confidence: ${formatNumber(diag.confidence ?? 0, 2)}`;
   }
 
+  // Update hypothesis list
+  const hypothesisList = document.getElementById('hypothesisList');
+  if (hypothesisList && diag.hypotheses) {
+    hypothesisList.innerHTML = '';
+    diag.hypotheses.forEach(h => {
+      const li = document.createElement('li');
+      li.textContent = h.text;
+      li.style.color = h.type === 'critical' ? '#ff4500' : h.type === 'distress' ? '#ffcc00' : '#ce9178';
+      hypothesisList.appendChild(li);
+    });
+  }
+
   // FIX: dulu pakai snap yang undefined -> selalu 0
   if (distressFill) {
     const pct = Math.max(0, Math.min(100, Number(diag.distress ?? 0) * 100));
@@ -249,6 +352,7 @@ function renderLoop(now) {
 let engineLoopId = null;
 let engineReady = false;
 
+document.addEventListener("DOMContentLoaded", () => {
   handleResize();
   window.addEventListener("resize", debounce(handleResize, 100));
 
@@ -270,8 +374,9 @@ let engineReady = false;
   })();
 
   // 2) INIT PCB VIEWER
+  let pcbViewerAPI = null;
   try {
-    initPcbViewerPanel({
+    pcbViewerAPI = initPcbViewerPanel({
       mountSelector: "#motherboardMap",
       onBoardReady: ({ board, components }) => {
         console.log("📡 Board loaded:", board?.id);
@@ -293,6 +398,84 @@ let engineReady = false;
     if (out) out.textContent = `PCB VIEWER ERROR:\n${String(e?.stack || e)}`;
   }
 
+  // 2.5) INIT BOARD SELECTOR IN TOPBAR
+  async function initBoardSelector() {
+    const boardSelectorContainer = document.getElementById('boardSelector');
+    if (!boardSelectorContainer) return;
+    
+    try {
+      const boards = await pcbViewerAPI?.getBoardList();
+      if (!boards || boards.length === 0) return;
+      
+      boardSelectorContainer.innerHTML = `
+        <select id="topbar-board-select" class="board-select">
+          ${boards.map(b => `<option value="${b.id}">${b.name || b.id}</option>`).join('')}
+        </select>
+      `;
+      
+      const topbarSelect = document.getElementById('topbar-board-select');
+      topbarSelect.addEventListener('change', async (e) => {
+        const boardId = e.target.value;
+        console.log('Switching to board:', boardId);
+        
+        pcbViewerAPI?.clearScene();
+        resetBoardState();
+        await pcbViewerAPI?.loadBoard(boardId);
+        
+        if (boardProfileLabelEl) {
+          const board = boards.find(b => b.id === boardId);
+          boardProfileLabelEl.textContent = board?.name || boardId;
+        }
+      });
+      
+      console.log('📋 Board selector ready');
+    } catch (e) {
+      console.error('Board selector init failed:', e);
+    }
+  }
+  
+  initBoardSelector();
+
+  // 3) INIT SCENARIO SELECTOR
+  try {
+    initScenarioSelector();
+    updateScenarioDisplay();
+    console.log("📋 Scenario selector ready");
+  } catch (e) {
+    console.error("Scenario selector init failed:", e);
+  }
+
+  // 4) INIT EXPORT REPORT
+  try {
+    initExportReport();
+    console.log("📄 Export report ready");
+  } catch (e) {
+    console.error("Export report init failed:", e);
+  }
+
+  // 5) INIT TIMELINE
+  try {
+    initTimeline();
+    console.log("⏱️ Timeline ready");
+  } catch (e) {
+    console.error("Timeline init failed:", e);
+  }
+
+  // 6) INIT SAVE/LOAD
+  try {
+    initSaveLoad();
+    console.log("💾 Save/Load ready");
+
+    const showOutcomeBtn = document.getElementById('showOutcome');
+    if (showOutcomeBtn) {
+      showOutcomeBtn.addEventListener('click', () => {
+        showOutcomeModal();
+      });
+    }
+  } catch (e) {
+    console.error("Save/Load init failed:", e);
+  }
+
   // Multimeter UI Logic: Enable/Disable inputs based on target type
   if (multimeterTargetTypeEl) {
     multimeterTargetTypeEl.addEventListener("change", () => {
@@ -304,30 +487,60 @@ let engineReady = false;
     multimeterTargetTypeEl.dispatchEvent(new Event("change"));
   }
 
+  // Sync probe click result from PCB viewer to multimeter UI
+  window.addEventListener("pcb:probe-measured", async (evt) => {
+    const detail = evt?.detail || {};
+    const railId = detail.railId || "";
+    const value = toProbeNumeric(detail.measurement);
+
+    if (multimeterTargetTypeEl) {
+      multimeterTargetTypeEl.value = "rail";
+      multimeterTargetTypeEl.dispatchEvent(new Event("change"));
+    }
+    if (multimeterRailEl && railId) {
+      multimeterRailEl.value = railId;
+    }
+    renderMultimeterResult(multimeterResultEl, multimeterModeEl?.value || "voltage", value);
+
+    // Keep history panel in sync with latest engine measurement stream
+    try {
+      const snap = await snapshot();
+      if (snap && snap.measurements) {
+        measurementHistoryData = snap.measurements;
+        renderMeasurementHistory();
+      }
+    } catch (e) {
+      console.warn("Failed to refresh measurement history after probe:", e);
+    }
+  });
+
   /* =========================
      UI EVENT LISTENERS
      ========================= */
 
   // PSU Apply
   if (psuApplyBtn) {
-    psuApplyBtn.onclick = () => {
+    psuApplyBtn.onclick = async () => {
       if (!engineReady) {
         console.warn("Engine not ready. Please wait for boot.");
         return;
       }
-      applyPsuConfig({
+      const psuConfig = {
         voltage: parseFloat(psuVoltageEl.value) || 4.2,
         currentLimit: parseFloat(psuCurrentLimitEl.value) || 2.0,
         enabled: !!psuEnableEl.checked,
-      });
-      const snap = snapshot();
+      };
+      console.log("PSU Config:", psuConfig);
+      await applyPsuConfig(psuConfig);
+      const snap = await snapshot();
+      console.log("Snapshot power_input:", snap?.power_input);
       processSnapshot(snap);
     };
   }
 
   // Multimeter Measure
   if (manualMeasureBtn) {
-    manualMeasureBtn.onclick = () => {
+    manualMeasureBtn.onclick = async () => {
       if (!engineReady) {
         console.warn("Engine not ready. Please wait for boot.");
         return;
@@ -344,20 +557,31 @@ let engineReady = false;
         setSelectedBoardComponent(multimeterComponentEl.value);
       }
 
-      const val = measureTool(label);
+      const val = await measureTool(label);
       renderMultimeterResult(multimeterResultEl, multimeterModeEl.value, Number(val));
+      
+      // Update measurement history immediately
+      const snap = await snapshot();
+      if (snap && snap.measurements) {
+        measurementHistoryData = snap.measurements;
+        renderMeasurementHistory();
+      }
     };
   }
 
   // STEP
   if (stepBtn) {
-    stepBtn.onclick = () => {
+    stepBtn.onclick = async () => {
       if (!engineReady) {
         console.warn("Engine not ready. Please wait for boot.");
         return;
       }
-      const snap = step();
-      if (snap) processSnapshot(snap);
+      const snap = await step();
+      if (snap && typeof snap === "object") {
+        State.setSnapshot(snap);
+        processSnapshot(snap);
+        saveSnapshot(snap);
+      }
       updateStatus("PAUSED");
     };
   }
@@ -369,6 +593,8 @@ let engineReady = false;
     return Math.max(10, Math.round(ENGINE_BASE_INTERVAL_MS / s));
   }
 
+  let loopBusy = false;
+
   if (runBtn) {
     runBtn.onclick = () => {
       if (!engineReady) {
@@ -376,9 +602,21 @@ let engineReady = false;
         return;
       }
       if (engineLoopId) return;
-      engineLoopId = setInterval(() => {
-        const snap = step();
-        if (snap) processSnapshot(snap);
+      engineLoopId = setInterval(async () => {
+        if (loopBusy) return;
+        loopBusy = true;
+        try {
+          const snap = await step();
+          if (snap && typeof snap === "object") {
+            State.setSnapshot(snap);
+            processSnapshot(snap);
+            saveSnapshot(snap);
+          }
+        } catch (e) {
+          console.error("Engine loop step failed:", e);
+        } finally {
+          loopBusy = false;
+        }
       }, currentIntervalMs());
       updateStatus("RUNNING");
     };
@@ -388,6 +626,7 @@ let engineReady = false;
     pauseBtn.onclick = () => {
       if (engineLoopId) clearInterval(engineLoopId);
       engineLoopId = null;
+      loopBusy = false;
       updateStatus("PAUSED");
     };
   }
@@ -397,12 +636,74 @@ let engineReady = false;
       // if running, restart interval at new speed
       if (!engineLoopId) return;
       clearInterval(engineLoopId);
-      engineLoopId = setInterval(() => {
-        const snap = step();
-        if (snap) processSnapshot(snap);
+      engineLoopId = setInterval(async () => {
+        if (loopBusy) return;
+        loopBusy = true;
+        try {
+          const snap = await step();
+          if (snap && typeof snap === "object") {
+            State.setSnapshot(snap);
+            processSnapshot(snap);
+            saveSnapshot(snap);
+          }
+        } catch (e) {
+          console.error("Engine loop step failed:", e);
+        } finally {
+          loopBusy = false;
+        }
       }, currentIntervalMs());
     };
   }
 
   // RESET
-  if (resetBtn) resetBtn.onclick = () => window.location.reload();
+  if (resetBtn) resetBtn.onclick = () => {
+    showOutcomeModal();
+    setTimeout(() => {
+      window.location.reload();
+    }, 100);
+  };
+
+  // AI Panel Button - Add floating button
+  const aiBtn = document.createElement('button');
+  aiBtn.id = 'ai-toggle-btn';
+  aiBtn.textContent = '🤖 AI';
+  aiBtn.style.cssText = `
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    padding: 10px 20px;
+    background: #4a90d9;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 999;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  `;
+  aiBtn.onclick = showAIPanel;
+  document.body.appendChild(aiBtn);
+
+  // Oscilloscope Button
+  const scopeBtn = document.createElement('button');
+  scopeBtn.id = 'scope-toggle-btn';
+  scopeBtn.textContent = '📟 Scope';
+  scopeBtn.style.cssText = `
+    position: fixed;
+    right: 90px;
+    bottom: 20px;
+    padding: 10px 20px;
+    background: #ff6600;
+    color: white;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    z-index: 999;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+  `;
+  scopeBtn.onclick = toggleOscilloscope;
+  document.body.appendChild(scopeBtn);
+});

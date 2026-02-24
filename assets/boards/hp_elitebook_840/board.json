@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "id": "hp_elitebook_840",
+  "name": "HP EliteBook 840 G6 Motherboard",
+  "image": {
+    "full_width_px": 24000,
+    "full_height_px": 16000
+  },
+  "tiles": {
+    "type": "dzi-like",
+    "tile_size": 256,
+    "overlap": 0,
+    "format": "jpg",
+    "max_level": 17,
+    "url_template": "/api/boards/hp_elitebook_840/tiles/{level}/{x}_{y}.jpg"
+  },
+  "units": {
+    "mm_per_px": 0.0048,
+    "origin": "top_left"
+  },
+  "transform": {
+    "type": "affine",
+    "a": 0.0048,
+    "b": 0.0,
+    "c": 0.0,
+    "d": 0.0048,
+    "tx": 0.0,
+    "ty": 0.0
+  },
+  "components_url": "/api/boards/hp_elitebook_840/components",
+  "rails_url": "/api/boards/hp_elitebook_840/rails",
+  "topology_url": "/api/boards/hp_elitebook_840/topology",
+  "thermal_url": "/api/boards/hp_elitebook_840/thermal"
+}

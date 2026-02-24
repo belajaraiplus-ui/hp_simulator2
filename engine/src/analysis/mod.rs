@@ -1,3 +1,3 @@
-pub mod input;
 pub mod engine;
+pub mod input;
 pub mod types;

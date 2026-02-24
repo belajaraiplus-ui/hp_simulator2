@@ -8,5 +8,9 @@ pub struct FaultRegistry {
 }
 
 impl FaultRegistry {
-    pub fn new() -> Self { Self { active: HashMap::new() } }
+    pub fn new() -> Self {
+        Self {
+            active: HashMap::new(),
+        }
+    }
 }

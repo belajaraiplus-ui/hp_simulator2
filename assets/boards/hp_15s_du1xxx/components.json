@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "components": [
+    {
+      "id": "U5001",
+      "refdes": "U5001",
+      "kind": "IC",
+      "bbox": { "x": 8000, "y": 6000, "w": 350, "h": 320 },
+      "shape": {
+        "type": "poly",
+        "points": [[8000,6000],[8350,6000],[8350,6320],[8000,6320]]
+      },
+      "tags": ["pmic", "charging"],
+      "hints": {
+        "rails": ["VBOOST", "VBUS"]
+      }
+    },
+    {
+      "id": "U5002",
+      "refdes": "U5002",
+      "kind": "IC",
+      "bbox": { "x": 9500, "y": 5800, "w": 280, "h": 250 },
+      "shape": {
+        "type": "poly",
+        "points": [[9500,5800],[9780,5800],[9780,6050],[9500,6050]]
+      },
+      "tags": ["power", "buck"],
+      "hints": {
+        "rails": ["VCPU", "VGPU"]
+      }
+    }
+  ]
+}

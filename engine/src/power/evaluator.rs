@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 
-use crate::state::ids::RailId;
 use super::graph::DependencyGraph;
 use super::rail::{Rail, RailStatus};
+use crate::state::electrical::ElectricalState;
+use crate::state::ids::RailId;
 
 /// PowerEvaluator:
 /// - Menentukan status + target_voltage rail berdasarkan dependency graph.
@@ -24,7 +25,10 @@ impl PowerEvaluator {
     /// (contoh: VBAT dari PSU/charger, VCHG dari USB, VSYS dari charger IC).
     ///
     /// Anda bisa panggil fungsi ini setiap tick sebelum evaluate().
-    pub fn apply_root_inputs(rails: &mut HashMap<RailId, Rail>, root_inputs: &HashMap<RailId, f64>) {
+    pub fn apply_root_inputs(
+        rails: &mut HashMap<RailId, Rail>,
+        root_inputs: &HashMap<RailId, f64>,
+    ) {
         for (&rid, &v) in root_inputs.iter() {
             let r = rails.entry(rid).or_insert_with(|| Rail::new(rid));
             r.state.voltage = v.max(0.0_f64);
@@ -47,11 +51,35 @@ impl PowerEvaluator {
         }
     }
 
-    /// Evaluate dependency:
-    /// - set status & target_voltage untuk downstream rails
-    /// - handle short/brownout dari RailHealth.r2g
-    /// - handle cycle: remaining -> Missing
-    pub fn evaluate(graph: &DependencyGraph, rails: &mut HashMap<RailId, Rail>) {
+    /// Evaluate dependency + root inputs (VCHG from PSU):
+    /// - Handle root input: VCHG from electrical.input if enabled
+    /// - Set status & target_voltage untuk downstream rails
+    /// - Handle short/brownout dari RailHealth.r2g
+    /// - Handle cycle: remaining -> Missing
+    pub fn evaluate(graph: &DependencyGraph, electrical: &mut ElectricalState) {
+        // ====== VCHG Root Input (Charger/USB) ======
+        if electrical.input.vchg_enabled {
+            let vchg = electrical
+                .rails
+                .entry(RailId::Vchg)
+                .or_insert_with(|| Rail::new(RailId::Vchg));
+            vchg.target_voltage = electrical.input.vchg_voltage;
+            if electrical.input.vchg_voltage > Self::ALIVE_V {
+                if vchg.status != RailStatus::ShortToGnd {
+                    vchg.status = RailStatus::On;
+                }
+            }
+        } else {
+            // Charger disabled
+            if let Some(vchg) = electrical.rails.get_mut(&RailId::Vchg) {
+                vchg.target_voltage = 0.0;
+                if vchg.status != RailStatus::ShortToGnd {
+                    vchg.status = RailStatus::Off;
+                }
+            }
+        }
+
+        let rails = &mut electrical.rails;
         let topo = graph.topo_order();
 
         // helper ambil voltage/status upstream
@@ -70,7 +98,9 @@ impl PowerEvaluator {
 
         // 1) traverse topo: src -> children
         for &src in topo.order.iter() {
-            let Some(children) = graph.get_dependents(src) else { continue; };
+            let Some(children) = graph.get_dependents(src) else {
+                continue;
+            };
 
             let src_live = upstream_live(rails, src);
             let src_v = upstream_voltage(rails, src);
