@@ -1,6 +1,6 @@
 # HP Simulator
 
-Simulator berbasis web untuk melatih pengambilan keputusan teknis pada diagnosis perangkat HP/laptop, dengan engine simulasi kausal (bukan panduan reparasi instan).
+Simulator berbasis web untuk melatih pengambilan keputusan teknis pada diagnosis perangkat HP, dengan engine simulasi kausal (bukan panduan reparasi instan).
 
 ## Status Project Saat Ini
 
