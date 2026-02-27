@@ -1,13 +1,15 @@
 // web-app/src/pcb_viewer/panel.js
 import { createDeepZoomViewer } from "./viewer/deepzoom.js";
 import OpenSeadragon from "openseadragon";
-import { getBoardList, loadBoard as loadBoardData, loadComponents, loadRails, getTileUrl, clearCache } from "../assets/loader.js";
+import { getBoardList, loadBoard as loadBoardData, loadComponents, loadRails, loadTopology, getTileUrl, clearCache } from "../assets/loader.js";
 import { measureRail } from "../engine/adapter.js";
 
 let viewerInstance = null;
 let railOverlays = [];
+let psuTargetOverlays = [];
 let currentBoard = null;
 let activeRail = null;
+let psuTargetRail = null;
 let probeMode = false;
 let probeOverlays = [];
 
@@ -34,12 +36,18 @@ export function clearScene() {
       try { viewerInstance.removeOverlay(el); } catch {}
     });
     railOverlays = [];
+
+    psuTargetOverlays.forEach((el) => {
+      try { viewerInstance.removeOverlay(el); } catch {}
+    });
+    psuTargetOverlays = [];
     
     safeDestroyViewer();
   }
   
   currentBoard = null;
   activeRail = null;
+  psuTargetRail = null;
   probeMode = false;
   
   clearCache();
@@ -58,7 +66,9 @@ export function drawRailOverlay(viewer, rail) {
     try { viewer.removeOverlay(el); } catch {}
   });
   railOverlays = [];
-  const polys = Array.isArray(rail.overlay) ? rail.overlay : [];
+  const polys = Array.isArray(rail.overlay)
+    ? rail.overlay
+    : (Array.isArray(rail.overlay?.polys) ? rail.overlay.polys : []);
   polys.forEach(poly => {
     const el = document.createElement("div");
     el.style.position = "absolute";
@@ -82,6 +92,48 @@ export function drawRailOverlay(viewer, rail) {
       location: rect
     });
     railOverlays.push(el);
+  });
+}
+
+export function drawPsuTargetOverlay(viewer, rail) {
+  if (!viewer || !rail?.overlay) return;
+  let { w, h } = getBoardSize();
+  w = w || 2048;
+  h = h || 2048;
+
+  psuTargetOverlays.forEach((el) => {
+    try { viewer.removeOverlay(el); } catch {}
+  });
+  psuTargetOverlays = [];
+
+  const polys = Array.isArray(rail.overlay)
+    ? rail.overlay
+    : (Array.isArray(rail.overlay?.polys) ? rail.overlay.polys : []);
+
+  polys.forEach(poly => {
+    const el = document.createElement("div");
+    el.style.position = "absolute";
+    el.style.border = "2px dashed rgba(80,170,255,0.9)";
+    el.style.background = "rgba(80,170,255,0.12)";
+    el.style.boxShadow = "0 0 6px rgba(80,170,255,0.7)";
+    el.style.pointerEvents = "none";
+    const xs = poly.map(p => p[0]);
+    const ys = poly.map(p => p[1]);
+    const minX = Math.min(...xs);
+    const minY = Math.min(...ys);
+    const maxX = Math.max(...xs);
+    const maxY = Math.max(...ys);
+    const rect = new OpenSeadragon.Rect(
+      minX / w,
+      minY / h,
+      (maxX - minX) / w,
+      (maxY - minY) / h
+    );
+    viewer.addOverlay({
+      element: el,
+      location: rect
+    });
+    psuTargetOverlays.push(el);
   });
 }
 
@@ -157,6 +209,26 @@ export function onRailSelected(railId) {
 
   activeRail = railId;
   drawRailOverlay(viewerInstance, rail);
+
+  const mountPoint = document.querySelector("#motherboardMap");
+  if (mountPoint) {
+    setStatus(mountPoint, `Rail selected: ${rail.label || rail.id}`);
+  }
+}
+
+export function setPsuTargetRail(railId) {
+  if (!currentBoard || !currentBoard.rails) return;
+
+  psuTargetRail = railId || null;
+  psuTargetOverlays.forEach((el) => {
+    try { viewerInstance.removeOverlay(el); } catch {}
+  });
+  psuTargetOverlays = [];
+
+  if (!railId) return;
+  const rail = currentBoard.rails.find(r => r.id === railId);
+  if (!rail) return;
+  drawPsuTargetOverlay(viewerInstance, rail);
 }
 
 function setStatus(mountPoint, msg) {
@@ -196,12 +268,12 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   mountPoint.innerHTML = `
     <div id="pcb-viewer-ui"
       style="
-        position:absolute; top:15px; left:15px; z-index:1000;
+        position:absolute; top:15px; left:15px; z-index:20000;
         background:rgba(30,30,30,0.9);
         padding:10px; border-radius:6px;
         display:flex; gap:10px; border:1px solid #444;
         align-items:center;
-        pointer-events:none;
+        pointer-events:auto;
       ">
       <select id="board-select"
         style="background:#333; color:white; border:1px solid #555; padding:5px; pointer-events:auto;"></select>
@@ -226,14 +298,38 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       </span>
     </div>
 
-    <div id="pcb-canvas-target" style="width:100%; height:100%;"></div>
+    <div id="pcb-canvas-target" style="width:100%; height:100%; position:relative; z-index:1;"></div>
   `;
 
+  const uiLayer = mountPoint.querySelector("#pcb-viewer-ui");
   const select = mountPoint.querySelector("#board-select");
   const railSelect = mountPoint.querySelector("#rail-select");
   const loadBtn = mountPoint.querySelector("#btn-load-pcb");
   const probeBtn = mountPoint.querySelector("#btn-probe");
   const canvasTarget = mountPoint.querySelector("#pcb-canvas-target");
+
+  // Prevent OpenSeadragon from hijacking pointer/wheel events intended for controls.
+  if (uiLayer) {
+    const stopViewerInput = (e) => e.stopPropagation();
+    [
+      "pointerdown",
+      "pointerup",
+      "mousedown",
+      "mouseup",
+      "click",
+      "dblclick",
+      "wheel",
+      "touchstart",
+      "touchmove",
+      "touchend"
+    ].forEach((evt) => uiLayer.addEventListener(evt, stopViewerInput, { capture: true }));
+  }
+
+  const handleRailSelect = () => {
+    if (railSelect.value) onRailSelected(railSelect.value);
+  };
+  railSelect.addEventListener("change", handleRailSelect);
+  railSelect.addEventListener("input", handleRailSelect);
 
   // extra safety
   canvasTarget.style.width = "100%";
@@ -293,16 +389,11 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
 
       const components = await loadComponents(boardId);
       const rails = await loadRails(boardId);
-      currentBoard = { ...boardData, components, rails };
+      const topology = await loadTopology(boardId);
+      currentBoard = { ...boardData, components, rails, topology };
 
       railSelect.innerHTML = '<option value="">-- Select Rail --</option>' +
         rails.map(r => `<option value="${r.id}">${r.label || r.id}</option>`).join("");
-
-      railSelect.onchange = () => {
-        if (railSelect.value) {
-          onRailSelected(railSelect.value);
-        }
-      };
 
       probeBtn.onclick = () => {
         const isActive = toggleProbeMode(viewerInstance, rails);
@@ -312,7 +403,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       setStatus(mountPoint, `Loaded: ${boardData?.name || boardId}`);
 
       if (typeof onBoardReady === "function") {
-        onBoardReady({ board: boardData, components, rails });
+        onBoardReady({ board: boardData, components, rails, topology });
       }
 
       document.querySelectorAll(".rail-item").forEach(el => {

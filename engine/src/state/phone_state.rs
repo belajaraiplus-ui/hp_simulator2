@@ -43,6 +43,10 @@ impl PhoneState {
                 transient_noise: 0.0,
                 extra_load_a: 0.0,
                 input: PowerInput::new(),
+                tick: 0,
+                meter_attached: false,
+                meter_mode: None,
+                meter_target: None,
             },
             thermal: ThermalState {
                 ambient: 25.0,

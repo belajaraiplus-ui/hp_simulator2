@@ -12,6 +12,10 @@ pub struct DependencyGraph {
     /// Mapping: Dependent Rail -> Source Rail (single-parent)
     /// Digunakan untuk back-tracing arus atau debugging.
     pub parents: HashMap<RailId, RailId>,
+
+    /// Optional per-edge current limit in ampere.
+    /// Key format: (source, target).
+    pub edge_current_limit_a: HashMap<(RailId, RailId), f64>,
 }
 
 impl DependencyGraph {
@@ -19,6 +23,7 @@ impl DependencyGraph {
         Self {
             adjacency: HashMap::new(),
             parents: HashMap::new(),
+            edge_current_limit_a: HashMap::new(),
         }
     }
 
@@ -43,6 +48,21 @@ impl DependencyGraph {
 
         // single-parent mapping (kalau target sudah punya parent, overwrite = last-wins)
         self.parents.insert(target, source);
+    }
+
+    /// Menambahkan regulator dengan optional current limit per-edge (Ampere).
+    /// Jika `current_limit_a <= 0`, limit diabaikan dan fallback default engine dipakai.
+    pub fn add_regulator_with_limit(&mut self, source: RailId, target: RailId, current_limit_a: f64) {
+        self.add_regulator(source, target);
+        if current_limit_a > 0.0 {
+            self.edge_current_limit_a
+                .insert((source, target), current_limit_a);
+        }
+    }
+
+    /// Mengambil current limit per-edge bila tersedia.
+    pub fn edge_current_limit(&self, source: RailId, target: RailId) -> Option<f64> {
+        self.edge_current_limit_a.get(&(source, target)).copied()
     }
 
     /// Mendapatkan rail yang ditenagai langsung oleh rail ini.

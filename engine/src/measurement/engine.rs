@@ -1,6 +1,7 @@
 use crate::measurement::meta::apply_meta_effects;
 use crate::state::ids::{RailId, ThermalZoneId};
 use crate::state::phone_state::*;
+use crate::util::rng::XorShift64;
 
 /// Semua observasi HARUS lewat sini.
 /// Measurement adalah INTERAKSI LISTRIK, bukan pembacaan pasif.
@@ -25,6 +26,75 @@ struct ComponentProbe {
 }
 
 impl MeasurementEngine {
+    #[inline]
+    fn hash_label_64(label: &str) -> u64 {
+        let mut h = 1469598103934665603u64;
+        for b in label.as_bytes() {
+            h ^= *b as u64;
+            h = h.wrapping_mul(1099511628211u64);
+        }
+        h
+    }
+
+    #[inline]
+    fn deterministic_measurement_rng(state: &PhoneState, target: &str) -> XorShift64 {
+        let time_bits = state.time.to_bits();
+        let sample_index = state.measurements.history.len() as u64;
+        let seed = time_bits
+            ^ sample_index.rotate_left(17)
+            ^ Self::hash_label_64(target).rotate_left(31)
+            ^ 0xD6E8FEB86659FD93u64;
+        XorShift64::new(seed)
+    }
+
+    #[inline]
+    fn dmm_voltage_range(abs_true: f64) -> (f64, f64) {
+        if abs_true < 0.6_f64 {
+            (0.6_f64, 0.0001_f64)
+        } else if abs_true < 6.0_f64 {
+            (6.0_f64, 0.001_f64)
+        } else if abs_true < 60.0_f64 {
+            (60.0_f64, 0.01_f64)
+        } else {
+            (600.0_f64, 0.1_f64)
+        }
+    }
+
+    #[inline]
+    fn quantize(value: f64, step: f64) -> f64 {
+        if step <= 0.0_f64 {
+            value
+        } else {
+            (value / step).round() * step
+        }
+    }
+
+    fn multimeter_voltage_noise(
+        state: &PhoneState,
+        target: &str,
+        true_voltage: f64,
+        rail_noise: f64,
+    ) -> (f64, f64) {
+        let abs_true = true_voltage.abs();
+        let (range, lsd) = Self::dmm_voltage_range(abs_true);
+        let mut rng = Self::deterministic_measurement_rng(state, target);
+
+        let condition = (state.electrical.transient_noise.abs() + rail_noise.abs()).min(1.0_f64);
+        let range_error = range * 0.0002_f64;
+        let reading_error = abs_true * 0.0010_f64;
+        let condition_error = condition * range * 0.0005_f64;
+        let systematic =
+            rng.uniform(-1.0_f64, 1.0_f64) * (range_error + reading_error + condition_error);
+
+        let jitter_span = lsd * (0.5_f64 + condition * 3.0_f64);
+        let jitter = rng.uniform(-jitter_span, jitter_span);
+
+        let raw = true_voltage + systematic + jitter;
+        let quantized = Self::quantize(raw, lsd).clamp(-range, range);
+        let noise = quantized - true_voltage;
+        (quantized, noise)
+    }
+
     fn component_probe(component_id: &str) -> Option<ComponentProbe> {
         match component_id.trim().to_lowercase().as_str() {
             "c_vbat_in" => Some(ComponentProbe {
@@ -129,60 +199,24 @@ impl MeasurementEngine {
         let rail_state = state
             .electrical
             .rails
-            .get_mut(&rail)
+            .get(&rail)
             .expect("measure_voltage: requested rail not found");
+        let true_voltage = rail_state.state.voltage;
+        let rail_noise = rail_state.noise;
+        let target = format!("V({:?})", rail);
+        let (observed, noise) =
+            Self::multimeter_voltage_noise(state, &target, true_voltage, rail_noise);
 
-        // =======================
-        // MEASUREMENT FATIGUE
-        // =======================
-        let key = ("voltage".to_string(), format!("{:?}", rail));
-        let count = state.fatigue.counts.entry(key).or_insert(0);
-        *count += 1;
-
-        let fatigue_factor: f64 = (*count as f64).min(10.0_f64) * 0.05_f64;
-
-        // =======================
-        // ENERGY INJECTION
-        // =======================
-        let injected: f64 = 0.002_f64 + fatigue_factor * 0.002_f64;
-        state.stress.measurement += injected;
-
-        // =======================
-        // ELECTRICAL INTERACTION
-        // Probe menambah beban & memicu drop kecil
-        // =======================
-        let probe_load: f64 = 0.01_f64 + fatigue_factor * 0.02_f64;
-        rail_state.state.current += probe_load;
-
-        // voltage sag akibat probe (non-ideal)
-        rail_state.state.voltage -= probe_load * rail_state.health.esr;
-
-        // =======================
-        // NOISE MODEL (CONTEXTUAL)
-        // =======================
-        let stress_noise: f64 =
-            state.stress.electrical * 0.02_f64 + state.stress.measurement * 0.03_f64;
-
-        let fatigue_noise: f64 = fatigue_factor * 0.05_f64;
-
-        let noise: f64 =
-            rail_state.noise + state.electrical.transient_noise + stress_noise + fatigue_noise;
-
-        let observed: f64 = rail_state.state.voltage + noise;
-
-        // LOG
         state.measurements.history.push(MeasurementEvent {
             time: state.time,
-            target: format!("V({:?})", rail),
+            target,
             observed_value: observed,
             noise,
-            injected_energy: injected,
-            stress_added: injected,
+            injected_energy: 0.0_f64,
+            stress_added: 0.0_f64,
         });
 
         state.last_voltage.insert(rail, observed);
-
-        apply_meta_effects(state);
         observed
     }
 

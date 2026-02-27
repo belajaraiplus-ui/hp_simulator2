@@ -1,20 +1,26 @@
 {
   "version": 1,
   "nodes": [
-    "VBUS",
-    "VBAT_SUM",
-    "VCPU"
+    "VBUS_5V",
+    "VBAT",
+    "VSYS",
+    "VCORE"
   ],
   "edges": [
     {
-      "from": "VBUS",
-      "to": "VBAT_SUM",
+      "from": "VBUS_5V",
+      "to": "VBAT",
+      "kind": "charger"
+    },
+    {
+      "from": "VBAT",
+      "to": "VSYS",
       "kind": "switch"
     },
     {
-      "from": "VBAT_SUM",
-      "to": "VCPU",
-      "kind": "switch"
+      "from": "VSYS",
+      "to": "VCORE",
+      "kind": "buck"
     }
   ]
 }

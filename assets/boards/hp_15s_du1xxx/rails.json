@@ -6,10 +6,23 @@
       "open_above_ohms": 200.0
     }
   },
+  "psu_injection": {
+    "enabled": true,
+    "path": ["direct", "diode", "fuse", "switch", "connector"],
+    "series_resistance_ohm": 0.05,
+    "max_voltage_v": 5.5,
+    "max_current_a": 3.0,
+
+    "backfeed": {
+      "allowed": true,
+      "targets": ["VSYS", "VIO"],
+      "equiv_resistance_ohm": 1.2
+    }
+  },
   "rails": [
     {
-      "id": "VBUS",
-      "label": "VBUS (USB Power)",
+      "id": "VBUS_5V",
+      "label": "VBUS 5V",
       "type": "input",
       "expected": {
         "voltage_v": { "min": 4.75, "max": 5.25 },
@@ -28,8 +41,8 @@
       ]
     },
     {
-      "id": "VBAT_SUM",
-      "label": "VBAT_SUM (Battery)",
+      "id": "VBAT",
+      "label": "VBAT",
       "type": "power",
       "expected": {
         "voltage_v": { "min": 3.0, "max": 4.4 },
@@ -37,7 +50,7 @@
         "r2g_ohms": { "nominal": 100.0 },
         "continuity": { "beep_below_ohms": 50.0, "open_above_ohms": 200.0 }
       },
-      "depends_on": ["VBUS"],
+      "depends_on": ["VBUS_5V"],
       "overlay": {
         "type": "multi_poly",
         "polys": [
@@ -45,12 +58,38 @@
         ]
       },
       "probe_points": [
-        { "id": "TP_VBAT_SUM", "x": 145, "y": 210, "label": "VBAT_SUM" }
+        { "id": "TP_VBAT", "x": 145, "y": 210, "label": "TP_VBAT" }
       ]
     },
     {
-      "id": "VCPU",
-      "label": "VCPU",
+      "id": "VSYS",
+      "label": "VSYS",
+      "type": "system",
+      "expected": {
+        "voltage_v": { "min": 3.5, "max": 4.2 },
+        "diode_drop_v": { "min": 0.30, "max": 0.60 },
+        "r2g_ohms": { "nominal": 200.0 }
+      },
+      "depends_on": ["VBAT"],
+      "overlay": { "type": "multi_poly", "polys": [[[180,250],[240,250],[240,310],[180,310]]] },
+      "probe_points": [{ "id": "TP_VSYS", "x": 210, "y": 280, "label": "TP_VSYS" }]
+    },
+    {
+      "id": "VDD_3V3",
+      "label": "VDD 3.3V",
+      "type": "power",
+      "expected": {
+        "voltage_v": { "min": 3.2, "max": 3.4 },
+        "diode_drop_v": { "min": 0.30, "max": 0.60 },
+        "r2g_ohms": { "nominal": 300.0 }
+      },
+      "depends_on": ["VSYS"],
+      "overlay": { "type": "multi_poly", "polys": [[[260,250],[320,250],[320,310],[260,310]]] },
+      "probe_points": [{ "id": "TP_VDD_3V3", "x": 290, "y": 280, "label": "TP_VDD_3V3" }]
+    },
+    {
+      "id": "VCORE",
+      "label": "VCORE",
       "type": "core",
       "expected": {
         "voltage_v": { "min": 0.70, "max": 1.20 },
@@ -58,7 +97,7 @@
         "r2g_ohms": { "nominal": 15.0 },
         "continuity": { "beep_below_ohms": 10.0, "open_above_ohms": 60.0 }
       },
-      "depends_on": ["VBAT_SUM"],
+      "depends_on": ["VSYS"],
       "overlay": {
         "type": "multi_poly",
         "polys": [
@@ -66,8 +105,37 @@
         ]
       },
       "probe_points": [
-        { "id": "TP_VCPU", "x": 230, "y": 110, "label": "VCPU" }
+        { "id": "TP_VCORE", "x": 230, "y": 110, "label": "TP_VCORE" }
       ]
+    },
+    {
+      "id": "VIO",
+      "label": "VIO",
+      "type": "logic",
+      "expected": {
+        "voltage_v": { "min": 1.7, "max": 1.9 },
+        "diode_drop_v": { "min": 0.20, "max": 0.45 },
+        "r2g_ohms": { "nominal": 80.0 }
+      },
+      "depends_on": ["VDD_3V3"],
+      "overlay": { "type": "multi_poly", "polys": [[[340,200],[400,200],[400,260],[340,260]]] },
+      "probe_points": [{ "id": "TP_VIO", "x": 370, "y": 230, "label": "TP_VIO" }]
+    },
+    {
+      "id": "VDDR",
+      "label": "VDDR",
+      "type": "peripheral",
+      "expected": {
+        "voltage_v": { "min": 1.15, "max": 1.25 },
+        "diode_drop_v": { "min": 0.20, "max": 0.50 },
+        "r2g_ohms": { "nominal": 60.0 }
+      },
+      "depends_on": ["VSYS"],
+      "overlay": { "type": "multi_poly", "polys": [[[30,150],[90,150],[90,210],[30,210]]] },
+      "probe_points": [{ "id": "TP_VDDR", "x": 60, "y": 180, "label": "TP_VDDR" }]
     }
   ]
 }
+
+
+

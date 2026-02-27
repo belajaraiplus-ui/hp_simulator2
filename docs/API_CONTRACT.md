@@ -207,7 +207,8 @@ Get current system state including rails, thermals, measurements, and distress.
       "enabled": true,
       "voltage": 4.2,
       "current_limit": 2.0,
-      "measured_current": 0.5
+      "measured_current": 0.5,
+      "target_rail": "Vbat"
     },
     "distress": 0.15
   }
@@ -258,6 +259,7 @@ Or using `tool_action` (recommended):
 - `TogglePSU` - Enable/disable PSU
 - `SetPSUVoltage` - Set output voltage
 - `SetPSUCurrent` - Set current limit
+- `SetPSUTargetRail` - Set PSU target rail (string id, or "none" to clear)
 - `ToggleVCHG` - Enable/disable USB charger
 - `SetVCHGVoltage` - Set charger voltage
 
@@ -306,6 +308,37 @@ Terminate the current session.
   "message": "Session stopped"
 }
 ```
+
+---
+
+## Board Assets: `rails.json`
+
+`rails.json` is served by `pcb-registry` at `/api/boards/:id/rails`. The top-level structure:
+
+```json
+{
+  "version": 1,
+  "defaults": { ... },
+  "psu_injection": {
+    "enabled": true,
+    "path": ["direct", "diode", "fuse", "switch", "connector"],
+    "series_resistance_ohm": 0.05,
+    "max_voltage_v": 5.5,
+    "max_current_a": 3.0,
+    "backfeed": {
+      "allowed": true,
+      "targets": ["VSYS", "VIO"],
+      "equiv_resistance_ohm": 1.2
+    }
+  },
+  "rails": [ ... ]
+}
+```
+
+Notes:
+- `psu_injection` is optional.
+- `psu_injection.path` can be a string or an array of strings.
+- `backfeed` is optional.
 
 ---
 

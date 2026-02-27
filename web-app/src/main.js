@@ -1,6 +1,6 @@
 // src/main.js
-import { applyPsuConfig, bootEngine, measureTool, snapshot, step } from "./engine/adapter.js";
-import { initPcbViewerPanel } from "./pcb_viewer/panel.js";
+import { bootEngine, snapshot, step, applyTopologyGraph, dispatchToolAction } from "./engine/adapter.js";
+import { initPcbViewerPanel, setPsuTargetRail as setPsuTargetRailOverlay } from "./pcb_viewer/panel.js";
 import { MAX_POINTS, TARGET_FPS, ENGINE_BASE_INTERVAL_MS } from "./config.js";
 import { clamp01, toNumber, trim, lastValue, formatNumber, debounce } from "./utils.js";
 import {
@@ -9,7 +9,6 @@ import {
   thermalHistory, thermalSmoothed,
   distressHistory, diagnosticHistory,
   railVisibility,
-  setSelectedBoardComponent,
   smoothingAlpha,
   resetBoardState,
 } from "./state.js";
@@ -22,7 +21,7 @@ import {
   drawThermalChart,
   drawDistressChart
 } from "./ui/charts.js";
-import { buildMultimeterLabel, renderMultimeterResult } from "./ui/multimeter.js";
+import { renderMultimeterResult } from "./ui/multimeter.js";
 import { showAIPanel } from "./ai/panel.js";
 import { initScenarioSelector, updateScenarioDisplay } from "./ui/scenario_selector.js";
 import { initExportReport } from "./export/report.js";
@@ -30,6 +29,9 @@ import { initTimeline, saveSnapshot } from "./ui/timeline.js";
 import { initSaveLoad } from "./persistence/storage.js";
 import { showOutcomeModal } from "./outcome/display.js";
 import { showOscilloscope, toggleOscilloscope } from "./ui/oscilloscope.js";
+import { createToolDispatcher } from "./tools/dispatch.js";
+
+const Tools = createToolDispatcher();
 
 /* ==========================================================
    DOM REFERENCES
@@ -61,6 +63,8 @@ const psuCurrentLimitEl = document.getElementById("psuCurrentLimit");
 const psuApplyBtn = document.getElementById("psuApply");
 const psuStatusEl = document.getElementById("psuStatus");
 const psuCurrentEl = document.getElementById("psuMeasuredCurrent");
+const psuTargetRailEl = document.getElementById("psuTargetRail");
+const psuTargetStatusEl = document.getElementById("psuTargetStatus");
 
 const diagnosticText = document.getElementById("diagnosticText");
 const diagnosticConfidence = document.getElementById("diagnosticConfidence");
@@ -131,6 +135,8 @@ function toProbeNumeric(measurement) {
       measurement.value,
       measurement.measurement,
       measurement.voltage,
+      measurement.v,
+      measurement.ohm,
     ];
     for (const c of candidates) {
       const n = Number(c);
@@ -169,6 +175,12 @@ function renderPowerInput(pi) {
   psuStatusEl.textContent = pi.enabled ? `PSU: ON  ${pi.voltage}V` : "PSU: OFF";
   if (psuCurrentEl) {
     psuCurrentEl.textContent = `Current: ${formatNumber(pi.measured_current, 3)} A`;
+  }
+  if (psuTargetStatusEl) {
+    psuTargetStatusEl.textContent = `Target: ${pi.target_rail || "None"}`;
+  }
+  if (psuTargetRailEl && pi.target_rail) {
+    psuTargetRailEl.value = pi.target_rail;
   }
 }
 
@@ -232,6 +244,7 @@ function processSnapshot(snap) {
 
   // rails
   const rails = Array.isArray(snap.rails) ? snap.rails : [];
+  setPsuTargetRailOverlay(snap?.power_input?.target_rail || "");
   rails.forEach((r, idx) => {
     const name = r?.name ?? `rail_${idx}`;
     const raw = toNumberFlex(r?.voltage);
@@ -291,6 +304,21 @@ function processSnapshot(snap) {
   if (diagnosticHistory.length > 500) diagnosticHistory.shift();
 
   markDirty();
+}
+
+function renderPsuTargetOptions(injectableRails, current) {
+  if (!psuTargetRailEl) return;
+
+  const items = [`<option value="">(no target)</option>`].concat(
+    (injectableRails || []).map((id) => `<option value="${id}">${id}</option>`)
+  );
+  psuTargetRailEl.innerHTML = items.join("");
+
+  if (current && (injectableRails || []).includes(current)) {
+    psuTargetRailEl.value = current;
+  } else {
+    psuTargetRailEl.value = "";
+  }
 }
 
 /* ==========================================================
@@ -378,7 +406,7 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
     pcbViewerAPI = initPcbViewerPanel({
       mountSelector: "#motherboardMap",
-      onBoardReady: ({ board, components }) => {
+      onBoardReady: async ({ board, components, topology }) => {
         console.log("📡 Board loaded:", board?.id);
 
         if (boardProfileLabelEl) {
@@ -390,6 +418,24 @@ document.addEventListener("DOMContentLoaded", () => {
           multimeterComponentEl.innerHTML = components
             .map(c => `<option value="${c.id}">${c.id} (${c.name || "Component"})</option>`)
             .join("");
+        }
+
+        if (topology) {
+          await applyTopologyGraph(topology);
+        }
+
+        if (board?.id) {
+          try {
+            await Tools.loadBoardRails(board.id, { baseUrl: "" });
+            Tools.setPSUConfig({ targetRail: null });
+            dispatchToolAction({ ClearPSUTargetRail: {} });
+            renderPsuTargetOptions(
+              Tools.state.board.injectableRails,
+              Tools.state.psu.targetRail
+            );
+          } catch (e) {
+            console.warn("Failed to load board rails metadata:", e);
+          }
         }
       }
     });
@@ -521,19 +567,30 @@ document.addEventListener("DOMContentLoaded", () => {
   // PSU Apply
   if (psuApplyBtn) {
     psuApplyBtn.onclick = async () => {
-      if (!engineReady) {
-        console.warn("Engine not ready. Please wait for boot.");
-        return;
-      }
-      const psuConfig = {
+      if (!engineReady) return;
+
+      Tools.setPSUConfig({
         voltage: parseFloat(psuVoltageEl.value) || 4.2,
         currentLimit: parseFloat(psuCurrentLimitEl.value) || 2.0,
         enabled: !!psuEnableEl.checked,
-      };
-      console.log("PSU Config:", psuConfig);
-      await applyPsuConfig(psuConfig);
+        targetRail: psuTargetRailEl.value || null,
+      });
+
+      await Tools.applyPSU();
+
       const snap = await snapshot();
-      console.log("Snapshot power_input:", snap?.power_input);
+      processSnapshot(snap);
+    };
+  }
+
+  if (psuTargetRailEl) {
+    psuTargetRailEl.onchange = async () => {
+      if (!engineReady) return;
+
+      Tools.setPSUConfig({ targetRail: psuTargetRailEl.value || null });
+      await Tools.applyPSUTargetOnly();
+
+      const snap = await snapshot();
       processSnapshot(snap);
     };
   }
@@ -541,28 +598,21 @@ document.addEventListener("DOMContentLoaded", () => {
   // Multimeter Measure
   if (manualMeasureBtn) {
     manualMeasureBtn.onclick = async () => {
-      if (!engineReady) {
-        console.warn("Engine not ready. Please wait for boot.");
-        return;
-      }
+      if (!engineReady) return;
 
-      const label = buildMultimeterLabel(
-        multimeterModeEl.value,
-        multimeterTargetTypeEl.value,
-        multimeterRailEl.value,
-        multimeterComponentEl.value
-      );
+      Tools.setMultimeter({
+        mode: multimeterModeEl.value,
+        targetType: multimeterTargetTypeEl.value,
+        rail: multimeterRailEl.value,
+        component: multimeterComponentEl.value,
+      });
 
-      if (multimeterTargetTypeEl.value === "component") {
-        setSelectedBoardComponent(multimeterComponentEl.value);
-      }
-
-      const val = await measureTool(label);
-      renderMultimeterResult(multimeterResultEl, multimeterModeEl.value, Number(val));
+      const { value } = await Tools.measureMultimeter();
+      renderMultimeterResult(multimeterResultEl, multimeterModeEl.value, Number(value));
       
       // Update measurement history immediately
       const snap = await snapshot();
-      if (snap && snap.measurements) {
+      if (snap?.measurements) {
         measurementHistoryData = snap.measurements;
         renderMeasurementHistory();
       }

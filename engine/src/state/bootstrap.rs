@@ -63,9 +63,9 @@ pub fn bootstrap_state() -> PhoneState {
 
     let mut power_graph = DependencyGraph::new();
     // VBUS_5V (Vchg) -> VBAT
-    power_graph.add_regulator(RailId::Vchg, RailId::Vbat);
+    power_graph.add_regulator_with_limit(RailId::Vchg, RailId::Vbat, 3.0_f64);
     // VBAT -> VCORE
-    power_graph.add_regulator(RailId::Vbat, RailId::Vcore);
+    power_graph.add_regulator_with_limit(RailId::Vbat, RailId::Vcore, 6.0_f64);
 
     PhoneState {
         time: 0.0,
@@ -75,6 +75,10 @@ pub fn bootstrap_state() -> PhoneState {
             transient_noise: 0.01,
             extra_load_a: 0.0,
             input: PowerInput::new(),
+            tick: 0,
+            meter_attached: false,
+            meter_mode: None,
+            meter_target: None,
         },
         thermal: ThermalState {
             ambient: 30.0,

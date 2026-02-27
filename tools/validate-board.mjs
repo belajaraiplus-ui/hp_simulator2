@@ -72,6 +72,60 @@ function validateProbePoints(probes, board, ctx) {
   });
 }
 
+function validatePsuInjection(inj, railIds, ctx) {
+  if (!inj) return;
+  if (typeof inj !== "object") fail(`${ctx}: psu_injection must be object`);
+
+  if (inj.enabled !== undefined && typeof inj.enabled !== "boolean")
+    fail(`${ctx}: psu_injection.enabled must be boolean`);
+
+  if (inj.path !== undefined) {
+    const allowed = new Set(["direct", "diode", "fuse", "switch", "connector"]);
+    if (typeof inj.path === "string") {
+      if (!allowed.has(inj.path)) {
+        fail(`${ctx}: psu_injection.path must be one of: ${[...allowed].join(", ")}`);
+      }
+    } else if (Array.isArray(inj.path)) {
+      if (!inj.path.length) fail(`${ctx}: psu_injection.path must not be empty`);
+      inj.path.forEach((p) => {
+        if (typeof p !== "string" || !allowed.has(p)) {
+          fail(`${ctx}: psu_injection.path must be one of: ${[...allowed].join(", ")}`);
+        }
+      });
+    } else {
+      fail(`${ctx}: psu_injection.path must be string or array`);
+    }
+  }
+
+  ["series_resistance_ohm", "max_voltage_v", "max_current_a"].forEach((k) => {
+    if (inj[k] !== undefined && !isNumber(inj[k]))
+      fail(`${ctx}: psu_injection.${k} must be number`);
+    if (isNumber(inj[k]) && inj[k] < 0)
+      fail(`${ctx}: psu_injection.${k} must be >= 0`);
+  });
+
+  if (inj.backfeed !== undefined) {
+    const bf = inj.backfeed;
+    if (!bf || typeof bf !== "object") fail(`${ctx}: psu_injection.backfeed must be object`);
+
+    if (bf.allowed !== undefined && typeof bf.allowed !== "boolean")
+      fail(`${ctx}: psu_injection.backfeed.allowed must be boolean`);
+
+    if (bf.targets !== undefined) {
+      if (!Array.isArray(bf.targets)) fail(`${ctx}: psu_injection.backfeed.targets must be array`);
+      bf.targets.forEach((t) => {
+        if (typeof t !== "string") fail(`${ctx}: backfeed.targets must be string rail ids`);
+        if (!railIds.has(t)) fail(`${ctx}: backfeed.targets references missing rail "${t}"`);
+      });
+    }
+
+    if (bf.equiv_resistance_ohm !== undefined) {
+      if (!isNumber(bf.equiv_resistance_ohm) || bf.equiv_resistance_ohm < 0)
+        fail(`${ctx}: psu_injection.backfeed.equiv_resistance_ohm must be number >= 0`);
+    }
+  }
+}
+
 function validateRails(railsJson, boardJson, boardId) {
   if (!railsJson || railsJson.version === undefined) warn(`${boardId}: rails.json missing version`);
   const rails = railsJson?.rails;
@@ -101,6 +155,8 @@ function validateRails(railsJson, boardJson, boardId) {
     validateOverlay(r.overlay, `${ctx} (${r.id})`);
     validateProbePoints(r.probe_points, boardJson, `${ctx} (${r.id})`);
   });
+
+  validatePsuInjection(railsJson.psu_injection, ids, `${boardId}: rails.json`);
 
   // depends_on references valid rails
   rails.forEach((r, idx) => {

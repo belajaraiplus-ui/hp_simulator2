@@ -13,6 +13,7 @@ pub mod scenario;
 pub mod scenario_dsl;
 mod session;
 mod state;
+mod util;
 pub mod world;
 
 use crate::session::types::SessionEndReason;
@@ -60,12 +61,8 @@ pub fn dispatch(action_json: &str) -> String {
 
     match kind {
         ActionKind::Step => {
-            crate::power::propagate::propagate_power(
-                &ctx.phone.power_graph,
-                &mut ctx.phone.electrical,
-                ctx.engine.dt,
-            );
             ctx.engine.step(&mut ctx.phone, &mut ctx.session);
+            ctx.phone.electrical.tick = ctx.phone.electrical.tick.wrapping_add(1);
             ApiResponse::ok().to_json_string()
         }
 

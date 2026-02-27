@@ -2,19 +2,25 @@
   "version": 1,
   "nodes": [
     "VCCIN",
+    "VSYS",
     "VCCSA",
-    "VCC_CPU"
+    "VCORE"
   ],
   "edges": [
     {
       "from": "VCCIN",
-      "to": "VCCSA",
+      "to": "VSYS",
       "kind": "switch"
     },
     {
-      "from": "VCCIN",
-      "to": "VCC_CPU",
-      "kind": "switch"
+      "from": "VSYS",
+      "to": "VCCSA",
+      "kind": "buck"
+    },
+    {
+      "from": "VSYS",
+      "to": "VCORE",
+      "kind": "buck"
     }
   ]
 }

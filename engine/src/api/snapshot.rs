@@ -81,7 +81,12 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
         "enabled": state.electrical.input.enabled,
         "voltage": state.electrical.input.voltage,
         "current_limit": state.electrical.input.current_limit,
-        "measured_current": state.electrical.input.measured_current
+        "measured_current": state.electrical.input.measured_current,
+        "target_rail": state
+            .electrical
+            .input
+            .target_rail
+            .map(|id| format!("{:?}", id))
     });
 
     // =======================

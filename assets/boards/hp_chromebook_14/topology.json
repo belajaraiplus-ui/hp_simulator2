@@ -1,14 +1,14 @@
 {
   "version": 1,
   "nodes": [
-    "V3P3",
-    "V1P8"
+    "VDD_3V3",
+    "VIO"
   ],
   "edges": [
     {
-      "from": "V3P3",
-      "to": "V1P8",
-      "kind": "switch"
+      "from": "VDD_3V3",
+      "to": "VIO",
+      "kind": "ldo"
     }
   ]
 }

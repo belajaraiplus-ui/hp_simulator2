@@ -1,20 +1,20 @@
 {
   "version": 1,
   "nodes": [
-    "VGG",
-    "VCCCV",
+    "VSYS",
+    "VCORE",
     "VCCFN"
   ],
   "edges": [
     {
-      "from": "VGG",
-      "to": "VCCCV",
-      "kind": "switch"
+      "from": "VSYS",
+      "to": "VCORE",
+      "kind": "buck"
     },
     {
-      "from": "VGG",
+      "from": "VSYS",
       "to": "VCCFN",
-      "kind": "switch"
+      "kind": "buck"
     }
   ]
 }

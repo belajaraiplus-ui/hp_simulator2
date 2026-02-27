@@ -1,8 +1,19 @@
 {
   "version": 1,
   "nodes": [
-    "VSB_5V",
+    "VBUS_5V",
+    "VBAT",
+    "VSYS",
+    "VDD_3V3",
+    "VIO",
+    "VCORE",
     "VRTC"
   ],
-  "edges": []
+  "edges": [
+    { "from": "VBUS_5V", "to": "VBAT", "kind": "charger" },
+    { "from": "VBAT", "to": "VSYS", "kind": "switch" },
+    { "from": "VSYS", "to": "VDD_3V3", "kind": "buck" },
+    { "from": "VDD_3V3", "to": "VIO", "kind": "ldo" },
+    { "from": "VSYS", "to": "VCORE", "kind": "buck" }
+  ]
 }

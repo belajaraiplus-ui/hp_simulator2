@@ -538,6 +538,8 @@ pub struct RailsFile {
     #[serde(default)]
     pub defaults: Option<Value>,
     #[serde(default)]
+    pub psu_injection: Option<PsuInjection>,
+    #[serde(default)]
     pub rails: Vec<RailItem>,
 }
 
@@ -566,7 +568,14 @@ pub struct RailExpected {
     #[serde(default)]
     pub diode_drop_v: Option<VoltageRange>,
     #[serde(default)]
-    pub r2g_ohms: Option<f64>,
+    pub r2g_ohms: Option<R2gOhms>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum R2gOhms {
+    Number(f64),
+    Object { nominal: f64 },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
@@ -592,6 +601,32 @@ pub struct RailOverlay {
     #[serde(flatten)]
     #[serde(default)]
     pub extra: Option<Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PsuInjection {
+    pub enabled: bool,
+    pub path: PsuInjectionPath,
+    pub series_resistance_ohm: f64,
+    pub max_voltage_v: f64,
+    pub max_current_a: f64,
+    #[serde(default)]
+    pub backfeed: Option<PsuBackfeed>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PsuInjectionPath {
+    Single(String),
+    Multiple(Vec<String>),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PsuBackfeed {
+    pub allowed: bool,
+    #[serde(default)]
+    pub targets: Vec<String>,
+    pub equiv_resistance_ohm: f64,
 }
 
 /* ============================================================

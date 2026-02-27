@@ -6,7 +6,45 @@
       "open_above_ohms": 200.0
     }
   },
+  "psu_injection": {
+    "enabled": true,
+    "path": ["direct", "diode", "fuse", "switch", "connector"],
+    "series_resistance_ohm": 0.05,
+    "max_voltage_v": 5.5,
+    "max_current_a": 3.0,
+
+    "backfeed": {
+      "allowed": true,
+      "targets": ["VSYS", "VIO"],
+      "equiv_resistance_ohm": 1.2
+    }
+  },
   "rails": [
+    {
+      "id": "VBUS_5V",
+      "label": "VBUS 5V",
+      "type": "input",
+      "expected": {
+        "voltage_v": { "min": 4.75, "max": 5.25 },
+        "diode_drop_v": { "min": 0.45, "max": 0.80 },
+        "r2g_ohms": { "nominal": 500.0 }
+      },
+      "overlay": { "type": "multi_poly", "polys": [[[10,10],[50,10],[50,50],[10,50]]] },
+      "probe_points": [{ "id": "TP_VBUS", "x": 30, "y": 30, "label": "TP_VBUS" }]
+    },
+    {
+      "id": "VBAT",
+      "label": "VBAT",
+      "type": "power",
+      "expected": {
+        "voltage_v": { "min": 7.4, "max": 8.8 },
+        "diode_drop_v": { "min": 0.35, "max": 0.65 },
+        "r2g_ohms": { "nominal": 120.0 }
+      },
+      "depends_on": ["VBUS_5V"],
+      "overlay": { "type": "multi_poly", "polys": [[[120,60],[160,60],[160,100],[120,100]]] },
+      "probe_points": [{ "id": "TP_VBAT", "x": 140, "y": 80, "label": "TP_VBAT" }]
+    },
     {
       "id": "VCCIN",
       "label": "VCCIN (Main Input)",
@@ -28,6 +66,19 @@
       ]
     },
     {
+      "id": "VSYS",
+      "label": "VSYS",
+      "type": "system",
+      "expected": {
+        "voltage_v": { "min": 19.0, "max": 21.0 },
+        "diode_drop_v": { "min": 0.30, "max": 0.60 },
+        "r2g_ohms": { "nominal": 200.0 }
+      },
+      "depends_on": ["VCCIN"],
+      "overlay": { "type": "multi_poly", "polys": [[[120,130],[180,130],[180,180],[120,180]]] },
+      "probe_points": [{ "id": "TP_VSYS", "x": 150, "y": 155, "label": "TP_VSYS" }]
+    },
+    {
       "id": "VCCSA",
       "label": "VCCSA (System Agent)",
       "type": "core",
@@ -37,7 +88,7 @@
         "r2g_ohms": { "nominal": 25.0 },
         "continuity": { "beep_below_ohms": 10.0, "open_above_ohms": 60.0 }
       },
-      "depends_on": ["VCCIN"],
+      "depends_on": ["VSYS"],
       "overlay": {
         "type": "multi_poly",
         "polys": [
@@ -49,8 +100,8 @@
       ]
     },
     {
-      "id": "VCC_CPU",
-      "label": "VCC_CPU",
+      "id": "VCORE",
+      "label": "VCORE",
       "type": "core",
       "expected": {
         "voltage_v": { "min": 0.80, "max": 1.30 },
@@ -58,7 +109,7 @@
         "r2g_ohms": { "nominal": 12.0 },
         "continuity": { "beep_below_ohms": 8.0, "open_above_ohms": 50.0 }
       },
-      "depends_on": ["VCCIN"],
+      "depends_on": ["VSYS"],
       "overlay": {
         "type": "multi_poly",
         "polys": [
@@ -66,8 +117,37 @@
         ]
       },
       "probe_points": [
-        { "id": "TP_VCC_CPU", "x": 290, "y": 180, "label": "VCC_CPU" }
+        { "id": "TP_VCORE", "x": 290, "y": 180, "label": "TP_VCORE" }
       ]
+    },
+    {
+      "id": "VDD_3V3",
+      "label": "VDD 3.3V",
+      "type": "power",
+      "expected": {
+        "voltage_v": { "min": 3.2, "max": 3.4 },
+        "diode_drop_v": { "min": 0.30, "max": 0.60 },
+        "r2g_ohms": { "nominal": 300.0 }
+      },
+      "depends_on": ["VSYS"],
+      "overlay": { "type": "multi_poly", "polys": [[[340,100],[390,100],[390,150],[340,150]]] },
+      "probe_points": [{ "id": "TP_VDD_3V3", "x": 365, "y": 125, "label": "TP_VDD_3V3" }]
+    },
+    {
+      "id": "VIO",
+      "label": "VIO",
+      "type": "logic",
+      "expected": {
+        "voltage_v": { "min": 1.7, "max": 1.9 },
+        "diode_drop_v": { "min": 0.20, "max": 0.45 },
+        "r2g_ohms": { "nominal": 80.0 }
+      },
+      "depends_on": ["VDD_3V3"],
+      "overlay": { "type": "multi_poly", "polys": [[[340,200],[390,200],[390,250],[340,250]]] },
+      "probe_points": [{ "id": "TP_VIO", "x": 365, "y": 225, "label": "TP_VIO" }]
     }
   ]
 }
+
+
+

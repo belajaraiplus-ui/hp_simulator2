@@ -94,6 +94,21 @@ function dispatchJson(payload) {
   }
 }
 
+// Structured tool_action dispatch (keeps legacy APIs intact)
+export function dispatchToolAction(tool_action) {
+  try {
+    const data = dispatchJson({ version: API_VERSION, kind: "tool", tool_action });
+    if (!data?.ok) {
+      console.error("tool_action failed", data);
+      return data;
+    }
+    return data;
+  } catch (e) {
+    console.error("tool_action dispatch error", e);
+    return { ok: false, message: e?.message || "tool_action dispatch failed" };
+  }
+}
+
 export async function bootEngine() {
   if (!initialized) {
     await init();
@@ -145,6 +160,36 @@ export async function measureTool(toolLabel) {
   }
 }
 
+function normalizeMeterMode(mode) {
+  const m = String(mode || "").toLowerCase();
+  if (m === "voltage") return "voltage";
+  if (m === "resistance" || m === "ohm") return "resistance";
+  if (m === "continuity") return "continuity";
+  return null;
+}
+
+export async function multimeterMeasure({ mode, a, b = null }) {
+  const normalizedMode = normalizeMeterMode(mode);
+  if (!normalizedMode || !a) return null;
+
+  try {
+    return await safeDispatch({
+      version: API_VERSION,
+      kind: "tool",
+      tool_action: {
+        MultimeterMeasure: {
+          mode: normalizedMode,
+          a,
+          b,
+        },
+      },
+    });
+  } catch (e) {
+    console.error("multimeter tool_action failed:", e);
+    return null;
+  }
+}
+
 /**
  * New measurement API for PCB Viewer.
  * Recommended request:
@@ -191,7 +236,20 @@ export async function measureTarget(target, mode = "voltage", options = {}) {
  * and can fallback to legacy "vbat" if you pass fallback mapping.
  */
 export async function measureRail(railId, mode = "voltage", options = {}) {
-  return measureTarget({ type: "rail", id: railId }, mode, options);
+  if (String(mode).toLowerCase() === "voltage" && typeof railId === "string") {
+    const mm = await multimeterMeasure({ mode: "voltage", a: railId, b: null });
+    if (mm && Number.isFinite(mm.v)) return mm.v;
+  }
+
+  const fallbackToolLabel =
+    options.fallbackToolLabel ??
+    (typeof railId === "string" ? railId.toLowerCase() : undefined);
+
+  return measureTarget(
+    { type: "rail", id: railId },
+    mode,
+    { ...options, fallbackToolLabel }
+  );
 }
 
 /**
@@ -216,6 +274,53 @@ export async function applyPsuConfig({ voltage, currentLimit, enabled }) {
     return true;
   } catch (e) {
     console.error("psu config failed:", e);
+    return false;
+  }
+}
+
+export async function setPsuTargetRail(rail) {
+  try {
+    await safeDispatch({
+      version: API_VERSION,
+      kind: "tool",
+      tool_action: {
+        SetPSUTargetRail: { rail: rail ?? "" },
+      },
+    });
+    return true;
+  } catch (e) {
+    console.error("psu target rail failed:", e);
+    return false;
+  }
+}
+
+export async function readPsu() {
+  try {
+    return await safeDispatch({
+      version: API_VERSION,
+      kind: "tool",
+      tool_action: {
+        ReadPSU: {},
+      },
+    });
+  } catch (e) {
+    console.error("read PSU failed:", e);
+    return null;
+  }
+}
+
+export async function applyTopologyGraph(topology) {
+  try {
+    await safeDispatch({
+      version: API_VERSION,
+      kind: "tool",
+      tool_action: {
+        LoadTopologyGraph: { topology: topology || {} },
+      },
+    });
+    return true;
+  } catch (e) {
+    console.error("apply topology graph failed:", e);
     return false;
   }
 }

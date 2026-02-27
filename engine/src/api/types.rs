@@ -304,11 +304,31 @@ pub struct ActionResult {
     pub message: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum MeterMode {
+    Voltage,
+    Resistance,
+    Continuity,
+    Diode,
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ToolAction {
     SetPSUVoltage { voltage: f64 },
     SetPSUCurrent { current: f64 },
+    ReadPSU {},
     TogglePSU { enabled: bool },
+    SetPSUTargetRail { rail: String },
+    ClearPSUTargetRail {},
+    LoadTopologyGraph { topology: Value },
     ToggleVCHG { enabled: bool },
     SetVCHGVoltage { voltage: f64 },
+    MultimeterMeasure {
+        mode: MeterMode,
+        a: String,
+        b: Option<String>,
+    },
+    MultimeterAttach { mode: MeterMode, point: String },
+    MultimeterDetach {},
 }

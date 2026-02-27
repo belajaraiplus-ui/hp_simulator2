@@ -1,3 +1,4 @@
+use crate::api::types::MeterMode;
 use crate::power::rail::Rail;
 use crate::state::ids::RailId;
 use std::collections::HashMap;
@@ -6,10 +7,12 @@ use std::collections::HashMap;
 pub struct PowerInput {
     pub voltage: f64,
     pub current_limit: f64,
+    pub psu_series_r_ohm: f64,
     pub enabled: bool,
     pub measured_current: f64,
     pub vchg_enabled: bool,
     pub vchg_voltage: f64,
+    pub target_rail: Option<RailId>,
 }
 
 impl PowerInput {
@@ -17,10 +20,12 @@ impl PowerInput {
         Self {
             voltage: 0.0,
             current_limit: 0.0,
+            psu_series_r_ohm: 0.05,
             enabled: false,
             measured_current: 0.0,
             vchg_enabled: false,
             vchg_voltage: 5.0,
+            target_rail: None,
         }
     }
 }
@@ -32,6 +37,10 @@ pub struct ElectricalState {
     pub transient_noise: f64,
     pub extra_load_a: f64,
     pub input: PowerInput,
+    pub tick: u64,
+    pub meter_attached: bool,
+    pub meter_mode: Option<MeterMode>,
+    pub meter_target: Option<RailId>,
 }
 
 impl ElectricalState {
@@ -62,6 +71,10 @@ impl Default for ElectricalState {
             transient_noise: 0.0,
             extra_load_a: 0.0,
             input: PowerInput::new(),
+            tick: 0,
+            meter_attached: false,
+            meter_mode: None,
+            meter_target: None,
         }
     }
 }
