@@ -1,73 +1,82 @@
-use crate::state::ids::{RailId, ThermalZoneId};
+use crate::state::electrical::PsuMode;
 use crate::state::phone_state::*;
 
-/// PSU behavior in this stage only contributes stress/derating effects.
-/// Rail voltages are integrated in `power::propagate`.
 pub fn apply_psu_behavior(state: &mut PhoneState) {
-    if !state.electrical.input.enabled {
+    let enabled = state.electrical.input.enabled;
+    let target_rail = state.electrical.input.target_rail;
+    let current_limit = state.electrical.input.current_limit;
+    let voltage = state.electrical.input.voltage;
+    let ovp_threshold = state.electrical.input.ovp_threshold;
+    let uvp_threshold = state.electrical.input.uvp_threshold;
+    let ocp_threshold = state.electrical.input.ocp_threshold;
+
+    if !enabled {
         state.electrical.input.measured_current = 0.0;
+        state.electrical.input.psu_mode = PsuMode::Off;
         return;
     }
 
-    let mut current_limit: f64 = state.electrical.input.current_limit.max(0.001_f64);
     let total_load: f64 = state.electrical.total_load().max(0.0_f64);
+    let mut effective_current_limit = current_limit.max(0.001_f64);
+
+    let temp_increase = total_load * 0.5 * 0.1;
+    state.electrical.input.psu_temperature =
+        (state.electrical.input.psu_temperature + temp_increase).min(100.0);
 
     let thermal_factor: f64 =
         (1.0_f64 - state.stress.electrical * 0.02_f64).clamp(0.7_f64, 1.0_f64);
-    current_limit *= thermal_factor;
+    effective_current_limit *= thermal_factor;
 
-    if total_load > current_limit {
-        state.stress.electrical += 0.01_f64 * (total_load - current_limit);
+    let rail_voltage = target_rail
+        .and_then(|r| state.electrical.rails.get(&r))
+        .map(|r| r.state.voltage)
+        .unwrap_or(0.0);
+
+    let voltage_error = (voltage - rail_voltage).abs();
+    let current_ratio = total_load / effective_current_limit;
+
+    if current_ratio >= 0.95 {
+        state.electrical.input.psu_mode = PsuMode::CC;
+    } else if voltage_error > 0.1 && current_ratio < 0.9 {
+        state.electrical.input.psu_mode = PsuMode::CV;
+    }
+
+    if ovp_threshold > 0.0 && rail_voltage > ovp_threshold {
+        state.electrical.input.psu_mode = PsuMode::Fault;
+        state.electrical.input.enabled = false;
+    }
+
+    if uvp_threshold > 0.0 && rail_voltage < uvp_threshold && rail_voltage > 0.1 {
+        state.electrical.input.psu_mode = PsuMode::Fault;
+        state.electrical.input.enabled = false;
+    }
+
+    if ocp_threshold > 0.0 && total_load > ocp_threshold {
+        state.electrical.input.psu_mode = PsuMode::Fault;
+        state.electrical.input.enabled = false;
+    }
+
+    if total_load > effective_current_limit {
+        state.stress.electrical += 0.01_f64 * (total_load - effective_current_limit);
     }
 }
 
-/// Electrical step:
-/// - keep observational noise coherent
-/// - couple electrical current into thermal domain
 pub fn step_electrical(s: &mut PhoneState, dt: f64) {
     apply_psu_behavior(s);
 
     let _dt: f64 = dt.max(0.0_f64);
+    let psu_enabled = s.electrical.input.enabled;
+    let psu_ripple = s.electrical.input.output_ripple_pp;
 
     for (_rail_id, rail) in s.electrical.rails.iter_mut() {
-        rail.noise = (s.electrical.transient_noise + rail.state.ripple) * 0.05_f64;
-    }
-
-    for (_id, zone) in s.thermal.zones.iter_mut() {
-        zone.heat_generation = 0.0_f64;
-    }
-
-    for (rid, rail) in s.electrical.rails.iter() {
-        let i = rail.state.current.abs();
-        if i < 0.001_f64 {
-            continue;
-        }
-
-        let r = rail.health.esr.max(1e-6_f64);
-        let heat = i * i * r;
-
-        let zone = match rid {
-            RailId::Vcore => ThermalZoneId::Soc,
-            RailId::Vbat => ThermalZoneId::Pmic,
-            RailId::Vchg => ThermalZoneId::Board,
-            _ => ThermalZoneId::Board,
+        let ripple_v = if psu_enabled {
+            let ripple_freq = 100_000.0;
+            let time = s.time;
+            let ripple = (time * ripple_freq * 2.0 * std::f64::consts::PI).sin() * psu_ripple / 2.0;
+            ripple * 0.1
+        } else {
+            0.0
         };
-
-        if let Some(z) = s.thermal.zones.get_mut(&zone) {
-            z.heat_generation += heat;
-        }
-    }
-
-    if let Some(soc) = s.thermal.zones.get_mut(&ThermalZoneId::Soc) {
-        if let Some(vcore) = s.electrical.rails.get(&RailId::Vcore) {
-            soc.heat_generation += vcore.state.current * vcore.state.voltage * 0.8_f64;
-        }
-        if let Some(vbat) = s.electrical.rails.get(&RailId::Vbat) {
-            soc.heat_generation += vbat.state.current * 0.2_f64;
-        }
-    }
-
-    if let Some(board) = s.thermal.zones.get_mut(&ThermalZoneId::Board) {
-        board.heat_generation += s.electrical.total_load() * 0.5_f64;
+        rail.noise = (s.electrical.transient_noise + rail.state.ripple + ripple_v) * 0.05_f64;
     }
 }

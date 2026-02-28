@@ -6,8 +6,9 @@ use crate::world::presets::get_profile_by_scenario;
 use crate::world::profile::apply_world_profile;
 
 use crate::measurement::engine::MeasurementEngine;
+use crate::power::multimeter::Multimeter;
 use crate::power::profile_loader;
-use crate::state::ids::{RailId, ThermalZoneId};
+use crate::state::ids::RailId;
 use crate::util::rng::XorShift64;
 
 use crate::api::types::{ActionRequest, MeterMode, ToolAction};
@@ -156,12 +157,12 @@ impl WasmContext {
         } else if t.contains("soc") && (t.contains("temp") || t == "soc") {
             Some(MeasurementEngine::measure_temperature(
                 &mut self.phone,
-                ThermalZoneId::Soc,
+                "soc".to_string(),
             ))
         } else if t.contains("board") && (t.contains("temp") || t == "board") {
             Some(MeasurementEngine::measure_temperature(
                 &mut self.phone,
-                ThermalZoneId::Board,
+                "board".to_string(),
             ))
         } else if t.is_empty() {
             return json!({ "error": "Empty measurement target" });
@@ -211,9 +212,10 @@ impl WasmContext {
                     let mut rng = XorShift64::new(seed);
 
                     let i = self.phone.electrical.input.measured_current;
-                    let noisy_i =
-                        (i + i * rng.uniform(-0.01_f64, 0.01_f64) + rng.uniform(-0.005_f64, 0.005_f64))
-                            .max(0.0_f64);
+                    let noisy_i = (i
+                        + i * rng.uniform(-0.01_f64, 0.01_f64)
+                        + rng.uniform(-0.005_f64, 0.005_f64))
+                    .max(0.0_f64);
 
                     return json!({
                         "ok": true,
@@ -247,12 +249,41 @@ impl WasmContext {
                             self.phone.electrical.input.target_rail = Some(id);
                             json!({ "ok": true })
                         }
-                        None => json!({ "ok": false, "message": format!("Unknown rail id: {}", trimmed) }),
+                        None => {
+                            json!({ "ok": false, "message": format!("Unknown rail id: {}", trimmed) })
+                        }
                     };
                 }
                 ToolAction::ClearPSUTargetRail {} => {
                     self.phone.electrical.input.target_rail = None;
                     return json!({ "ok": true });
+                }
+                ToolAction::SetPSUMode { mode } => {
+                    let psu_mode = match mode.as_str() {
+                        "cv" => crate::state::electrical::PsuMode::CV,
+                        "cc" => crate::state::electrical::PsuMode::CC,
+                        "off" => crate::state::electrical::PsuMode::Off,
+                        _ => crate::state::electrical::PsuMode::CV,
+                    };
+                    self.phone.electrical.set_psu_mode(psu_mode);
+                    return json!({ "ok": true, "mode": mode });
+                }
+                ToolAction::SetPSUOVP { threshold } => {
+                    self.phone.electrical.set_psu_ovp(*threshold);
+                    return json!({ "ok": true, "ovp_threshold": threshold });
+                }
+                ToolAction::SetPSUUVP { threshold } => {
+                    self.phone.electrical.set_psu_uvp(*threshold);
+                    return json!({ "ok": true, "uvp_threshold": threshold });
+                }
+                ToolAction::SetPSURipple { ripple_vpp } => {
+                    self.phone.electrical.set_psu_ripple(*ripple_vpp);
+                    return json!({ "ok": true, "ripple_vpp": ripple_vpp });
+                }
+                ToolAction::ResetPSUFault {} => {
+                    self.phone.electrical.input.psu_mode = crate::state::electrical::PsuMode::CV;
+                    self.phone.electrical.input.enabled = true;
+                    return json!({ "ok": true, "mode": "cv" });
                 }
                 ToolAction::MultimeterAttach { mode, point } => {
                     let id = RailId::from_str(point.as_str());
@@ -275,7 +306,7 @@ impl WasmContext {
                     return json!({ "ok": true });
                 }
                 ToolAction::MultimeterMeasure { mode, a, b } => {
-                    let rail_a = match RailId::from_str(a.as_str()) {
+                    let rail_id = match RailId::from_str(a.as_str()) {
                         Some(r) => r,
                         None => {
                             return json!({
@@ -286,11 +317,19 @@ impl WasmContext {
                         }
                     };
 
+                    // Hitung stress PSU untuk jitter (0.0 - 1.0)
+                    let ilim = self.phone.electrical.input.current_limit.max(0.1);
+                    let stress =
+                        (self.phone.electrical.input.measured_current / ilim).clamp(0.0, 1.0);
+                    let rail = self.phone.electrical.rails.get(&rail_id);
+
                     let mode_salt = match mode {
                         MeterMode::Voltage => 0xA5A5_0000u64,
                         MeterMode::Resistance => 0x55AA_0000u64,
                         MeterMode::Continuity => 0xC0DE_0000u64,
                         MeterMode::Diode => 0xD10D_0000u64,
+                        MeterMode::Current => 0xC0FF_0000u64,
+                        MeterMode::Temperature => 0xDEAD_0000u64,
                     };
                     let base_seed = self.phone.electrical.tick
                         ^ mode_salt
@@ -298,58 +337,261 @@ impl WasmContext {
 
                     match mode {
                         MeterMode::Voltage => {
-                            let true_v = self
-                                .phone
-                                .electrical
-                                .rails
-                                .get(&rail_a)
-                                .map(|r| r.state.voltage)
-                                .unwrap_or(0.0_f64);
-                            let current = self.phone.electrical.input.measured_current;
-                            let v = Self::measure_voltage_with_noise(true_v, current, base_seed);
-                            return json!({ "ok": true, "mode": "voltage", "v": v });
+                            let true_v_a = rail.map(|r| r.state.voltage).unwrap_or(0.0);
+
+                            let true_v = if let Some(b_point) = b {
+                                if let Some(b_id) = RailId::from_str(b_point.as_str()) {
+                                    if let Some(rail_b) = self.phone.electrical.rails.get(&b_id) {
+                                        let true_v_b = rail_b.state.voltage;
+                                        true_v_a - true_v_b
+                                    } else {
+                                        true_v_a
+                                    }
+                                } else {
+                                    true_v_a
+                                }
+                            } else {
+                                true_v_a
+                            };
+
+                            let res = Multimeter::voltage_resolution(true_v.abs());
+                            let mut rng = XorShift64::new(base_seed);
+
+                            let offset = rng.uniform(-2.0 * res, 2.0 * res);
+                            let jitter_span = (3.0 + 17.0 * stress) * res;
+                            let jitter = rng.uniform(-jitter_span, jitter_span);
+
+                            let v = Multimeter::quantize(true_v + offset + jitter, res);
+                            return json!({ "ok": true, "mode": "voltage", "v": v, "b": b });
                         }
                         MeterMode::Resistance => {
-                            let r_true = self
-                                .phone
-                                .electrical
-                                .rails
-                                .get(&rail_a)
-                                .map(|r| r.health.resistance_to_ground)
-                                .unwrap_or(1.0e9_f64);
+                            let raw_r = rail.map(|r| r.r2g_ohms()).unwrap_or(1e9);
+                            let res = Multimeter::ohm_resolution(raw_r);
                             let mut rng = XorShift64::new(base_seed);
-                            let current_factor =
-                                (self.phone.electrical.input.measured_current.abs() / 3.0_f64).clamp(0.0_f64, 1.0_f64);
-                            let scale = 1.0_f64 + current_factor;
-                            let noise = r_true * rng.uniform(-0.01_f64, 0.01_f64) * scale
-                                + rng.uniform(-0.2_f64, 0.2_f64) * scale;
-                            let r = Self::quantize((r_true + noise).max(0.0_f64), 0.1_f64);
-                            return json!({ "ok": true, "mode": "resistance", "ohm": r, "b": b });
+
+                            let noise_multiplier = (raw_r / 2000.0).max(1.0).min(100.0);
+                            let offset = rng.uniform(-1.0 * res, 1.0 * res);
+                            let jitter_span = (2.0 * noise_multiplier) * res;
+                            let jitter = rng.uniform(-jitter_span, jitter_span);
+
+                            let val = Multimeter::quantize((raw_r + offset + jitter).max(0.0), res);
+                            let display = if val > Multimeter::OHM_LIMIT {
+                                json!("OL")
+                            } else {
+                                json!(val)
+                            };
+                            return json!({ "ok": true, "mode": "resistance", "ohm": display, "b": b });
                         }
                         MeterMode::Continuity => {
-                            let r_true = self
-                                .phone
-                                .electrical
-                                .rails
-                                .get(&rail_a)
-                                .map(|r| r.health.resistance_to_ground)
-                                .unwrap_or(1.0e9_f64);
+                            let raw_r = rail.map(|r| r.r2g_ohms()).unwrap_or(1e9);
+                            let beep = rail.map(|r| r.continuity_beep()).unwrap_or(false);
                             let mut rng = XorShift64::new(base_seed);
-                            let thr = 30.0_f64 + rng.uniform(-5.0_f64, 5.0_f64);
-                            let beep = r_true <= thr;
-                            return json!({ "ok": true, "mode": "continuity", "beep": beep, "b": b });
+
+                            let jitter = rng.uniform(-2.0, 2.0);
+                            let val = Multimeter::quantize((raw_r + jitter).max(0.0), 0.1);
+                            let display = if val > Multimeter::OHM_LIMIT {
+                                json!("OL")
+                            } else {
+                                json!(val)
+                            };
+                            return json!({ "ok": true, "mode": "continuity", "beep": beep, "ohm": display, "b": b });
                         }
                         MeterMode::Diode => {
-                            let v = self
+                            let raw_v = rail.map(|r| r.state.voltage).unwrap_or(0.0);
+                            let status = rail
+                                .map(|r| r.status)
+                                .unwrap_or(crate::power::rail::RailStatus::Off);
+                            let mut rng = XorShift64::new(base_seed);
+
+                            let base = if status == crate::power::rail::RailStatus::ShortToGnd {
+                                0.005
+                            } else if raw_v.abs() < 0.3 {
+                                0.55
+                            } else {
+                                1.20
+                            };
+
+                            let jitter_range = 0.02 + 0.08 * stress;
+                            let jitter = rng.uniform(-jitter_range, jitter_range);
+                            let vf = Multimeter::quantize((base + jitter).max(0.0), 0.001);
+                            return json!({ "ok": true, "mode": "diode", "vf": vf, "b": b });
+                        }
+                        MeterMode::Current => {
+                            let raw_i = rail.map(|r| r.state.current).unwrap_or(0.0);
+                            let res = Multimeter::current_resolution(raw_i);
+                            let mut rng = XorShift64::new(base_seed);
+
+                            let burden_v = raw_i * 0.1;
+                            let burden_error = burden_v * 0.02;
+
+                            let offset = rng.uniform(-burden_error, burden_error);
+                            let jitter_span = (0.5 + 2.0 * stress) * res;
+                            let jitter = rng.uniform(-jitter_span, jitter_span);
+
+                            let val = Multimeter::quantize(raw_i + offset + jitter, res);
+                            let display = if val < 0.0 { json!("OL") } else { json!(val) };
+                            return json!({ "ok": true, "mode": "current", "a": display });
+                        }
+                        MeterMode::Temperature => {
+                            let zone_id = format!("{:?}", rail_id);
+                            let raw_t_a = self
                                 .phone
-                                .electrical
-                                .rails
-                                .get(&rail_a)
-                                .map(|r| (0.18_f64 + r.health.esr * 0.2_f64).clamp(0.0_f64, 1.2_f64))
-                                .unwrap_or(0.6_f64);
-                            return json!({ "ok": true, "mode": "diode", "vf": Self::quantize(v, 0.001_f64), "b": b });
+                                .thermal
+                                .zones
+                                .get(&zone_id)
+                                .map(|z| z.temp_c)
+                                .unwrap_or(self.phone.thermal.average());
+
+                            let raw_t = if let Some(b_point) = b {
+                                if let Some(b_id) = RailId::from_str(b_point.as_str()) {
+                                    let b_zone_id = format!("{:?}", b_id);
+                                    if let Some(zone_b) = self.phone.thermal.zones.get(&b_zone_id) {
+                                        raw_t_a - zone_b.temp_c
+                                    } else {
+                                        raw_t_a
+                                    }
+                                } else {
+                                    raw_t_a
+                                }
+                            } else {
+                                raw_t_a
+                            };
+
+                            let res = Multimeter::temperature_resolution(raw_t.abs());
+                            let mut rng = XorShift64::new(base_seed);
+
+                            let cjc_error = rng.uniform(-1.5, 1.5);
+                            let noise = rng.uniform(-0.3, 0.3);
+                            let drift = (self.phone.electrical.tick as f64 * 0.001).sin() * 0.2;
+
+                            let val = Multimeter::quantize(raw_t + cjc_error + noise + drift, res);
+                            return json!({ "ok": true, "mode": "temperature", "c": val, "b": b });
                         }
                     }
+                }
+                ToolAction::SetAmbientTemp { ambient_c } => {
+                    self.phone.thermal.ambient_c = *ambient_c;
+                    return json!({ "ok": true });
+                }
+                ToolAction::UpsertThermalZone {
+                    id,
+                    thermal_mass,
+                    heat_dissipation,
+                } => {
+                    if let Some(zone) = self.phone.thermal.zones.get_mut(id) {
+                        zone.thermal_mass = *thermal_mass;
+                        zone.heat_dissipation = *heat_dissipation;
+                    } else {
+                        self.phone.thermal.zones.insert(
+                            id.clone(),
+                            crate::thermal::ThermalZone {
+                                id: id.clone(),
+                                temp_c: self.phone.thermal.ambient_c,
+                                thermal_mass: *thermal_mass,
+                                heat_dissipation: *heat_dissipation,
+                                convection_coefficient: 0.05,
+                                surface_area: 0.001,
+                                is_heatsink: false,
+                                throttling_threshold: 85.0,
+                            },
+                        );
+                    }
+                    return json!({ "ok": true });
+                }
+                ToolAction::SetThermalLinks { links } => {
+                    self.phone.thermal.links = links
+                        .iter()
+                        .map(|(a, b, g)| crate::thermal::ThermalLink {
+                            a: a.clone(),
+                            b: b.clone(),
+                            conductance: *g,
+                        })
+                        .collect();
+                    return json!({ "ok": true });
+                }
+                ToolAction::SetRailThermalZone { rail, zone } => {
+                    self.phone
+                        .thermal
+                        .rail_zone
+                        .insert(rail.clone(), zone.clone());
+                    return json!({ "ok": true });
+                }
+                ToolAction::SetCPULoad { load } => {
+                    self.phone.electrical.dynamic_load.base_cpu_load = load.max(0.0).min(2.0);
+                    return json!({ "ok": true, "cpu_load": load });
+                }
+                ToolAction::SetCharging { charging } => {
+                    self.phone.electrical.set_charging_load(*charging);
+                    return json!({ "ok": true, "charging": charging });
+                }
+                ToolAction::SetRailFuse { rail, rating_a } => {
+                    if let Some(rail_id) = RailId::from_str(rail.as_str()) {
+                        if let Some(r) = self.phone.electrical.rails.get_mut(&rail_id) {
+                            r.health.fuse_rating_a = *rating_a;
+                            return json!({ "ok": true, "rail": rail, "fuse_rating_a": rating_a });
+                        }
+                    }
+                    return json!({ "ok": false, "message": "Rail not found" });
+                }
+                ToolAction::SetRailOCP {
+                    rail,
+                    threshold_a,
+                    delay_s,
+                } => {
+                    if let Some(rail_id) = RailId::from_str(rail.as_str()) {
+                        if let Some(r) = self.phone.electrical.rails.get_mut(&rail_id) {
+                            r.health.ocp_threshold_a = *threshold_a;
+                            r.health.ocp_delay_s = *delay_s;
+                            return json!({ "ok": true, "rail": rail, "ocp_threshold_a": threshold_a, "ocp_delay_s": delay_s });
+                        }
+                    }
+                    return json!({ "ok": false, "message": "Rail not found" });
+                }
+                ToolAction::BlowRailFuse { rail } => {
+                    if let Some(rail_id) = RailId::from_str(rail.as_str()) {
+                        if let Some(r) = self.phone.electrical.rails.get_mut(&rail_id) {
+                            r.blow_fuse();
+                            return json!({ "ok": true, "rail": rail, "fuse_blown": true });
+                        }
+                    }
+                    return json!({ "ok": false, "message": "Rail not found" });
+                }
+                ToolAction::ResetRailFuse { rail } => {
+                    if let Some(rail_id) = RailId::from_str(rail.as_str()) {
+                        if let Some(r) = self.phone.electrical.rails.get_mut(&rail_id) {
+                            r.reset_fuse();
+                            return json!({ "ok": true, "rail": rail, "fuse_blown": false });
+                        }
+                    }
+                    return json!({ "ok": false, "message": "Rail not found" });
+                }
+                ToolAction::AddParallelRegulator {
+                    target,
+                    source,
+                    current_limit_a,
+                } => {
+                    if let Some(target_id) = RailId::from_str(target.as_str()) {
+                        if let Some(source_id) = RailId::from_str(source.as_str()) {
+                            self.phone.power_graph.add_regulator_with_limit(
+                                source_id,
+                                target_id,
+                                *current_limit_a,
+                            );
+                            return json!({ "ok": true, "target": target, "source": source, "current_limit_a": current_limit_a });
+                        }
+                    }
+                    return json!({ "ok": false, "message": "Invalid rail ID" });
+                }
+                ToolAction::SetFanSpeed { speed } => {
+                    self.phone.thermal.set_fan_speed(*speed);
+                    return json!({ "ok": true, "fan_speed": speed });
+                }
+                ToolAction::SetZoneThrottling { zone, threshold_c } => {
+                    if let Some(z) = self.phone.thermal.zones.get_mut(zone) {
+                        z.throttling_threshold = *threshold_c;
+                        return json!({ "ok": true, "zone": zone, "throttling_threshold": threshold_c });
+                    }
+                    return json!({ "ok": false, "message": "Thermal zone not found" });
                 }
             }
         }
@@ -369,7 +611,10 @@ impl WasmContext {
                         .get("current_limit")
                         .and_then(|v| v.as_f64())
                         .unwrap_or(2.0);
-                    let enabled = params.get("enabled").and_then(|v| v.as_bool()).unwrap_or(true);
+                    let enabled = params
+                        .get("enabled")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
 
                     // Sesuaikan field ini dengan struktur PhoneState Anda
                     self.phone

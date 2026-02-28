@@ -53,6 +53,7 @@ const manualMeasureBtn = document.getElementById("manualMeasure");
 const multimeterModeEl = document.getElementById("multimeterMode");
 const multimeterTargetTypeEl = document.getElementById("multimeterTargetType");
 const multimeterRailEl = document.getElementById("multimeterRail");
+const multimeterRailBEl = document.getElementById("multimeterRailB");
 const multimeterComponentEl = document.getElementById("multimeterComponent");
 const multimeterResultEl = document.getElementById("multimeterResult");
 const boardProfileLabelEl = document.getElementById("boardProfileLabel");
@@ -600,6 +601,8 @@ document.addEventListener("DOMContentLoaded", () => {
     manualMeasureBtn.onclick = async () => {
       if (!engineReady) return;
 
+      const railB = multimeterRailBEl?.value?.trim() || null;
+
       Tools.setMultimeter({
         mode: multimeterModeEl.value,
         targetType: multimeterTargetTypeEl.value,
@@ -607,7 +610,7 @@ document.addEventListener("DOMContentLoaded", () => {
         component: multimeterComponentEl.value,
       });
 
-      const { value } = await Tools.measureMultimeter();
+      const { value } = await Tools.measureMultimeter(railB);
       renderMultimeterResult(multimeterResultEl, multimeterModeEl.value, Number(value));
       
       // Update measurement history immediately

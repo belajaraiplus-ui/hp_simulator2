@@ -1,11 +1,53 @@
 {
   "version": 1,
+  "ambient_c": 27,
   "zones": [
+    {
+      "id": "soc",
+      "components": ["U9000"],
+      "thermal_mass": 50.0,
+      "heat_dissipation": 0.1,
+      "convection_coefficient": 0.05,
+      "surface_area": 0.001
+    },
     {
       "id": "pmic_zone",
       "components": ["U1201"],
       "thermal_mass": 0.7,
-      "heat_dissipation": 0.4
+      "heat_dissipation": 0.4,
+      "convection_coefficient": 0.1,
+      "surface_area": 0.0001
+    },
+    {
+      "id": "battery_zone",
+      "components": ["BAT1"],
+      "thermal_mass": 80.0,
+      "heat_dissipation": 0.05,
+      "convection_coefficient": 0.02,
+      "surface_area": 0.005
+    },
+    {
+      "id": "board",
+      "components": ["PCB"],
+      "thermal_mass": 80.0,
+      "heat_dissipation": 0.05,
+      "convection_coefficient": 0.03,
+      "surface_area": 0.01
+    },
+    {
+      "id": "vddr_zone",
+      "components": ["U8100"],
+      "thermal_mass": 5.0,
+      "heat_dissipation": 0.15,
+      "convection_coefficient": 0.08,
+      "surface_area": 0.0002
     }
+  ],
+  "links": [
+    { "a": "soc", "b": "board", "conductance": 0.15 },
+    { "a": "pmic_zone", "b": "board", "conductance": 0.25 },
+    { "a": "battery_zone", "b": "board", "conductance": 0.1 },
+    { "a": "vddr_zone", "b": "board", "conductance": 0.12 },
+    { "a": "soc", "b": "vddr_zone", "conductance": 0.08 }
   ]
 }

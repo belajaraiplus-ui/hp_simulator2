@@ -28,7 +28,7 @@ pub const SCENARIO_POWER_DRAIN_INTERMITTENT: Scenario = Scenario {
     ),
 
     notes:
-        "Keluhan mengarah ke baterai, tapi konteks lingkungan dan riwayat servis berpotensi menipu.",
+        "Interaksi antara riwayat servis pihak ketiga dan penggunaan charger non-standar menciptakan noise pada data arus.",
 };
 
 // =======================
@@ -54,7 +54,34 @@ pub const SCENARIO_FAKE_CHARGING_DROP: Scenario = Scenario {
 
     time_pressure: Some("Pemilik butuh cepat karena perangkat dipakai untuk kerja."),
 
-    notes: "Gejala mengarah ke baterai, tapi jalur charging dan logika USB berpotensi menipu.",
+    notes: "Anomali pada indikator vs realitas pengisian sering kali mengaburkan batas antara kerusakan hardware dan kegagalan logika proteksi.",
+};
+
+// =======================
+// SCENARIO 3 — WATER DAMAGE PROGRESSIVE
+// =======================
+
+pub const SCENARIO_WATER_DAMAGE_PROGRESSIVE: Scenario = Scenario {
+    id: "water_damage_progressive",
+    title: "Bekas Air, Masih Nyala",
+
+    customer_complaint:
+        "HP kadang mati sendiri. Setelah dikeringkan sempat normal, tapi sekarang makin sering bermasalah.",
+
+    background_story:
+        "Perangkat pernah terkena air hujan beberapa minggu lalu. Tidak langsung mati, hanya dikeringkan tanpa dibongkar.",
+
+    world: &HOT_HUMID_WORKSHOP,
+
+    tool_limit: Some(
+        "Multimeter & PSU tersedia. Tidak ada ultrasonic cleaner di workshop ini."
+    ),
+
+    time_pressure: Some(
+        "Pemilik ragu apakah perangkat ini masih layak dipertahankan."
+    ),
+
+    notes: "Korosi mikro bersifat progresif. Pengukuran elektrikal mungkin memberikan hasil yang berubah-ubah tergantung pada suhu dan kelembapan saat ini.",
 };
 
 /// =======================
@@ -62,7 +89,7 @@ pub const SCENARIO_FAKE_CHARGING_DROP: Scenario = Scenario {
 /// =======================
 
 pub const SCENARIO_NO_SERVICE_INTERMITTENT: Scenario = Scenario {
-    id: "rf_no_service_intermit",
+    id: "rf_no_service_intermittent",
     title: "No Service, Sinyal Kadang Muncul",
 
     customer_complaint:
@@ -81,8 +108,7 @@ pub const SCENARIO_NO_SERVICE_INTERMITTENT: Scenario = Scenario {
 
     time_pressure: Some("Pemilik ingin cepat karena perangkat dipakai untuk komunikasi utama."),
 
-    notes: "Gejala RF sering tidak meninggalkan jejak listrik yang jelas. \
-         Pengukuran agresif dapat mempersempit margin timing & memperburuk kondisi.",
+    notes: "Sinyal radio sangat bergantung pada integritas ground. Pengukuran pada titik test point dapat mengubah impedansi jalur dan memberikan hasil palsu.",
 };
 
 /// =======================

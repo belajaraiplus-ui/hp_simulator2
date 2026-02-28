@@ -1,13 +1,13 @@
 use crate::core::rng::SimRng;
 use crate::fault::model::FaultInstance;
 use crate::power::graph::DependencyGraph;
-use crate::state::electrical::{ElectricalState, PowerInput};
+use crate::state::electrical::ElectricalState;
 use crate::state::fatigue::MeasurementFatigue;
-use crate::state::ids::{FaultId, RailId, ThermalZoneId};
+use crate::state::ids::{FaultId, RailId};
 use crate::state::material::MaterialState;
 pub use crate::state::measurement_log::{MeasurementEvent, MeasurementLog};
 use crate::state::stress::StressState;
-use crate::state::thermal::ThermalState;
+use crate::thermal::ThermalState;
 use std::collections::HashMap;
 
 #[derive(Debug, Default)]
@@ -25,7 +25,7 @@ pub struct PhoneState {
     pub fatigue: MeasurementFatigue,
     pub faults: FaultRegistry,
     pub last_voltage: HashMap<RailId, f64>,
-    pub last_temperature: HashMap<ThermalZoneId, f64>,
+    pub last_temperature: HashMap<String, f64>,
     pub material: MaterialState,
     pub rng: SimRng,
     pub power_graph: DependencyGraph,
@@ -37,21 +37,8 @@ impl PhoneState {
     pub fn minimal() -> Self {
         Self {
             time: 0.0,
-            electrical: ElectricalState {
-                rails: HashMap::new(),
-                ground_integrity: 1.0,
-                transient_noise: 0.0,
-                extra_load_a: 0.0,
-                input: PowerInput::new(),
-                tick: 0,
-                meter_attached: false,
-                meter_mode: None,
-                meter_target: None,
-            },
-            thermal: ThermalState {
-                ambient: 25.0,
-                zones: HashMap::new(),
-            },
+            electrical: ElectricalState::default(),
+            thermal: ThermalState::new(),
             measurements: MeasurementLog::new(),
             stress: StressState::new(),
             fatigue: MeasurementFatigue::new(),

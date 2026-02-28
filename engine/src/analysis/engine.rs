@@ -12,12 +12,12 @@ pub fn analyze(input: AnalysisInput) -> AnalysisReport {
     // 1. DATA QUALITY (OBSERVABILITY, NOT TRUTH)
     // =======================
     let data_quality = if m.len() < 3 {
-        0.15
+        0.15_f64
     } else {
         let noise_avg: f64 = m.iter().map(|e| e.noise.abs()).sum::<f64>() / m.len() as f64;
 
         // Noise rendah TIDAK menjamin kualitas tinggi
-        (1.0 / (1.0 + noise_avg * 1.5)).clamp(0.1_f64, 0.8_f64)
+        (1.0_f64 / (1.0_f64 + noise_avg * 1.5_f64)).clamp(0.1_f64, 0.8_f64)
     };
 
     let mut hypotheses = Vec::new();

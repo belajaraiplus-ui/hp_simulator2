@@ -1,4 +1,4 @@
-import { dispatchToolAction, measureTool } from "../engine/adapter.js";
+import { dispatchToolAction, measureTool, multimeterMeasure } from "../engine/adapter.js";
 import { buildMultimeterLabel } from "../ui/multimeter.js";
 
 /**
@@ -50,7 +50,50 @@ export function createToolDispatcher() {
       state.psu.targetRail = null;
     }
 
+    // Thermal mapping: kirim mapping rail -> zone ke engine
+    for (const rail of rails) {
+      if (rail.thermal_zone) {
+        dispatchToolAction({
+          SetRailThermalZone: { rail: rail.id, zone: rail.thermal_zone }
+        });
+      }
+    }
+
+    // Panggil thermal loader saat board berubah
+    await loadBoardThermal(boardId, { baseUrl });
+
     return { rails, injectableRails: injectable };
+  }
+
+  async function loadBoardThermal(boardId, { baseUrl = "" } = {}) {
+    const url = `${baseUrl}/assets/boards/${boardId}/thermal.json`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`Failed thermal.json: HTTP ${r.status} ${url}`);
+    const t = await r.json();
+
+    // ambient
+    if (Number.isFinite(t.ambient_c)) {
+      dispatchToolAction({ SetAmbientTemp: { ambient_c: t.ambient_c } });
+    } else {
+      dispatchToolAction({ SetAmbientTemp: { ambient_c: 27 } });
+    }
+
+    // zones: pastikan ada zone "board" sebagai sink umum
+    dispatchToolAction({ UpsertThermalZone: { id: "board", thermal_mass: 10, heat_dissipation: 0.8 } });
+
+    for (const z of (t.zones || [])) {
+      dispatchToolAction({
+        UpsertThermalZone: {
+          id: z.id,
+          thermal_mass: z.thermal_mass ?? 1.0,
+          heat_dissipation: z.heat_dissipation ?? 0.3,
+        }
+      });
+    }
+
+    // links (optional)
+    const links = (t.links || []).map(l => [l.a, l.b, l.conductance ?? 0.1]);
+    dispatchToolAction({ SetThermalLinks: { links } });
   }
 
   // ---- PSU actions ----
@@ -86,31 +129,80 @@ export function createToolDispatcher() {
 
   // ---- Multimeter actions (kompat: masih label-based) ----
   function setMultimeter({ mode, targetType, rail, component }) {
-    if (typeof mode === "string") state.multimeter.mode = mode;
+    if (typeof mode === "string" && mode !== state.multimeter.mode) {
+      state.multimeter.mode = mode;
+      
+      // Efek suara click saat dial multimeter diputar
+      const clickSound = new Audio("/assets/sounds/multimeter_click.mp3");
+      clickSound.volume = 0.4;
+      clickSound.play().catch(e => console.debug("Autoplay blocked or sound missing:", e));
+    }
     if (typeof targetType === "string") state.multimeter.targetType = targetType;
     if (typeof rail === "string") state.multimeter.rail = rail;
     if (typeof component === "string") state.multimeter.component = component;
   }
 
-  async function measureMultimeter() {
+  async function measureMultimeter(railB = null) {
     const label = buildMultimeterLabel(
       state.multimeter.mode,
       state.multimeter.targetType,
       state.multimeter.rail,
       state.multimeter.component
     );
-    // engine ctx.measure() memang consume label string (diode/ohm/continuity/vbat/comp:...)
+    
+    // Check if this mode supports differential measurement (b parameter)
+    const supportsDifferential = ["voltage", "temperature"].includes(state.multimeter.mode);
+    
+    let result;
+    if (supportsDifferential && railB) {
+      // Use direct multimeterMeasure for differential
+      const mode = state.multimeter.mode;
+      result = await multimeterMeasure({ 
+        mode, 
+        a: state.multimeter.rail, 
+        b: railB 
+      });
+      return { 
+        label, 
+        value: result?.v ?? result?.c ?? result ?? 0 
+      };
+    }
+    
+    // Original label-based approach
     const val = await measureTool(label);
     return { label, value: val };
+  }
+
+  function setThermalConfig({ ambientTemp }) {
+    if (Number.isFinite(ambientTemp)) {
+      dispatchToolAction({ SetAmbientTemp: { ambient_c: ambientTemp } });
+    }
+  }
+
+  function upsertThermalZone({ id, thermalMass, heatDissipation }) {
+    dispatchToolAction({ UpsertThermalZone: { id, thermal_mass: thermalMass, heat_dissipation: heatDissipation } });
+  }
+
+  function setThermalLinks(links) {
+    dispatchToolAction({ SetThermalLinks: { links } });
+  }
+
+  function setRailThermalZone(rail, zone) {
+    dispatchToolAction({ SetRailThermalZone: { rail, zone } });
   }
 
   return {
     state,
     loadBoardRails,
+    loadBoardThermal,
     setPSUConfig,
     applyPSU,
     applyPSUTargetOnly,
     setMultimeter,
     measureMultimeter,
+    setThermalConfig,
+    upsertThermalZone,
+    setThermalLinks,
+    setRailThermalZone,
   };
 }

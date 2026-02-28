@@ -58,6 +58,24 @@ pub struct RailHealth {
 
     /// Kapasitansi total rail (Farad).
     pub capacitance: f64,
+
+    /// Fuse rating (Ampere). 0 = no fuse.
+    pub fuse_rating_a: f64,
+
+    /// Fuse status: true = blown, false = intact
+    pub fuse_blown: bool,
+
+    /// OCP threshold (Ampere). 0 = no OCP.
+    pub ocp_threshold_a: f64,
+
+    /// OCP delay (seconds) before triggering
+    pub ocp_delay_s: f64,
+
+    /// OCP triggered counter
+    pub ocp_triggered_count: u32,
+
+    /// Current sense resistance (Ohm) for OCP
+    pub sense_resistor_ohm: f64,
 }
 
 impl Default for RailHealth {
@@ -66,6 +84,12 @@ impl Default for RailHealth {
             resistance_to_ground: 1_000_000.0, // 1 MOhm dianggap "open/normal"
             esr: 0.05,                         // 50 mOhm
             capacitance: 10e-6,                // 10 uF
+            fuse_rating_a: 0.0,                // No fuse by default
+            fuse_blown: false,
+            ocp_threshold_a: 0.0, // No OCP by default
+            ocp_delay_s: 0.001,   // 1ms OCP delay
+            ocp_triggered_count: 0,
+            sense_resistor_ohm: 0.01, // 10 mOhm sense resistor
         }
     }
 }
@@ -83,11 +107,20 @@ pub struct RailState {
     /// Ripple/noise tegangan (Vpp)
     pub ripple: f64,
 
+    /// Switching noise amplitude (V)
+    pub switching_noise: f64,
+
     /// Flag stabilitas (biasanya dihitung dari expected range & ripple)
     pub is_stable: bool,
 
     /// Beban tambahan (Ampere) dari alat ukur atau injeksi
     pub extra_load_a: f64,
+
+    /// OCP timer (accumulates over-limit time)
+    pub ocp_timer_s: f64,
+
+    /// OCP latch (stays off until reset)
+    pub ocp_latched: bool,
 }
 
 impl Default for RailState {
@@ -96,8 +129,11 @@ impl Default for RailState {
             voltage: 0.0,
             current: 0.0,
             ripple: 0.0,
+            switching_noise: 0.0,
             is_stable: false,
             extra_load_a: 0.0,
+            ocp_timer_s: 0.0,
+            ocp_latched: false,
         }
     }
 }
@@ -187,5 +223,79 @@ impl Rail {
         let mid = (self.expected.diode_min + self.expected.diode_max) * 0.5;
         // clamp ke range DMM (0..3V)
         mid.clamp(0.0, 3.0)
+    }
+
+    /// Check and apply protection circuits (fuse and OCP)
+    /// Returns true if rail is protected (blocked)
+    #[inline]
+    pub fn check_protection(&mut self, dt: f64) -> bool {
+        // If already latched off due to OCP, check for reset condition
+        if self.state.ocp_latched {
+            // OCP auto-reset after 5 seconds
+            self.state.ocp_timer_s += dt;
+            if self.state.ocp_timer_s > 5.0 {
+                self.state.ocp_latched = false;
+                self.state.ocp_timer_s = 0.0;
+                return false;
+            }
+            return true;
+        }
+
+        // Check fuse
+        if self.health.fuse_rating_a > 0.0 && self.health.fuse_blown {
+            return true;
+        }
+
+        // Check OCP threshold
+        if self.health.ocp_threshold_a > 0.0 {
+            let current = self.state.current;
+
+            if current > self.health.ocp_threshold_a {
+                self.state.ocp_timer_s += dt;
+
+                // OCP triggers after delay
+                if self.state.ocp_timer_s >= self.health.ocp_delay_s {
+                    self.state.ocp_latched = true;
+                    self.health.ocp_triggered_count += 1;
+                    return true;
+                }
+            } else {
+                // Reset timer if current below threshold
+                self.state.ocp_timer_s = (self.state.ocp_timer_s - dt * 2.0).max(0.0);
+            }
+        }
+
+        return false;
+    }
+
+    /// Blow the fuse (permanent until manually reset)
+    #[inline]
+    pub fn blow_fuse(&mut self) {
+        if self.health.fuse_rating_a > 0.0 {
+            self.health.fuse_blown = true;
+        }
+    }
+
+    /// Reset fuse (for repair simulation)
+    #[inline]
+    pub fn reset_fuse(&mut self) {
+        self.health.fuse_blown = false;
+    }
+
+    /// Calculate switching ripple based on load and rail type
+    #[inline]
+    pub fn calculate_switching_ripple(&self, time: f64) -> f64 {
+        let load_factor = (self.state.current / 1.0).clamp(0.0, 1.0);
+
+        // Switching frequency ~200kHz (typical buck converter)
+        let switching_freq = 200_000.0;
+        let base_ripple = 0.01 * load_factor; // 10mV per ampere
+
+        // Add harmonics
+        let fundamental = (time * switching_freq * 2.0 * std::f64::consts::PI).sin();
+        let harmonic2 = (time * switching_freq * 4.0 * std::f64::consts::PI).sin() * 0.3;
+        let harmonic3 = (time * switching_freq * 6.0 * std::f64::consts::PI).sin() * 0.1;
+
+        base_ripple * (fundamental + harmonic2 + harmonic3)
     }
 }

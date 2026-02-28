@@ -34,7 +34,7 @@ impl RailId {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize)]
 pub enum ThermalZoneId {
     Soc,
     Pmic,

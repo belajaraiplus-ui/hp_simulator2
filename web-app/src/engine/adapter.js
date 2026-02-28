@@ -165,6 +165,8 @@ function normalizeMeterMode(mode) {
   if (m === "voltage") return "voltage";
   if (m === "resistance" || m === "ohm") return "resistance";
   if (m === "continuity") return "continuity";
+  if (m === "current" || m === "ampere") return "current";
+  if (m === "temperature" || m === "temp") return "temperature";
   return null;
 }
 

@@ -240,6 +240,32 @@ function validateTopology(topJson, railIds, boardId) {
   ok(`${boardId}: topology.json OK (${nodes.length} nodes, ${edges.length} edges)`);
 }
 
+function validateThermalIntegrity(railsJson, thermalJson, boardId) {
+  if (!thermalJson) fail(`${boardId}: missing thermal.json`);
+  
+  const validZones = new Set(['board']);
+  if (Array.isArray(thermalJson.zones)) {
+    thermalJson.zones.forEach(z => {
+      if (typeof z.id !== "string") fail(`${boardId}: thermal.json zone missing string id`);
+      validZones.add(z.id);
+    });
+  }
+
+  const rails = railsJson?.rails;
+  if (Array.isArray(rails)) {
+    rails.forEach((rail, idx) => {
+      const ctx = `${boardId}: rails[${idx}] (${rail.id})`;
+      if (rail.thermal_zone !== undefined) {
+        if (typeof rail.thermal_zone !== 'string') fail(`${ctx}: 'thermal_zone' must be a string`);
+        if (!validZones.has(rail.thermal_zone)) {
+          fail(`${ctx}: references missing thermal zone "${rail.thermal_zone}" in thermal.json`);
+        }
+      }
+    });
+  }
+  ok(`${boardId}: thermal integrity OK`);
+}
+
 function validateBoardFolder(boardRoot, boardId) {
   const dir = path.join(boardRoot, boardId);
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) fail(`Board folder missing: ${dir}`);
@@ -248,6 +274,7 @@ function validateBoardFolder(boardRoot, boardId) {
   const railsJson = readJson(path.join(dir, "rails.json"));
   const compsJson = readJson(path.join(dir, "components.json"));
   const topJson = readJson(path.join(dir, "topology.json"));
+  const thermalJson = readJson(path.join(dir, "thermal.json"));
 
   // board.json minimal
   if (!boardJson?.image?.full_width_px || !boardJson?.image?.full_height_px) {
@@ -258,6 +285,7 @@ function validateBoardFolder(boardRoot, boardId) {
   const railIds = validateRails(railsJson, boardJson, boardId);
   validateComponents(compsJson, boardId);
   validateTopology(topJson, railIds, boardId);
+  validateThermalIntegrity(railsJson, thermalJson, boardId);
 }
 
 function main() {

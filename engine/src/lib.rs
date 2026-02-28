@@ -4,15 +4,16 @@ use wasm_bindgen::prelude::*;
 mod analysis;
 mod api;
 mod core;
-mod fault;
+pub mod fault;
 mod measurement;
-mod physics;
+pub mod physics;
 mod postmortem;
 pub mod power;
 pub mod scenario;
 pub mod scenario_dsl;
-mod session;
-mod state;
+pub mod session;
+pub mod state;
+pub mod thermal;
 mod util;
 pub mod world;
 
@@ -61,8 +62,29 @@ pub fn dispatch(action_json: &str) -> String {
 
     match kind {
         ActionKind::Step => {
+            let dt = ctx.engine.dt;
             ctx.engine.step(&mut ctx.phone, &mut ctx.session);
-            ctx.phone.electrical.tick = ctx.phone.electrical.tick.wrapping_add(1);
+
+            // Thermal Step Integration: Kumpulkan power per zone
+            let mut p_zone: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+            ctx.phone.thermal.ensure_zone("board");
+
+            for (rail_id, rail) in ctx.phone.electrical.rails.iter() {
+                let v = rail.state.voltage;
+                let r2g = rail.health.resistance_to_ground.max(0.01);
+                let p = (v * v) / r2g; // P = V^2 / R (Leakage power)
+
+                let rid = format!("{:?}", rail_id);
+                let zone = ctx.phone.thermal.rail_zone.get(&rid).cloned().unwrap_or_else(|| "board".to_string());
+                ctx.phone.thermal.add_power(&zone, p, &mut p_zone);
+            }
+
+            // edge path heating (kalau kamu simpan edge_flow)
+            // for (parent, child, i, r) in edge_flow { ... split to zones ... }
+
+            let stress_delta = ctx.phone.thermal.step(dt, &p_zone);
+            ctx.phone.stress.thermal += stress_delta;
+
             ApiResponse::ok().to_json_string()
         }
 

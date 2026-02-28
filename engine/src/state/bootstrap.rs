@@ -3,13 +3,13 @@ use std::collections::HashMap;
 use crate::core::rng::SimRng;
 use crate::power::graph::DependencyGraph;
 use crate::power::rail::Rail;
-use crate::state::electrical::{ElectricalState, PowerInput};
+use crate::state::electrical::ElectricalState;
 use crate::state::fatigue::MeasurementFatigue;
-use crate::state::ids::{RailId, ThermalZoneId};
+use crate::state::ids::RailId;
 use crate::state::material::MaterialState;
 use crate::state::phone_state::{FaultRegistry, MeasurementLog, PhoneState};
-use crate::state::thermal::{ThermalState, ThermalZone};
 use crate::state::StressState;
+use crate::thermal::{ThermalLink, ThermalState, ThermalZone};
 
 pub fn bootstrap_state() -> PhoneState {
     let mut rails = HashMap::new();
@@ -39,27 +39,62 @@ pub fn bootstrap_state() -> PhoneState {
     let vchg = Rail::new(RailId::Vchg);
     rails.insert(RailId::Vchg, vchg);
 
-    let mut zones = HashMap::new();
-    zones.insert(
-        ThermalZoneId::Soc,
+    let mut thermal = ThermalState::new();
+    thermal.ambient_c = 30.0;
+
+    thermal.zones.insert(
+        "soc".to_string(),
         ThermalZone {
-            temperature: 35.0,
+            id: "soc".to_string(),
+            temp_c: 35.0,
             thermal_mass: 50.0,
-            heat_generation: 0.0,
-            heat_dissipation: 0.0,
-            coupling: vec![(ThermalZoneId::Board, 0.15)],
+            heat_dissipation: 0.1,
+            convection_coefficient: 0.05,
+            surface_area: 0.001,
+            is_heatsink: false,
+            throttling_threshold: 85.0,
         },
     );
-    zones.insert(
-        ThermalZoneId::Board,
+
+    thermal.zones.insert(
+        "board".to_string(),
         ThermalZone {
-            temperature: 30.0,
+            id: "board".to_string(),
+            temp_c: 30.0,
             thermal_mass: 80.0,
-            heat_generation: 0.0,
-            heat_dissipation: 0.0,
-            coupling: vec![],
+            heat_dissipation: 0.05,
+            convection_coefficient: 0.03,
+            surface_area: 0.01,
+            is_heatsink: false,
+            throttling_threshold: 100.0,
         },
     );
+
+    thermal.zones.insert(
+        "pmic_zone".to_string(),
+        ThermalZone {
+            id: "pmic_zone".to_string(),
+            temp_c: 30.0,
+            thermal_mass: 0.7,
+            heat_dissipation: 0.4,
+            convection_coefficient: 0.1,
+            surface_area: 0.0001,
+            is_heatsink: false,
+            throttling_threshold: 90.0,
+        },
+    );
+
+    thermal.links.push(ThermalLink {
+        a: "soc".into(),
+        b: "board".into(),
+        conductance: 0.15,
+    });
+
+    thermal.links.push(ThermalLink {
+        a: "pmic_zone".into(),
+        b: "board".into(),
+        conductance: 0.25,
+    });
 
     let mut power_graph = DependencyGraph::new();
     // VBUS_5V (Vchg) -> VBAT
@@ -71,19 +106,10 @@ pub fn bootstrap_state() -> PhoneState {
         time: 0.0,
         electrical: ElectricalState {
             rails,
-            ground_integrity: 1.0,
             transient_noise: 0.01,
-            extra_load_a: 0.0,
-            input: PowerInput::new(),
-            tick: 0,
-            meter_attached: false,
-            meter_mode: None,
-            meter_target: None,
+            ..ElectricalState::default()
         },
-        thermal: ThermalState {
-            ambient: 30.0,
-            zones,
-        },
+        thermal,
         measurements: MeasurementLog::new(),
         stress: StressState::new(),
         fatigue: MeasurementFatigue::new(),

@@ -21,6 +21,14 @@ impl PowerEvaluator {
     /// Heuristik: kapan dianggap "brownout risk" (short ringan / leak besar)
     const R2G_BROWNOUT_OHMS: f64 = 20.0_f64;
 
+    /// Hitung stress factor PSU (0.0 - 1.0) berdasarkan load vs limit.
+    fn calculate_stress(electrical: &ElectricalState) -> f64 {
+        if !electrical.input.enabled { return 0.0; }
+        let ilim = electrical.input.current_limit.max(1e-9);
+        let ratio = (electrical.input.measured_current / ilim).clamp(0.0, 2.0);
+        ((ratio - 0.6) / 0.4).clamp(0.0, 1.0)
+    }
+
     /// Root inputs: rail yang boleh dianggap "digerakkan dari luar"
     /// (contoh: VBAT dari PSU/charger, VCHG dari USB, VSYS dari charger IC).
     ///
@@ -57,6 +65,8 @@ impl PowerEvaluator {
     /// - Handle short/brownout dari RailHealth.r2g
     /// - Handle cycle: remaining -> Missing
     pub fn evaluate(graph: &DependencyGraph, electrical: &mut ElectricalState) {
+        let stress = Self::calculate_stress(electrical);
+
         // ====== VCHG Root Input (Charger/USB) ======
         if electrical.input.vchg_enabled {
             let vchg = electrical
@@ -170,6 +180,11 @@ impl PowerEvaluator {
 
                 // leakage current (I=V/R) based on actual voltage
                 child_rail.leakage_current = (child_rail.state.voltage / r2g).max(0.0_f64);
+
+                // ====== Ripple / Noise Injection ======
+                // Menggabungkan noise dasar rail, stress PSU, dan noise lingkungan (transient)
+                let ambient_noise = electrical.transient_noise; 
+                child_rail.state.ripple = child_rail.noise + (stress * 0.15) + ambient_noise;
 
                 // update stability flag
                 child_rail.recompute_stability();

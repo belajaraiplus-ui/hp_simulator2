@@ -1,5 +1,5 @@
 use crate::measurement::meta::apply_meta_effects;
-use crate::state::ids::{RailId, ThermalZoneId};
+use crate::state::ids::RailId;
 use crate::state::phone_state::*;
 use crate::util::rng::XorShift64;
 
@@ -223,14 +223,14 @@ impl MeasurementEngine {
     /// =======================
     /// TEMPERATURE MEASUREMENT
     /// =======================
-    pub fn measure_temperature(state: &mut PhoneState, zone: ThermalZoneId) -> f64 {
+    pub fn measure_temperature(state: &mut PhoneState, zone: String) -> f64 {
         let z = state
             .thermal
             .zones
             .get_mut(&zone)
             .expect("measure_temperature: requested thermal zone not found");
 
-        let key = ("temperature".to_string(), format!("{:?}", zone));
+        let key = ("temperature".to_string(), zone.clone());
         let count = state.fatigue.counts.entry(key).or_insert(0);
         *count += 1;
 
@@ -239,18 +239,17 @@ impl MeasurementEngine {
         let injected: f64 = 0.001_f64 + fatigue_factor * 0.0015_f64;
         state.stress.measurement += injected;
 
-        // probe distortion
-        z.temperature += fatigue_factor * 0.1_f64;
+        z.temp_c += fatigue_factor * 0.1_f64;
 
         let noise: f64 = state.electrical.transient_noise * 0.5_f64
             + state.stress.thermal * 0.02_f64
             + fatigue_factor * 0.1_f64;
 
-        let observed: f64 = z.temperature + noise;
+        let observed: f64 = z.temp_c + noise;
 
         state.measurements.history.push(MeasurementEvent {
             time: state.time,
-            target: format!("T({:?})", zone),
+            target: format!("T({})", zone),
             observed_value: observed,
             noise,
             injected_energy: injected,

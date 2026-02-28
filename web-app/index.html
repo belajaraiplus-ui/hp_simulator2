@@ -159,6 +159,8 @@
           <option value="diode">Diode Mode</option>
           <option value="resistance">Resistance (Ω)</option>
           <option value="continuity">Continuity (∿)</option>
+          <option value="current">Current (A)</option>
+          <option value="temperature">Temperature (°C)</option>
         </select>
         <div class="mm-row">
           <select id="multimeterTargetType" class="select-dark">
@@ -169,7 +171,8 @@
             <option>Select Component</option>
           </select>
         </div>
-        <input type="text" id="multimeterRail" placeholder="Rail" value="vbat" class="input-dark full-width">
+        <input type="text" id="multimeterRail" placeholder="Rail (positive probe)" value="vbat" class="input-dark full-width">
+        <input type="text" id="multimeterRailB" placeholder="Rail (negative probe, optional)" value="" class="input-dark full-width">
         <button id="manualMeasure" class="btn btn-primary btn-lg full-width">MEASURE</button>
         <div class="meter-readout">
           <span class="meter-label">READING</span>

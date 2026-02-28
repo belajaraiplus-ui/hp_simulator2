@@ -10,7 +10,7 @@ pub fn check_termination(state: &PhoneState, session: &mut SessionState) {
         .thermal
         .zones
         .values()
-        .map(|z| z.temperature)
+        .map(|z| z.temp_c)
         .fold(f64::NEG_INFINITY, f64::max);
 
     if max_temp > 120.0 {

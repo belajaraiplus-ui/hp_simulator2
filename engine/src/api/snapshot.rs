@@ -37,17 +37,15 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
         .thermal
         .zones
         .iter()
-        .map(|(id, _)| {
+        .map(|(id, zone)| {
             let val = state
                 .last_temperature
                 .get(id)
-                .cloned()
-                .or_else(|| state.thermal.zones.get(id).map(|z| z.temperature))
-                .map(|v| json!(v))
-                .unwrap_or(Value::Null);
+                .copied()
+                .unwrap_or(zone.temp_c);
 
             json!({
-                "zone": format!("{:?}", id),
+                "zone": id,
                 "temperature": val
             })
         })
@@ -88,6 +86,25 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
             .target_rail
             .map(|id| format!("{:?}", id))
     });
+
+    // =======================
+    // MULTIMETER SNAPSHOT
+    // =======================
+
+    let multimeter = if state.electrical.meter_attached {
+        let reading = if state.electrical.meter_reading.is_infinite() {
+            json!("OL")
+        } else {
+            json!(state.electrical.meter_reading)
+        };
+        json!({
+            "mode": state.electrical.meter_mode,
+            "reading": reading,
+            "beep": state.electrical.meter_beep
+        })
+    } else {
+        json!(null)
+    };
 
     // =======================
     // DISTRESS PROXY (OBSERVABLE-ONLY)
@@ -163,6 +180,7 @@ pub fn build_snapshot(state: &PhoneState) -> Value {
         "thermals": thermals,
         "measurements": measurements,
         "power_input": power_input,
+        "multimeter": multimeter,
         "distress": distress
     })
 }

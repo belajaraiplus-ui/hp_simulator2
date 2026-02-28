@@ -311,24 +311,104 @@ pub enum MeterMode {
     Resistance,
     Continuity,
     Diode,
+    Current,
+    Temperature,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ToolAction {
-    SetPSUVoltage { voltage: f64 },
-    SetPSUCurrent { current: f64 },
+    SetPSUVoltage {
+        voltage: f64,
+    },
+    SetPSUCurrent {
+        current: f64,
+    },
     ReadPSU {},
-    TogglePSU { enabled: bool },
-    SetPSUTargetRail { rail: String },
+    TogglePSU {
+        enabled: bool,
+    },
+    SetPSUTargetRail {
+        rail: String,
+    },
     ClearPSUTargetRail {},
-    LoadTopologyGraph { topology: Value },
-    ToggleVCHG { enabled: bool },
-    SetVCHGVoltage { voltage: f64 },
+    SetPSUMode {
+        mode: String,
+    },
+    SetPSUOVP {
+        threshold: f64,
+    },
+    SetPSUUVP {
+        threshold: f64,
+    },
+    SetPSURipple {
+        ripple_vpp: f64,
+    },
+    ResetPSUFault {},
+    LoadTopologyGraph {
+        topology: Value,
+    },
+    ToggleVCHG {
+        enabled: bool,
+    },
+    SetVCHGVoltage {
+        voltage: f64,
+    },
     MultimeterMeasure {
         mode: MeterMode,
         a: String,
         b: Option<String>,
     },
-    MultimeterAttach { mode: MeterMode, point: String },
+    MultimeterAttach {
+        mode: MeterMode,
+        point: String,
+    },
     MultimeterDetach {},
+    SetAmbientTemp {
+        ambient_c: f64,
+    },
+    UpsertThermalZone {
+        id: String,
+        thermal_mass: f64,
+        heat_dissipation: f64,
+    },
+    SetThermalLinks {
+        links: Vec<(String, String, f64)>, // (a, b, conductance)
+    },
+    SetRailThermalZone {
+        rail: String,
+        zone: String,
+    },
+    SetCPULoad {
+        load: f64,
+    },
+    SetCharging {
+        charging: bool,
+    },
+    SetRailFuse {
+        rail: String,
+        rating_a: f64,
+    },
+    SetRailOCP {
+        rail: String,
+        threshold_a: f64,
+        delay_s: f64,
+    },
+    BlowRailFuse {
+        rail: String,
+    },
+    ResetRailFuse {
+        rail: String,
+    },
+    AddParallelRegulator {
+        target: String,
+        source: String,
+        current_limit_a: f64,
+    },
+    SetFanSpeed {
+        speed: f64,
+    },
+    SetZoneThrottling {
+        zone: String,
+        threshold_c: f64,
+    },
 }

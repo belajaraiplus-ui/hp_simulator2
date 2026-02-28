@@ -1,21 +1,19 @@
 use crate::state::ids::RailId;
 use std::collections::{HashMap, VecDeque};
 
-/// Merepresentasikan struktur pohon/jaringan distribusi daya.
-/// Menentukan bagaimana dependency merambat dari sumber (VBAT/USB) ke beban.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ParallelRegulatorConfig {
+    pub phase_count: u8,
+    pub phase_offset: f64,
+    pub current_share_tolerance: f64,
+}
+
 #[derive(Debug, Default)]
 pub struct DependencyGraph {
-    /// Mapping: Source Rail -> List of Dependent Rails
-    /// Contoh: Vsys -> [Vcore, Vio, Vddr]
     pub adjacency: HashMap<RailId, Vec<RailId>>,
-
-    /// Mapping: Dependent Rail -> Source Rail (single-parent)
-    /// Digunakan untuk back-tracing arus atau debugging.
-    pub parents: HashMap<RailId, RailId>,
-
-    /// Optional per-edge current limit in ampere.
-    /// Key format: (source, target).
+    pub parents: HashMap<RailId, Vec<RailId>>,
     pub edge_current_limit_a: HashMap<(RailId, RailId), f64>,
+    pub parallel_regulators: HashMap<RailId, ParallelRegulatorConfig>,
 }
 
 impl DependencyGraph {
@@ -24,35 +22,32 @@ impl DependencyGraph {
             adjacency: HashMap::new(),
             parents: HashMap::new(),
             edge_current_limit_a: HashMap::new(),
+            parallel_regulators: HashMap::new(),
         }
     }
 
-    /// Menambahkan hubungan regulator (LDO/Buck/Switch).
-    /// `source` memberikan daya ke `target`.
-    ///
-    /// Catatan:
-    /// - Mencegah self-loop (A->A)
-    /// - Mencegah duplikasi edge (A->B) berulang
     pub fn add_regulator(&mut self, source: RailId, target: RailId) {
         if source == target {
-            // self-loop biasanya konfigurasi salah, abaikan agar topo tidak kacau
             return;
         }
 
         let deps = self.adjacency.entry(source).or_default();
-
-        // hindari duplicate edge
         if !deps.contains(&target) {
             deps.push(target);
         }
 
-        // single-parent mapping (kalau target sudah punya parent, overwrite = last-wins)
-        self.parents.insert(target, source);
+        let parents = self.parents.entry(target).or_default();
+        if !parents.contains(&source) {
+            parents.push(source);
+        }
     }
 
-    /// Menambahkan regulator dengan optional current limit per-edge (Ampere).
-    /// Jika `current_limit_a <= 0`, limit diabaikan dan fallback default engine dipakai.
-    pub fn add_regulator_with_limit(&mut self, source: RailId, target: RailId, current_limit_a: f64) {
+    pub fn add_regulator_with_limit(
+        &mut self,
+        source: RailId,
+        target: RailId,
+        current_limit_a: f64,
+    ) {
         self.add_regulator(source, target);
         if current_limit_a > 0.0 {
             self.edge_current_limit_a
@@ -60,54 +55,66 @@ impl DependencyGraph {
         }
     }
 
-    /// Mengambil current limit per-edge bila tersedia.
+    pub fn add_parallel_regulator(&mut self, target: RailId, phase_count: u8, phase_offset: f64) {
+        self.parallel_regulators.insert(
+            target,
+            ParallelRegulatorConfig {
+                phase_count,
+                phase_offset,
+                current_share_tolerance: 0.1,
+            },
+        );
+    }
+
     pub fn edge_current_limit(&self, source: RailId, target: RailId) -> Option<f64> {
         self.edge_current_limit_a.get(&(source, target)).copied()
     }
 
-    /// Mendapatkan rail yang ditenagai langsung oleh rail ini.
     pub fn get_dependents(&self, rail: RailId) -> Option<&Vec<RailId>> {
         self.adjacency.get(&rail)
     }
 
-    /// Mendapatkan sumber daya rail ini.
     pub fn get_source(&self, rail: RailId) -> Option<&RailId> {
+        self.parents.get(&rail).and_then(|v| v.first())
+    }
+
+    pub fn get_sources(&self, rail: RailId) -> Option<&Vec<RailId>> {
         self.parents.get(&rail)
     }
 
-    /// Mengembalikan semua rail dalam graph.
+    pub fn has_parallel_regulators(&self, rail: RailId) -> bool {
+        self.parents
+            .get(&rail)
+            .map(|v| v.len() > 1)
+            .unwrap_or(false)
+    }
+
     pub fn all_rails(&self) -> Vec<RailId> {
         let mut rails: Vec<RailId> = self.adjacency.keys().cloned().collect();
         rails.extend(self.parents.keys().cloned());
-        rails.sort_by_key(|k| format!("{:?}", k)); // deterministic
+        rails.sort_by_key(|k| format!("{:?}", k));
         rails.dedup();
         rails
     }
 
-    /// Topological order (Kahn). Cocok untuk graph besar.
-    /// - Jika ada cycle, mengembalikan urutan parsial + rails yang tersisa (cycle/loop).
     pub fn topo_order(&self) -> TopoResult {
         let rails = self.all_rails();
 
-        // indegree init 0
         let mut indegree: HashMap<RailId, usize> = rails.iter().map(|&r| (r, 0usize)).collect();
 
-        // hitung indegree dari adjacency
         for (&src, deps) in self.adjacency.iter() {
             indegree.entry(src).or_insert(0);
-
             for &dst in deps {
                 *indegree.entry(dst).or_insert(0) += 1;
             }
         }
 
-        // queue nodes indegree 0
         let mut zeros: Vec<RailId> = indegree
             .iter()
             .filter_map(|(&r, &deg)| if deg == 0 { Some(r) } else { None })
             .collect();
 
-        zeros.sort_by_key(|k| format!("{:?}", k)); // deterministic
+        zeros.sort_by_key(|k| format!("{:?}", k));
         let mut q: VecDeque<RailId> = zeros.into_iter().collect();
 
         let mut order: Vec<RailId> = Vec::with_capacity(indegree.len());
@@ -115,7 +122,6 @@ impl DependencyGraph {
         while let Some(n) = q.pop_front() {
             order.push(n);
 
-            // Untuk deterministik penuh: traversal children diurutkan
             if let Some(children) = self.adjacency.get(&n) {
                 let mut sorted_children = children.clone();
                 sorted_children.sort_by_key(|k| format!("{:?}", k));
@@ -131,7 +137,6 @@ impl DependencyGraph {
             }
         }
 
-        // nodes yang tidak masuk order => cycle/terputus karena indegree tidak pernah 0
         let mut remaining: Vec<RailId> = indegree
             .iter()
             .filter_map(|(&r, &deg)| if deg > 0 { Some(r) } else { None })
@@ -142,15 +147,11 @@ impl DependencyGraph {
         TopoResult { order, remaining }
     }
 
-    /// Shortcut: apakah graph punya cycle?
     pub fn has_cycle(&self) -> bool {
         !self.topo_order().remaining.is_empty()
     }
 }
 
-/// Hasil topo sort:
-/// - `order`: urutan evaluasi yang valid
-/// - `remaining`: node yang tersisa (biasanya karena cycle)
 #[derive(Debug, Clone)]
 pub struct TopoResult {
     pub order: Vec<RailId>,

@@ -43,7 +43,7 @@ pub struct WorldProfile {
 
 pub fn apply_world_profile(state: &mut PhoneState, profile: &WorldProfile) {
     // ---------- ENVIRONMENT ----------
-    state.thermal.ambient = profile.ambient_temperature;
+    state.thermal.ambient_c = profile.ambient_temperature;
     state.electrical.transient_noise += profile.emi_noise_floor;
 
     // ---------- ELECTRICAL ----------
@@ -57,10 +57,6 @@ pub fn apply_world_profile(state: &mut PhoneState, profile: &WorldProfile) {
     // ---------- THERMAL ----------
     for (_id, zone) in state.thermal.zones.iter_mut() {
         zone.heat_dissipation *= profile.thermal_dissipation;
-
-        for (_, coeff) in zone.coupling.iter_mut() {
-            *coeff *= profile.thermal_coupling;
-        }
     }
 
     // ---------- MATERIAL / HISTORY ----------

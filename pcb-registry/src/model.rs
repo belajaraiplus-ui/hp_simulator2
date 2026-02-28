@@ -443,6 +443,10 @@ pub struct BoardFile {
     #[serde(default)]
     pub rails_url: Option<String>,
     #[serde(default)]
+    pub topology_url: Option<String>,
+    #[serde(default)]
+    pub thermal_url: Option<String>,
+    #[serde(default)]
     pub schematic_url: Option<String>,
 }
 
@@ -656,8 +660,12 @@ THERMAL (thermal zones)
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ThermalFile {
     pub version: u32,
+    #[serde(default = "default_ambient_c")]
+    pub ambient_c: f64,
     #[serde(default)]
     pub zones: Vec<ThermalZone>,
+    #[serde(default)]
+    pub links: Vec<ThermalLink>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -669,4 +677,23 @@ pub struct ThermalZone {
     pub thermal_mass: Option<f64>,
     #[serde(default)]
     pub heat_dissipation: Option<f64>,
+    #[serde(default)]
+    pub convection_coefficient: Option<f64>,
+    #[serde(default)]
+    pub surface_area: Option<f64>,
+    #[serde(default)]
+    pub is_heatsink: Option<bool>,
+    #[serde(default)]
+    pub throttling_threshold: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ThermalLink {
+    pub a: String,
+    pub b: String,
+    pub conductance: f64,
+}
+
+fn default_ambient_c() -> f64 {
+    27.0
 }

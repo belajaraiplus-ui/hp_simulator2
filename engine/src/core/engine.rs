@@ -4,10 +4,10 @@ use crate::state::phone_state::PhoneState;
 
 use crate::fault::apply::apply_faults;
 use crate::physics::electrical::step_electrical;
-use crate::physics::thermal::step_thermal;
 
 use crate::fault::engine::{propagate_faults, step_faults};
 use crate::power::evaluator::PowerEvaluator;
+use crate::power::multimeter::Multimeter;
 use crate::power::propagate::propagate_power;
 
 use crate::session::guard::check_termination;
@@ -28,7 +28,7 @@ impl Engine {
         }
 
         for (zone_id, zone) in state.thermal.zones.iter() {
-            state.last_temperature.insert(*zone_id, zone.temperature);
+            state.last_temperature.insert(zone_id.clone(), zone.temp_c);
         }
     }
 
@@ -48,14 +48,34 @@ impl Engine {
         // 2. Propagasi daya (RC curve untuk voltage settling)
         propagate_power(&state.power_graph, &mut state.electrical, self.dt);
 
-        // 3. Evaluasi Fisika (Physics Layer)
-        // Menghitung thermal heating, noise, derating
-        step_electrical(state, self.dt);
+        // 3. Update pembacaan alat ukur (Multimeter)
+        Multimeter::update_reading(state);
 
         // =======================
         // THERMAL DOMAIN
         // =======================
-        step_thermal(state, self.dt);
+        let mut power_map: std::collections::HashMap<String, f64> =
+            std::collections::HashMap::new();
+
+        if let Some(zone_id) = state.thermal.rail_zone.get("psu_input").cloned() {
+            let p = state.electrical.input.voltage * state.electrical.input.measured_current;
+            state.thermal.add_power(&zone_id, p * 0.15, &mut power_map);
+        }
+
+        for (rail_id, rail) in state.electrical.rails.iter() {
+            let rail_key = format!("{:?}", rail_id);
+            if let Some(zone_id) = state.thermal.rail_zone.get(&rail_key).cloned() {
+                let p = rail.state.voltage * rail.state.current;
+                state.thermal.add_power(&zone_id, p * 0.1, &mut power_map);
+            }
+        }
+
+        // 3. Evaluasi Fisika (Physics Layer)
+        // Menghitung thermal heating, noise, derating
+        step_electrical(state, self.dt);
+
+        let stress_delta = state.thermal.step(self.dt, &power_map);
+        state.stress.thermal += stress_delta;
 
         // =======================
         // FAULT EVOLUTION — FASE 10.1
@@ -70,6 +90,7 @@ impl Engine {
         // TIME ADVANCE
         // =======================
         state.time += self.dt;
+        state.electrical.tick += 1;
 
         // =======================
         // SESSION / SAFETY
@@ -83,15 +104,39 @@ pub fn sim_tick(state: &mut PhoneState, dt: f64) {
     // 1. Apply fault dulu (ubah health/status)
     apply_faults(state);
 
-    // 2. Dependency causal layer
-    // TODO: Need to add power_graph field to PhoneState
-    // PowerEvaluator::evaluate(
-    //     &state.power_graph,
-    //     &mut state.electrical.rails,
-    // );
+    // 2. Domain Elektrikal
+    PowerEvaluator::evaluate(&state.power_graph, &mut state.electrical);
+    propagate_power(&state.power_graph, &mut state.electrical, dt);
+    Multimeter::update_reading(state);
 
-    // 3. Physics layer
+    // 3. Hitung Heat Generation
+    let mut power_map: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    if let Some(zone_id) = state.thermal.rail_zone.get("psu_input").cloned() {
+        let p = state.electrical.input.voltage * state.electrical.input.measured_current;
+        state.thermal.add_power(&zone_id, p * 0.15, &mut power_map);
+    }
+    for (rail_id, rail) in state.electrical.rails.iter() {
+        let rail_key = format!("{:?}", rail_id);
+        if let Some(zone_id) = state.thermal.rail_zone.get(&rail_key).cloned() {
+            let p = rail.state.voltage * rail.state.current;
+            state.thermal.add_power(&zone_id, p * 0.1, &mut power_map);
+        }
+    }
+
     step_electrical(state, dt);
+
+    // 4. Domain Termal
+    let stress_delta = state.thermal.step(dt, &power_map);
+    state.stress.thermal += stress_delta;
+
+    // 4. Evolusi Fault
+    step_faults(state, dt);
+    propagate_faults(state);
+
+    // 5. Update State & Cache
+    state.time += dt;
+    state.electrical.tick += 1;
+    Engine::sync_snapshot_observables(state);
 }
 
 #[cfg(test)]

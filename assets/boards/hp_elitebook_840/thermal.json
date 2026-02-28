@@ -1,5 +1,6 @@
 {
   "version": 1,
+  "ambient_c": 27,
   "zones": [
     {
       "id": "pmic_zone",
@@ -7,5 +8,8 @@
       "thermal_mass": 0.7,
       "heat_dissipation": 0.4
     }
+  ],
+  "links": [
+    { "a": "pmic_zone", "b": "board", "conductance": 0.25 }
   ]
 }

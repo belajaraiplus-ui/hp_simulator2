@@ -12,21 +12,21 @@ export function buildMultimeterLabel(mode, targetType, rail, component) {
   const normalizedRail = (rail || "vbat").toLowerCase();
   const normalizedComponent = (component || "tp_vbat").toLowerCase();
 
-  // Engine adapter kamu expect format label seperti ini:
-  // - "diode vbat"
-  // - "ohm vbat"
-  // - "voltage comp:U1201" dst
   if (targetType === "component") {
     if (mode === "diode") return `diode comp:${normalizedComponent}`;
     if (mode === "ohm") return `ohm comp:${normalizedComponent}`;
     if (mode === "continuity") return `continuity comp:${normalizedComponent}`;
+    if (mode === "current") return `current comp:${normalizedComponent}`;
+    if (mode === "temperature") return `temperature comp:${normalizedComponent}`;
     return `voltage comp:${normalizedComponent}`;
   }
 
   if (mode === "diode") return `diode ${normalizedRail}`;
   if (mode === "ohm") return `ohm ${normalizedRail}`;
   if (mode === "continuity") return `continuity ${normalizedRail}`;
-  return normalizedRail; // default voltage rail
+  if (mode === "current") return `current ${normalizedRail}`;
+  if (mode === "temperature") return `temperature ${normalizedRail}`;
+  return normalizedRail;
 }
 
 export function renderMultimeterResult(multimeterResultEl, mode, value) {
@@ -58,6 +58,20 @@ export function renderMultimeterResult(multimeterResultEl, mode, value) {
     } else {
       multimeterResultEl.textContent = formatNumber(value, 2);
     }
+    return;
+  }
+
+  if (mode === "current") {
+    if (!Number.isFinite(value) || value < 0) {
+      multimeterResultEl.textContent = "OL";
+    } else {
+      multimeterResultEl.textContent = formatNumber(value, 4) + " A";
+    }
+    return;
+  }
+
+  if (mode === "temperature") {
+    multimeterResultEl.textContent = formatNumber(value, 1) + " °C";
     return;
   }
 
