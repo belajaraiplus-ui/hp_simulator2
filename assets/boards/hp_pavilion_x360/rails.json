@@ -104,7 +104,7 @@
     {
       "id": "VRTC",
       "label": "VRTC (RTC Battery)",
-      "type": "rtc",
+      "type": "power",
       "expected": {
         "voltage_v": { "min": 2.5, "max": 3.3 },
         "diode_drop_v": { "min": 0.25, "max": 0.45 },

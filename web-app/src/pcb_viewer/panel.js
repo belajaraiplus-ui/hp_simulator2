@@ -25,6 +25,19 @@ export function getBoardSize() {
   return { w, h };
 }
 
+function getSpaces() {
+  const imgW = currentBoard?.image?.full_width_px || 2048;
+  const imgH = currentBoard?.image?.full_height_px || 2048;
+
+  const dataW = currentBoard?.data_space?.width_px || imgW;
+  const dataH = currentBoard?.data_space?.height_px || imgH;
+
+  const sx = imgW / dataW;
+  const sy = imgH / dataH;
+
+  return { imgW, imgH, dataW, dataH, sx, sy };
+}
+
 export function clearScene() {
   if (viewerInstance) {
     probeOverlays.forEach(p => {
@@ -58,52 +71,55 @@ export function clearScene() {
 
 export function drawRailOverlay(viewer, rail) {
   if (!viewer || !rail.overlay) return;
-  let { w, h } = getBoardSize();
-  w = w || 2048;
-  h = h || 2048;
 
-  railOverlays.forEach((el) => {
-    try { viewer.removeOverlay(el); } catch {}
-  });
+  const { imgW, imgH, dataW, dataH, sx, sy } = getSpaces();
+
+  railOverlays.forEach((el) => { try { viewer.removeOverlay(el); } catch {} });
   railOverlays = [];
+
   const polys = Array.isArray(rail.overlay)
     ? rail.overlay
     : (Array.isArray(rail.overlay?.polys) ? rail.overlay.polys : []);
+
   polys.forEach(poly => {
     const el = document.createElement("div");
     el.style.position = "absolute";
     el.style.border = "2px solid rgba(255,200,0,0.7)";
     el.style.background = "rgba(255,200,0,0.2)";
     el.style.pointerEvents = "none";
+
     const xs = poly.map(p => p[0]);
     const ys = poly.map(p => p[1]);
     const minX = Math.min(...xs);
     const minY = Math.min(...ys);
     const maxX = Math.max(...xs);
     const maxY = Math.max(...ys);
+
+    // data-space -> image-space pixel
+    const minXi = minX * sx;
+    const minYi = minY * sy;
+    const maxXi = maxX * sx;
+    const maxYi = maxY * sy;
+
+    // OpenSeadragon.Rect pakai normalized terhadap image native
     const rect = new OpenSeadragon.Rect(
-      minX / w,
-      minY / h,
-      (maxX - minX) / w,
-      (maxY - minY) / h
+      minXi / imgW,
+      minYi / imgH,
+      (maxXi - minXi) / imgW,
+      (maxYi - minYi) / imgH
     );
-    viewer.addOverlay({
-      element: el,
-      location: rect
-    });
+
+    viewer.addOverlay({ element: el, location: rect });
     railOverlays.push(el);
   });
 }
 
 export function drawPsuTargetOverlay(viewer, rail) {
   if (!viewer || !rail?.overlay) return;
-  let { w, h } = getBoardSize();
-  w = w || 2048;
-  h = h || 2048;
 
-  psuTargetOverlays.forEach((el) => {
-    try { viewer.removeOverlay(el); } catch {}
-  });
+  const { imgW, imgH, dataW, dataH, sx, sy } = getSpaces();
+
+  psuTargetOverlays.forEach((el) => { try { viewer.removeOverlay(el); } catch {} });
   psuTargetOverlays = [];
 
   const polys = Array.isArray(rail.overlay)
@@ -117,75 +133,79 @@ export function drawPsuTargetOverlay(viewer, rail) {
     el.style.background = "rgba(80,170,255,0.12)";
     el.style.boxShadow = "0 0 6px rgba(80,170,255,0.7)";
     el.style.pointerEvents = "none";
+
     const xs = poly.map(p => p[0]);
     const ys = poly.map(p => p[1]);
     const minX = Math.min(...xs);
     const minY = Math.min(...ys);
     const maxX = Math.max(...xs);
     const maxY = Math.max(...ys);
+
+    // data-space -> image-space pixel
+    const minXi = minX * sx;
+    const minYi = minY * sy;
+    const maxXi = maxX * sx;
+    const maxYi = maxY * sy;
+
+    // OpenSeadragon.Rect pakai normalized terhadap image native
     const rect = new OpenSeadragon.Rect(
-      minX / w,
-      minY / h,
-      (maxX - minX) / w,
-      (maxY - minY) / h
+      minXi / imgW,
+      minYi / imgH,
+      (maxXi - minXi) / imgW,
+      (maxYi - minYi) / imgH
     );
-    viewer.addOverlay({
-      element: el,
-      location: rect
-    });
+
+    viewer.addOverlay({ element: el, location: rect });
     psuTargetOverlays.push(el);
   });
 }
 
 export function drawProbePoints(viewer, rails) {
-  let { w, h } = getBoardSize();
-  w = w || 2048;
-  h = h || 2048;
+  const { imgW, imgH, sx, sy } = getSpaces();
 
   probeOverlays.forEach(p => viewer.removeOverlay(p.element));
   probeOverlays = [];
-  
   if (!viewer || !rails) return;
-  
+
+  const MARKER_IMG_PX = 14; // ukuran marker dalam pixel image native
+
   rails.forEach(rail => {
-    const probePoints = rail.probe_points || [];
-    probePoints.forEach(tp => {
+    (rail.probe_points || []).forEach(tp => {
       const el = document.createElement("div");
-      el.style.width = "12px";
-      el.style.height = "12px";
+      el.style.width = `${MARKER_IMG_PX}px`;
+      el.style.height = `${MARKER_IMG_PX}px`;
       el.style.background = "#ff4444";
       el.style.border = "2px solid white";
       el.style.borderRadius = "50%";
       el.style.cursor = "pointer";
       el.style.boxShadow = "0 0 4px rgba(0,0,0,0.5)";
       el.style.pointerEvents = "auto";
+
       el.dataset.probeId = tp.id;
       el.title = tp.label || tp.id;
-      
+
       el.addEventListener("click", (e) => {
         e.stopPropagation();
         const railId = rail.id;
-        console.log("Probe target:", tp.id, "rail:", railId);
         measureRail(railId).then((measurement) => {
           window.dispatchEvent(new CustomEvent("pcb:probe-measured", {
             detail: { probeId: tp.id, railId, measurement }
           }));
-        }).catch((err) => {
-          console.error("Probe measurement failed:", err);
-        });
+        }).catch(console.error);
       });
-      
+
+      // data-space -> image-space pixel center
+      const xi = tp.x * sx;
+      const yi = tp.y * sy;
+
       const rect = new OpenSeadragon.Rect(
-        tp.x / w - 6 / w,
-        tp.y / h - 6 / h,
-        12 / w,
-        12 / h
+        (xi - MARKER_IMG_PX / 2) / imgW,
+        (yi - MARKER_IMG_PX / 2) / imgH,
+        MARKER_IMG_PX / imgW,
+        MARKER_IMG_PX / imgH
       );
-      
-      viewer.addOverlay({
-        element: el,
-        location: rect
-      });
+
+      viewer.addOverlay({ element: el, location: rect });
       probeOverlays.push({ element: el, railId: rail.id });
     });
   });

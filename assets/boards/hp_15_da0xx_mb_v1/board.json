@@ -2,12 +2,15 @@
   "version": 1,
   "id": "hp_15_da0xx_mb_v1",
   "name": "HP 15-da0xx Motherboard v1",
-
   "image": {
     "full_width_px": 25000,
     "full_height_px": 15000
   },
-
+  "data_space": {
+    "width_px": 1000,
+    "height_px": 600,
+    "origin": "top_left"
+  },
   "tiles": {
     "type": "dzi-like",
     "tile_size": 256,
@@ -16,22 +19,19 @@
     "max_level": 17,
     "url_template": "/api/boards/hp_15_da0xx_mb_v1/tiles/{level}/{x}_{y}.jpg"
   },
-
   "units": {
     "mm_per_px": 0.0052,
     "origin": "top_left"
   },
-
   "transform": {
     "type": "affine",
     "a": 0.0052,
-    "b": 0.0,
-    "c": 0.0,
+    "b": 0,
+    "c": 0,
     "d": 0.0052,
-    "tx": 0.0,
-    "ty": 0.0
+    "tx": 0,
+    "ty": 0
   },
-
   "components_url": "/api/boards/hp_15_da0xx_mb_v1/components",
   "rails_url": "/api/boards/hp_15_da0xx_mb_v1/rails",
   "topology_url": "/api/boards/hp_15_da0xx_mb_v1/topology"

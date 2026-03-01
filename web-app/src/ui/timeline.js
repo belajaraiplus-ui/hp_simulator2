@@ -37,6 +37,36 @@ export function saveSnapshot(snapshot) {
     updateTimelineScrubber();
 }
 
+export function exportTimelineSnapshots() {
+    return savedSnapshots.map((entry) => ({
+        snapshot: JSON.parse(JSON.stringify(entry.snapshot)),
+        time: Number.isFinite(entry.time) ? entry.time : Date.now(),
+    }));
+}
+
+export function importTimelineSnapshots(entries) {
+    if (!Array.isArray(entries)) {
+        savedSnapshots = [];
+        updateTimelineScrubber();
+        return;
+    }
+
+    const normalized = entries
+        .filter((entry) => entry && typeof entry === "object" && entry.snapshot != null)
+        .map((entry) => ({
+            snapshot: JSON.parse(JSON.stringify(entry.snapshot)),
+            time: Number.isFinite(entry.time) ? entry.time : Date.now(),
+        }));
+
+    const maxSnapshots = 200;
+    savedSnapshots = normalized.slice(-maxSnapshots);
+    updateTimelineScrubber();
+}
+
+export function getTimelineSnapshots() {
+    return savedSnapshots.map((entry) => entry.snapshot);
+}
+
 function updateTimelineScrubber() {
     const scrubber = document.getElementById('timelineScrubber');
     if (!scrubber) return;
@@ -57,6 +87,9 @@ function jumpToSnapshot(index) {
     
     const saved = savedSnapshots[index];
     State.setSnapshot(saved.snapshot);
+    window.dispatchEvent(new CustomEvent("timeline:jump", {
+        detail: { index, snapshot: saved.snapshot }
+    }));
     
     console.log(`Jumped to snapshot ${index}`);
 }

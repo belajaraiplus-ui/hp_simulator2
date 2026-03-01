@@ -25,6 +25,14 @@ pub fn propagate_power(graph: &DependencyGraph, electrical: &mut ElectricalState
         return;
     }
 
+    // Treat VCHG as a stiff external source when enabled.
+    // Without this, VCHG can numerically oscillate with large dt/C and appear as -1V in snapshots.
+    if electrical.input.vchg_enabled {
+        if let Some(vchg) = electrical.rails.get_mut(&RailId::Vchg) {
+            vchg.state.voltage = electrical.input.vchg_voltage.max(0.0_f64);
+        }
+    }
+
     // Tool-induced loading (multimeter attached)
     if electrical.meter_attached {
         let psu_near_limit = electrical.input.enabled
@@ -112,17 +120,6 @@ pub fn propagate_power(graph: &DependencyGraph, electrical: &mut ElectricalState
         }
     }
 
-    // VCHG sebagai source dengan resistansi internal sederhana
-    if electrical.input.vchg_enabled {
-        if let Some(vchg) = electrical.rails.get(&RailId::Vchg) {
-            let r_vchg = 0.05_f64;
-            let v_src = electrical.input.vchg_voltage;
-            let v_now = vchg.state.voltage;
-            let i = (v_src - v_now) / r_vchg;
-            *net_i.entry(RailId::Vchg).or_insert(0.0) += i;
-        }
-    }
-
     // 3) Dependency edges: arus mengalir parent -> child lewat Rpath
     let time = electrical.tick as f64 * dt;
     for (child, parents) in &graph.parents {
@@ -194,6 +191,16 @@ pub fn propagate_power(graph: &DependencyGraph, electrical: &mut ElectricalState
 
     // 5) Update tiap rail via kapasitor: dV = (Inet - Iload)/C * dt
     for (id, rail) in electrical.rails.iter_mut() {
+        if *id == RailId::Vchg && electrical.input.vchg_enabled {
+            let i_node = *net_i.get(id).unwrap_or(&0.0_f64);
+            rail.state.voltage = electrical.input.vchg_voltage.max(0.0_f64);
+            rail.state.current = (-i_node).max(0.0_f64);
+            rail.leakage_current = 0.0_f64;
+            rail.state.extra_load_a = 0.0_f64;
+            rail.recompute_stability();
+            continue;
+        }
+
         // Check protection circuits (fuse/OCP)
         let protected = rail.check_protection(dt);
 

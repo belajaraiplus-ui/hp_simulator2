@@ -23,10 +23,10 @@ import {
 } from "./ui/charts.js";
 import { renderMultimeterResult } from "./ui/multimeter.js";
 import { showAIPanel } from "./ai/panel.js";
-import { initScenarioSelector, updateScenarioDisplay } from "./ui/scenario_selector.js";
+import { initScenarioSelector, setScenario, updateScenarioDisplay } from "./ui/scenario_selector.js";
 import { initExportReport } from "./export/report.js";
-import { initTimeline, saveSnapshot } from "./ui/timeline.js";
-import { initSaveLoad } from "./persistence/storage.js";
+import { getTimelineSnapshots, initTimeline, saveSnapshot } from "./ui/timeline.js";
+import { applyRestoredSession, consumePendingRestore, initSaveLoad } from "./persistence/storage.js";
 import { showOutcomeModal } from "./outcome/display.js";
 import { showOscilloscope, toggleOscilloscope } from "./ui/oscilloscope.js";
 import { createToolDispatcher } from "./tools/dispatch.js";
@@ -201,6 +201,35 @@ function createRailToggle(name) {
   };
 
   railTogglePanel.appendChild(label);
+}
+
+function clearSeriesMap(map) {
+  Object.keys(map).forEach((key) => delete map[key]);
+}
+
+function resetReplayState() {
+  clearSeriesMap(voltageHistory);
+  clearSeriesMap(voltageSmoothed);
+  clearSeriesMap(thermalHistory);
+  clearSeriesMap(thermalSmoothed);
+  distressHistory.length = 0;
+  diagnosticHistory.length = 0;
+  clearSeriesMap(railVisibility);
+  if (railTogglePanel) railTogglePanel.innerHTML = "";
+}
+
+function replayTimelineToIndex(index) {
+  const snapshots = getTimelineSnapshots();
+  if (!Array.isArray(snapshots) || snapshots.length === 0) return;
+
+  const safeIndex = Math.max(0, Math.min(index, snapshots.length - 1));
+  resetReplayState();
+
+  for (let i = 0; i <= safeIndex; i++) {
+    processSnapshot(snapshots[i]);
+  }
+
+  markDirty();
 }
 
 /* ==========================================================
@@ -384,6 +413,7 @@ let engineReady = false;
 document.addEventListener("DOMContentLoaded", () => {
   handleResize();
   window.addEventListener("resize", debounce(handleResize, 100));
+  const pendingRestoreSession = consumePendingRestore();
 
   // 1) BOOT ENGINE
   (async () => {
@@ -392,6 +422,34 @@ document.addEventListener("DOMContentLoaded", () => {
       engineReady = true;
       State.setSnapshot(first);
       processSnapshot(first);
+
+      if (pendingRestoreSession) {
+        const restored = applyRestoredSession(pendingRestoreSession);
+        if (restored) {
+          const scenarioId = pendingRestoreSession.scenarioId || pendingRestoreSession?.scenario?.id;
+          if (scenarioId) {
+            const scenarioSelect = document.getElementById("scenarioSelect");
+            if (scenarioSelect) scenarioSelect.value = scenarioId;
+            setScenario(scenarioId);
+          }
+
+          const restoredSnapshot = pendingRestoreSession.lastSnapshot;
+          if (restoredSnapshot && typeof restoredSnapshot === "object") {
+            if (out) out.textContent = JSON.stringify(restoredSnapshot, null, 2);
+            if (Array.isArray(restoredSnapshot.measurements)) {
+              measurementHistoryData = restoredSnapshot.measurements;
+              renderMeasurementHistory();
+            }
+            renderPowerInput(restoredSnapshot.power_input);
+            setPsuTargetRailOverlay(restoredSnapshot?.power_input?.target_rail || "");
+          }
+
+          updateScenarioDisplay();
+          markDirty();
+          console.log("Session restored from saved data");
+        }
+      }
+
       updateStatus("PAUSED");
       requestAnimationFrame(renderLoop);
       console.log("🚀 Engine ready");
@@ -507,6 +565,16 @@ document.addEventListener("DOMContentLoaded", () => {
   } catch (e) {
     console.error("Timeline init failed:", e);
   }
+
+  window.addEventListener("timeline:jump", (evt) => {
+    const index = Number(evt?.detail?.index);
+    if (!Number.isFinite(index)) return;
+    if (engineLoopId) clearInterval(engineLoopId);
+    engineLoopId = null;
+    loopBusy = false;
+    replayTimelineToIndex(index);
+    updateStatus("PAUSED");
+  });
 
   // 6) INIT SAVE/LOAD
   try {

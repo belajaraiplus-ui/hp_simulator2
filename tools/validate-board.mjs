@@ -30,7 +30,21 @@ function isNumber(n) {
   return typeof n === "number" && Number.isFinite(n);
 }
 
-function validateOverlay(overlay, ctx) {
+function validateOverlayBounds(rail, w, h, errors) {
+  const overlay = rail.overlay;
+  const polys = Array.isArray(overlay) ? overlay : (overlay?.polys ?? []);
+  for (const poly of polys) {
+    for (const [x, y] of (poly ?? [])) {
+      if (typeof x !== "number" || typeof y !== "number") continue;
+      if (x < 0 || y < 0 || x > w || y > h) {
+        errors.push(`Rail ${rail.id}: overlay point out of bounds (${x},${y}) vs ${w}x${h}`);
+        return;
+      }
+    }
+  }
+}
+
+function validateOverlay(overlay, ctx, board) {
   if (!overlay) return;
   let polys = overlay;
   if (!Array.isArray(overlay)) {
@@ -41,6 +55,10 @@ function validateOverlay(overlay, ctx) {
     }
   }
 
+  // Use data_space for bounds checking (fallback to image if data_space not set)
+  const w = board?.data_space?.width_px ?? board?.image?.full_width_px;
+  const h = board?.data_space?.height_px ?? board?.image?.full_height_px;
+
   polys.forEach((poly, i) => {
     if (!Array.isArray(poly) || poly.length < 3) {
       fail(`${ctx}: overlay[${i}] must be polygon with >= 3 points`);
@@ -50,6 +68,9 @@ function validateOverlay(overlay, ctx) {
       const [x, y] = pt;
       if (!isNumber(x) || !isNumber(y)) fail(`${ctx}: overlay point must be numbers`);
       if (x < 0 || y < 0) warn(`${ctx}: overlay point negative (${x},${y})`);
+      if (w && h) {
+        if (x > w || y > h) warn(`${ctx}: overlay point outside bounds (${x},${y}) vs (${w},${h})`);
+      }
     });
   });
 }
@@ -57,16 +78,23 @@ function validateOverlay(overlay, ctx) {
 function validateProbePoints(probes, board, ctx) {
   if (!probes) return;
   if (!Array.isArray(probes)) fail(`${ctx}: probe_points must be array`);
-  const w = board?.image?.full_width_px;
-  const h = board?.image?.full_height_px;
-  if (!isNumber(w) || !isNumber(h)) warn(`board.json missing image.full_width_px/full_height_px; bounds check skipped`);
+  
+  // Use data_space for bounds checking (fallback to image if data_space not set)
+  const w = board?.data_space?.width_px ?? board?.image?.full_width_px;
+  const h = board?.data_space?.height_px ?? board?.image?.full_height_px;
+  if (!isNumber(w) || !isNumber(h)) warn(`board.json missing data_space or image dimensions; bounds check skipped`);
 
   probes.forEach((p, i) => {
     if (typeof p.id !== "string" || !p.id) fail(`${ctx}: probe_points[${i}].id required`);
     if (!isNumber(p.x) || !isNumber(p.y)) fail(`${ctx}: probe_points[${i}] must have numeric x,y`);
+    
+    // Negative coordinate warning
+    if (p.x < 0 || p.y < 0) warn(`${ctx}: probe ${p.id} has negative coordinates (${p.x},${p.y})`);
+    
+    // Bounds warning
     if (w && h) {
-      if (p.x < 0 || p.x > w || p.y < 0 || p.y > h) {
-        warn(`${ctx}: probe ${p.id} outside image bounds (${p.x},${p.y}) vs (${w},${h})`);
+      if (p.x > w || p.y > h) {
+        warn(`${ctx}: probe ${p.id} outside data_space bounds (${p.x},${p.y}) vs (${w},${h})`);
       }
     }
   });
@@ -127,9 +155,22 @@ function validatePsuInjection(inj, railIds, ctx) {
 }
 
 function validateRails(railsJson, boardJson, boardId) {
-  if (!railsJson || railsJson.version === undefined) warn(`${boardId}: rails.json missing version`);
+  // === rails.json root contract ===
+  // REQUIRED: version (number)
+  if (!railsJson || railsJson.version === undefined) fail(`${boardId}: rails.json version required`);
+  if (!isNumber(railsJson.version)) fail(`${boardId}: rails.json version must be number`);
+  
+  // REQUIRED: rails: Rail[]
   const rails = railsJson?.rails;
-  if (!Array.isArray(rails)) fail(`${boardId}: rails.json must contain { rails: [...] }`);
+  if (!Array.isArray(rails)) fail(`${boardId}: rails.json rails[] required`);
+  if (!rails.length) fail(`${boardId}: rails.json rails[] must not be empty`);
+  
+  // OPTIONAL: defaults.continuity (for fallback)
+  if (railsJson.defaults?.continuity !== undefined) {
+    if (typeof railsJson.defaults.continuity !== "boolean") {
+      warn(`${boardId}: rails.json defaults.continuity should be object or boolean`);
+    }
+  }
 
   const ids = new Set();
   rails.forEach((r, idx) => {
@@ -138,22 +179,61 @@ function validateRails(railsJson, boardJson, boardId) {
     if (ids.has(r.id)) fail(`${ctx}: duplicate rail id "${r.id}"`);
     ids.add(r.id);
 
-    if (!r.expected || !r.expected.voltage_v) warn(`${ctx}: expected.voltage_v missing`);
-    else {
-      const v = r.expected.voltage_v;
-      if (v.min !== undefined && !isNumber(v.min)) fail(`${ctx}: expected.voltage_v.min must be number`);
-      if (v.max !== undefined && !isNumber(v.max)) fail(`${ctx}: expected.voltage_v.max must be number`);
-      if (isNumber(v.min) && isNumber(v.max) && v.min > v.max) fail(`${ctx}: voltage_v.min > voltage_v.max`);
+    // REQUIRED: label (string)
+    if (typeof r.label !== "string" || !r.label) fail(`${ctx}: label required`);
+
+    // REQUIRED: type (enum)
+    const allowedTypes = new Set(["input", "power", "system", "logic", "core", "peripheral", "usb", "camera", "other"]);
+    if (typeof r.type !== "string" || !r.type) fail(`${ctx}: type required`);
+    if (!allowedTypes.has(r.type)) fail(`${ctx}: type must be one of: ${[...allowedTypes].join(", ")}`);
+
+    // REQUIRED: expected.voltage_v.min/max
+    const hasVoltageV = r.expected?.voltage_v?.min !== undefined || r.expected?.voltage_v?.max !== undefined;
+    if (!hasVoltageV) fail(`${ctx}: expected.voltage_v.min/max required`);
+    const v = r.expected.voltage_v;
+    if (v.min !== undefined && !isNumber(v.min)) fail(`${ctx}: expected.voltage_v.min must be number`);
+    if (v.max !== undefined && !isNumber(v.max)) fail(`${ctx}: expected.voltage_v.max must be number`);
+    if (isNumber(v.min) && isNumber(v.max) && v.min > v.max) fail(`${ctx}: voltage_v.min > voltage_v.max`);
+
+    // REQUIRED: overlay { type: "multi_poly", polys: number[][][] }
+    if (!r.overlay) fail(`${ctx}: overlay required`);
+    if (r.overlay) {
+      if (r.overlay.type !== "multi_poly") fail(`${ctx}: overlay.type must be "multi_poly"`);
+      if (!Array.isArray(r.overlay.polys)) fail(`${ctx}: overlay.polys required`);
     }
 
-    // depends_on
+    // REQUIRED: probe_points { id, x, y, label? }[]
+    if (!r.probe_points || !Array.isArray(r.probe_points)) fail(`${ctx}: probe_points[] required`);
+
+    // OPTIONAL: depends_on: string[] (rail ids)
     if (r.depends_on) {
       if (!Array.isArray(r.depends_on)) fail(`${ctx}: depends_on must be array`);
     }
 
+    // overlay format: standardize to { "polys": [...] }
+    if (r.overlay && Array.isArray(r.overlay)) {
+      warn(`${ctx}: overlay should be { "polys": [...] } format for extensibility`);
+    }
+
+    // probe_points[].id must be unique per rail
+    const probeIds = new Set();
+    if (r.probe_points) {
+      for (const p of r.probe_points) {
+        if (probeIds.has(p.id)) fail(`${ctx}: duplicate probe id "${p.id}" in rail`);
+        probeIds.add(p.id);
+      }
+    }
+
     // overlay + probes
-    validateOverlay(r.overlay, `${ctx} (${r.id})`);
+    validateOverlay(r.overlay, `${ctx} (${r.id})`, boardJson);
     validateProbePoints(r.probe_points, boardJson, `${ctx} (${r.id})`);
+    
+    // Validate overlay bounds
+    const w = boardJson?.data_space?.width_px ?? boardJson?.image?.full_width_px;
+    const h = boardJson?.data_space?.height_px ?? boardJson?.image?.full_height_px;
+    const errors = [];
+    validateOverlayBounds(r, w, h, errors);
+    errors.forEach(e => warn(e));
   });
 
   validatePsuInjection(railsJson.psu_injection, ids, `${boardId}: rails.json`);
@@ -276,10 +356,13 @@ function validateBoardFolder(boardRoot, boardId) {
   const topJson = readJson(path.join(dir, "topology.json"));
   const thermalJson = readJson(path.join(dir, "thermal.json"));
 
-  // board.json minimal
-  if (!boardJson?.image?.full_width_px || !boardJson?.image?.full_height_px) {
-    warn(`${boardId}: board.json missing image full size; some validations skipped`);
-  }
+  // === board.json contract enforcement (REQUIRED) ===
+  if (!boardJson?.image?.full_width_px) fail(`${boardId}: board.json image.full_width_px required`);
+  if (!boardJson?.image?.full_height_px) fail(`${boardId}: board.json image.full_height_px required`);
+  if (!boardJson?.data_space?.width_px) fail(`${boardId}: board.json data_space.width_px required`);
+  if (!boardJson?.data_space?.height_px) fail(`${boardId}: board.json data_space.height_px required`);
+  if (!boardJson?.data_space?.origin) fail(`${boardId}: board.json data_space.origin required`);
+  
   if (!boardJson?.tiles?.url_template) warn(`${boardId}: board.json missing tiles.url_template`);
 
   const railIds = validateRails(railsJson, boardJson, boardId);

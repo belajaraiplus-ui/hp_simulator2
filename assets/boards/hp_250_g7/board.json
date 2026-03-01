@@ -6,6 +6,11 @@
     "full_width_px": 22000,
     "full_height_px": 14000
   },
+  "data_space": {
+    "width_px": 1000,
+    "height_px": 600,
+    "origin": "top_left"
+  },
   "tiles": {
     "type": "dzi-like",
     "tile_size": 256,
@@ -21,11 +26,11 @@
   "transform": {
     "type": "affine",
     "a": 0.005,
-    "b": 0.0,
-    "c": 0.0,
+    "b": 0,
+    "c": 0,
     "d": 0.005,
-    "tx": 0.0,
-    "ty": 0.0
+    "tx": 0,
+    "ty": 0
   },
   "components_url": "/api/boards/hp_250_g7/components",
   "rails_url": "/api/boards/hp_250_g7/rails",
