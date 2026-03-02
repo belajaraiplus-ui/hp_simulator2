@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "id": "hp_elitebook_840",
-  "name": "HP EliteBook 840 G6 Motherboard",
+  "id": "samsung_galaxy_a15",
+  "name": "Samsung Galaxy A15",
   "image": {
     "full_width_px": 24000,
     "full_height_px": 16000
@@ -17,7 +17,7 @@
     "overlap": 0,
     "format": "jpg",
     "max_level": 17,
-    "url_template": "/api/boards/hp_elitebook_840/tiles/{level}/{x}_{y}.jpg"
+    "url_template": "/api/boards/samsung_galaxy_a15/tiles/{level}/{x}_{y}.jpg"
   },
   "units": {
     "mm_per_px": 0.0048,
@@ -32,8 +32,8 @@
     "tx": 0,
     "ty": 0
   },
-  "components_url": "/api/boards/hp_elitebook_840/components",
-  "rails_url": "/api/boards/hp_elitebook_840/rails",
-  "topology_url": "/api/boards/hp_elitebook_840/topology",
-  "thermal_url": "/api/boards/hp_elitebook_840/thermal"
+  "components_url": "/api/boards/samsung_galaxy_a15/components",
+  "rails_url": "/api/boards/samsung_galaxy_a15/rails",
+  "topology_url": "/api/boards/samsung_galaxy_a15/topology",
+  "thermal_url": "/api/boards/samsung_galaxy_a15/thermal"
 }

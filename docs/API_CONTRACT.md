@@ -340,6 +340,41 @@ Notes:
 - `psu_injection.path` can be a string or an array of strings.
 - `backfeed` is optional.
 
+### Rail Object
+
+Each rail in `rails[]` supports these optional fields:
+
+```json
+{
+  "id": "VDD_CPU",
+  "label": "CPU Core",
+  "type": "core",
+  "domain": "AP",
+  "source": {
+    "pmic": "PMIC_MAIN",
+    "regulator": "SMPS3",
+    "mode": "buck"
+  },
+  "state": {
+    "default": "S0",
+    "enabled_by": ["PWRKEY", "AP"]
+  },
+  "tags": ["critical", "boot"]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `domain` | string | Domain category: `AP`, `MODEM`, `RF`, `CAMERA`, `AUDIO`, `STORAGE`, `SENSOR`, `POWER`, `OTHER` |
+| `source` | object | Power source configuration |
+| `source.pmic` | string | PMIC logical ID |
+| `source.regulator` | string | Regulator name: `SMPS1`.., `LDO1`.., `BOOST1`.., `CHG`.. |
+| `source.mode` | string | Regulator mode: `buck`, `ldo`, `boost`, `switch`, `charger`, `other` |
+| `state` | object | Power state configuration |
+| `state.default` | string | Default state: `ALW`, `S0`, `SLEEP`, `OFF` |
+| `state.enabled_by` | string[] | List of enable signals |
+| `tags` | string[] | Custom tags for categorization |
+
 ---
 
 ## JavaScript Adapter Usage

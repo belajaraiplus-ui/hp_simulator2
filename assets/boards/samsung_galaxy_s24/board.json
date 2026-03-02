@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "id": "hp_15_da0xx_mb_v1",
-  "name": "HP 15-da0xx Motherboard v1",
+  "id": "samsung_galaxy_s24",
+  "name": "Samsung Galaxy S24",
   "image": {
     "full_width_px": 25000,
     "full_height_px": 15000
@@ -17,7 +17,7 @@
     "overlap": 0,
     "format": "jpg",
     "max_level": 17,
-    "url_template": "/api/boards/hp_15_da0xx_mb_v1/tiles/{level}/{x}_{y}.jpg"
+    "url_template": "/api/boards/samsung_galaxy_s24/tiles/{level}/{x}_{y}.jpg"
   },
   "units": {
     "mm_per_px": 0.0052,
@@ -32,7 +32,7 @@
     "tx": 0,
     "ty": 0
   },
-  "components_url": "/api/boards/hp_15_da0xx_mb_v1/components",
-  "rails_url": "/api/boards/hp_15_da0xx_mb_v1/rails",
-  "topology_url": "/api/boards/hp_15_da0xx_mb_v1/topology"
+  "components_url": "/api/boards/samsung_galaxy_s24/components",
+  "rails_url": "/api/boards/samsung_galaxy_s24/rails",
+  "topology_url": "/api/boards/samsung_galaxy_s24/topology"
 }

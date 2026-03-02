@@ -30,6 +30,38 @@ function isNumber(n) {
   return typeof n === "number" && Number.isFinite(n);
 }
 
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+function lintRailIdNaming(id, ctx) {
+  if (!/^[A-Z0-9_]+$/.test(id)) warn(`${ctx}: rail id should be UPPER_SNAKE_CASE: "${id}"`);
+  if (/V\dP\d/.test(id)) warn(`${ctx}: avoid V1P8 style, prefer _1V8: "${id}"`);
+}
+
+const ALLOWED_DOMAINS = new Set(["AP", "MODEM", "RF", "CAMERA", "AUDIO", "STORAGE", "SENSOR", "POWER", "OTHER"]);
+
+function validateContinuity(continuity, ctx) {
+  if (continuity === undefined || typeof continuity === "boolean") return;
+  if (!isPlainObject(continuity)) {
+    warn(`${ctx}: defaults.continuity should be object or boolean`);
+    return;
+  }
+
+  const beep = continuity.beep_below_ohms;
+  const open = continuity.open_above_ohms;
+
+  if (beep !== undefined && (!isNumber(beep) || beep < 0)) {
+    warn(`${ctx}: defaults.continuity.beep_below_ohms should be number >= 0`);
+  }
+  if (open !== undefined && (!isNumber(open) || open < 0)) {
+    warn(`${ctx}: defaults.continuity.open_above_ohms should be number >= 0`);
+  }
+  if (isNumber(beep) && isNumber(open) && beep > open) {
+    warn(`${ctx}: defaults.continuity.beep_below_ohms should be <= open_above_ohms`);
+  }
+}
+
 function validateOverlayBounds(rail, w, h, errors) {
   const overlay = rail.overlay;
   const polys = Array.isArray(overlay) ? overlay : (overlay?.polys ?? []);
@@ -46,25 +78,25 @@ function validateOverlayBounds(rail, w, h, errors) {
 
 function validateOverlay(overlay, ctx, board) {
   if (!overlay) return;
-  let polys = overlay;
-  if (!Array.isArray(overlay)) {
-    if (overlay && typeof overlay === "object" && Array.isArray(overlay.polys)) {
-      polys = overlay.polys;
-    } else {
-      fail(`${ctx}: overlay must be array of polygons or object with polys`);
-    }
+  if (!overlay || typeof overlay !== "object" || Array.isArray(overlay)) {
+    fail(`${ctx}: overlay must be object { type, polys }`);
+  }
+  if (overlay.type !== "multi_poly") {
+    fail(`${ctx}: overlay.type must be "multi_poly"`);
+  }
+  if (!Array.isArray(overlay.polys)) {
+    fail(`${ctx}: overlay.polys must be array of polygons`);
   }
 
-  // Use data_space for bounds checking (fallback to image if data_space not set)
   const w = board?.data_space?.width_px ?? board?.image?.full_width_px;
   const h = board?.data_space?.height_px ?? board?.image?.full_height_px;
 
-  polys.forEach((poly, i) => {
+  overlay.polys.forEach((poly, i) => {
     if (!Array.isArray(poly) || poly.length < 3) {
-      fail(`${ctx}: overlay[${i}] must be polygon with >= 3 points`);
+      fail(`${ctx}: overlay.polys[${i}] must be polygon with >= 3 points`);
     }
     poly.forEach((pt, j) => {
-      if (!Array.isArray(pt) || pt.length !== 2) fail(`${ctx}: overlay[${i}][${j}] must be [x,y]`);
+      if (!Array.isArray(pt) || pt.length !== 2) fail(`${ctx}: overlay.polys[${i}][${j}] must be [x,y]`);
       const [x, y] = pt;
       if (!isNumber(x) || !isNumber(y)) fail(`${ctx}: overlay point must be numbers`);
       if (x < 0 || y < 0) warn(`${ctx}: overlay point negative (${x},${y})`);
@@ -75,28 +107,16 @@ function validateOverlay(overlay, ctx, board) {
   });
 }
 
-function validateProbePoints(probes, board, ctx) {
+function validateProbePoints(probes, board, ctx, probeIds) {
   if (!probes) return;
   if (!Array.isArray(probes)) fail(`${ctx}: probe_points must be array`);
-  
-  // Use data_space for bounds checking (fallback to image if data_space not set)
-  const w = board?.data_space?.width_px ?? board?.image?.full_width_px;
-  const h = board?.data_space?.height_px ?? board?.image?.full_height_px;
-  if (!isNumber(w) || !isNumber(h)) warn(`board.json missing data_space or image dimensions; bounds check skipped`);
-
   probes.forEach((p, i) => {
     if (typeof p.id !== "string" || !p.id) fail(`${ctx}: probe_points[${i}].id required`);
-    if (!isNumber(p.x) || !isNumber(p.y)) fail(`${ctx}: probe_points[${i}] must have numeric x,y`);
-    
-    // Negative coordinate warning
-    if (p.x < 0 || p.y < 0) warn(`${ctx}: probe ${p.id} has negative coordinates (${p.x},${p.y})`);
-    
-    // Bounds warning
-    if (w && h) {
-      if (p.x > w || p.y > h) {
-        warn(`${ctx}: probe ${p.id} outside data_space bounds (${p.x},${p.y}) vs (${w},${h})`);
-      }
+    if (probeIds) {
+      if (probeIds.has(p.id)) fail(`${ctx}: duplicate probe id (global) "${p.id}"`);
+      probeIds.add(p.id);
     }
+    if (!isNumber(p.x) || !isNumber(p.y)) fail(`${ctx}: probe_points[${i}] must have numeric x,y`);
   });
 }
 
@@ -154,6 +174,151 @@ function validatePsuInjection(inj, railIds, ctx) {
   }
 }
 
+function validateRailMetadata(rail, ctx) {
+  if (rail.domain !== undefined) {
+    if (typeof rail.domain !== "string" || !ALLOWED_DOMAINS.has(rail.domain)) {
+      warn(`${ctx}: invalid domain "${rail.domain}" (should be one of: ${[...ALLOWED_DOMAINS].join(", ")})`);
+    }
+  }
+
+  if (rail.source !== undefined) {
+    if (typeof rail.source !== "object" || Array.isArray(rail.source)) fail(`${ctx}: source must be object`);
+    if (typeof rail.source.pmic !== "string" || !rail.source.pmic) fail(`${ctx}: source.pmic required string`);
+    if (typeof rail.source.regulator !== "string" || !rail.source.regulator) fail(`${ctx}: source.regulator required string`);
+    if (rail.source.mode !== undefined) {
+      const modes = new Set(["buck", "ldo", "boost", "switch", "charger", "other"]);
+      if (!modes.has(rail.source.mode)) fail(`${ctx}: source.mode invalid "${rail.source.mode}"`);
+    }
+  }
+
+  if (rail.state !== undefined) {
+    if (!isPlainObject(rail.state)) fail(`${ctx}: state must be object`);
+    const allowedDefaults = new Set(["ALW", "S0", "SLEEP", "OFF"]);
+    if (typeof rail.state.default !== "string" || !allowedDefaults.has(rail.state.default)) {
+      fail(`${ctx}: state.default must be one of: ${[...allowedDefaults].join(", ")}`);
+    }
+    if (rail.state.enabled_by !== undefined) {
+      if (!Array.isArray(rail.state.enabled_by)) fail(`${ctx}: state.enabled_by must be array of strings`);
+      rail.state.enabled_by.forEach((x, i) => {
+        if (typeof x !== "string" || !x) fail(`${ctx}: state.enabled_by[${i}] must be non-empty string`);
+      });
+    }
+  }
+
+  if (rail.tags !== undefined) {
+    if (!Array.isArray(rail.tags)) fail(`${ctx}: tags must be array of strings`);
+    rail.tags.forEach((x, i) => {
+      if (typeof x !== "string" || !x) fail(`${ctx}: tags[${i}] must be non-empty string`);
+    });
+  }
+}
+
+function topoLintRails(rails, ctx) {
+  const ids = new Set(rails.map(r => r.id));
+  const deps = new Map(); // id -> [depIds]
+  for (const r of rails) deps.set(r.id, Array.isArray(r.depends_on) ? r.depends_on : []);
+
+  // Missing refs + self-ref (kalau belum)
+  for (const [id, ds] of deps.entries()) {
+    for (const d of ds) {
+      if (d === id) fail(`${ctx}: rail "${id}" depends_on itself`);
+      if (!ids.has(d)) fail(`${ctx}: rail "${id}" depends_on missing rail "${d}"`);
+    }
+  }
+
+  // Cycle detection (DFS colors)
+  const color = new Map(); // 0=unvisited,1=visiting,2=done
+  const stack = [];
+
+  function dfs(u) {
+    color.set(u, 1);
+    stack.push(u);
+    for (const v of (deps.get(u) || [])) {
+      const c = color.get(v) || 0;
+      if (c === 0) dfs(v);
+      else if (c === 1) {
+        // cycle found: v ... u -> v
+        const idx = stack.lastIndexOf(v);
+        const cycle = stack.slice(idx).concat(v);
+        fail(`${ctx}: depends_on cycle detected: ${cycle.join(" -> ")}`);
+      }
+    }
+    stack.pop();
+    color.set(u, 2);
+  }
+
+  for (const id of ids) {
+    if ((color.get(id) || 0) === 0) dfs(id);
+  }
+
+  // Orphan detection: rails not reachable from "sources"
+  const sources = new Set(
+    rails
+      .filter(r => !r.depends_on || r.depends_on.length === 0)
+      .map(r => r.id)
+  );
+
+  // Smartphone recommendation: treat VBAT/VBUS/VPH_PWR as primary sources if exist
+  const preferred = ["VBAT", "VBUS_5V", "VPH_PWR"];
+  const rootCandidates = preferred.filter(x => ids.has(x));
+  const roots = rootCandidates.length ? new Set(rootCandidates) : sources;
+
+  const reachable = new Set();
+  // reverse graph: dep -> children
+  const children = new Map();
+  for (const r of rails) {
+    for (const d of (r.depends_on || [])) {
+      if (!children.has(d)) children.set(d, []);
+      children.get(d).push(r.id);
+    }
+  }
+
+  const q = [...roots];
+  while (q.length) {
+    const cur = q.shift();
+    if (reachable.has(cur)) continue;
+    reachable.add(cur);
+    for (const ch of (children.get(cur) || [])) q.push(ch);
+  }
+
+  for (const r of rails) {
+    if (!reachable.has(r.id)) {
+      warn(`${ctx}: orphan rail (not reachable from roots ${[...roots].join(", ")}): ${r.id}`);
+    }
+  }
+
+  // Optional: produce "level" ordering hint
+  const indeg = new Map();
+  for (const id of ids) indeg.set(id, 0);
+  for (const [id, ds] of deps.entries()) {
+    for (const d of ds) indeg.set(id, (indeg.get(id) || 0) + 1);
+  }
+  const level = new Map();
+  const queue = [];
+  for (const id of ids) if ((indeg.get(id) || 0) === 0) { queue.push(id); level.set(id, 0); }
+  while (queue.length) {
+    const u = queue.shift();
+    const uLvl = level.get(u) || 0;
+    for (const ch of (children.get(u) || [])) {
+      indeg.set(ch, (indeg.get(ch) || 0) - 1);
+      level.set(ch, Math.max(level.get(ch) || 0, uLvl + 1));
+      if ((indeg.get(ch) || 0) === 0) queue.push(ch);
+    }
+  }
+
+  // Warn if a rail depends_on something that has >= its level (shouldn't happen if DAG, but helps)
+  for (const r of rails) {
+    const rLvl = level.get(r.id);
+    if (rLvl === undefined) continue;
+    for (const d of (r.depends_on || [])) {
+      const dLvl = level.get(d);
+      if (dLvl !== undefined && dLvl >= rLvl) {
+        warn(`${ctx}: suspicious ordering: ${r.id} (lvl ${rLvl}) depends_on ${d} (lvl ${dLvl})`);
+      }
+    }
+  }
+}
+
 function validateRails(railsJson, boardJson, boardId) {
   // === rails.json root contract ===
   // REQUIRED: version (number)
@@ -166,18 +331,18 @@ function validateRails(railsJson, boardJson, boardId) {
   if (!rails.length) fail(`${boardId}: rails.json rails[] must not be empty`);
   
   // OPTIONAL: defaults.continuity (for fallback)
-  if (railsJson.defaults?.continuity !== undefined) {
-    if (typeof railsJson.defaults.continuity !== "boolean") {
-      warn(`${boardId}: rails.json defaults.continuity should be object or boolean`);
-    }
-  }
+  validateContinuity(railsJson.defaults?.continuity, `${boardId}: rails.json`);
 
   const ids = new Set();
+  const probeIds = new Set();
   rails.forEach((r, idx) => {
     const ctx = `${boardId}: rails[${idx}]`;
     if (typeof r.id !== "string" || !r.id) fail(`${ctx}: id required`);
     if (ids.has(r.id)) fail(`${ctx}: duplicate rail id "${r.id}"`);
     ids.add(r.id);
+
+    // Lint: naming conventions
+    lintRailIdNaming(r.id, ctx);
 
     // REQUIRED: label (string)
     if (typeof r.label !== "string" || !r.label) fail(`${ctx}: label required`);
@@ -188,45 +353,41 @@ function validateRails(railsJson, boardJson, boardId) {
     if (!allowedTypes.has(r.type)) fail(`${ctx}: type must be one of: ${[...allowedTypes].join(", ")}`);
 
     // REQUIRED: expected.voltage_v.min/max
-    const hasVoltageV = r.expected?.voltage_v?.min !== undefined || r.expected?.voltage_v?.max !== undefined;
-    if (!hasVoltageV) fail(`${ctx}: expected.voltage_v.min/max required`);
-    const v = r.expected.voltage_v;
-    if (v.min !== undefined && !isNumber(v.min)) fail(`${ctx}: expected.voltage_v.min must be number`);
-    if (v.max !== undefined && !isNumber(v.max)) fail(`${ctx}: expected.voltage_v.max must be number`);
-    if (isNumber(v.min) && isNumber(v.max) && v.min > v.max) fail(`${ctx}: voltage_v.min > voltage_v.max`);
+    if (!r.expected || !r.expected.voltage_v) {
+      fail(`${ctx}: expected.voltage_v required`);
+    } else {
+      const v = r.expected.voltage_v;
+      if (!isNumber(v.min) || !isNumber(v.max)) fail(`${ctx}: expected.voltage_v.min/max required numbers`);
+      if (v.min > v.max) fail(`${ctx}: voltage_v.min > voltage_v.max`);
+    }
 
     // REQUIRED: overlay { type: "multi_poly", polys: number[][][] }
+    // Rule: overlay must always be object (not direct array) for extensibility and consistency
     if (!r.overlay) fail(`${ctx}: overlay required`);
-    if (r.overlay) {
-      if (r.overlay.type !== "multi_poly") fail(`${ctx}: overlay.type must be "multi_poly"`);
-      if (!Array.isArray(r.overlay.polys)) fail(`${ctx}: overlay.polys required`);
-    }
+    if (Array.isArray(r.overlay)) fail(`${ctx}: overlay must be object with { type, polys }, not direct array`);
+    if (typeof r.overlay !== "object") fail(`${ctx}: overlay must be object`);
+    if (r.overlay.type !== "multi_poly") fail(`${ctx}: overlay.type must be "multi_poly"`);
+    if (!Array.isArray(r.overlay.polys)) fail(`${ctx}: overlay.polys required`);
 
     // REQUIRED: probe_points { id, x, y, label? }[]
     if (!r.probe_points || !Array.isArray(r.probe_points)) fail(`${ctx}: probe_points[] required`);
 
     // OPTIONAL: depends_on: string[] (rail ids)
+    // Rule: must be array of strings, no self-reference
     if (r.depends_on) {
       if (!Array.isArray(r.depends_on)) fail(`${ctx}: depends_on must be array`);
-    }
-
-    // overlay format: standardize to { "polys": [...] }
-    if (r.overlay && Array.isArray(r.overlay)) {
-      warn(`${ctx}: overlay should be { "polys": [...] } format for extensibility`);
-    }
-
-    // probe_points[].id must be unique per rail
-    const probeIds = new Set();
-    if (r.probe_points) {
-      for (const p of r.probe_points) {
-        if (probeIds.has(p.id)) fail(`${ctx}: duplicate probe id "${p.id}" in rail`);
-        probeIds.add(p.id);
+      for (const dep of r.depends_on) {
+        if (typeof dep !== "string") fail(`${ctx}: depends_on must contain strings`);
+        if (dep === r.id) fail(`${ctx}: depends_on cannot have self-reference to "${r.id}"`);
       }
     }
 
+    // OPTIONAL metadata for phone rails template
+    validateRailMetadata(r, `${ctx} (${r.id})`);
+
     // overlay + probes
     validateOverlay(r.overlay, `${ctx} (${r.id})`, boardJson);
-    validateProbePoints(r.probe_points, boardJson, `${ctx} (${r.id})`);
+    validateProbePoints(r.probe_points, boardJson, `${ctx} (${r.id})`, probeIds);
     
     // Validate overlay bounds
     const w = boardJson?.data_space?.width_px ?? boardJson?.image?.full_width_px;
@@ -238,13 +399,7 @@ function validateRails(railsJson, boardJson, boardId) {
 
   validatePsuInjection(railsJson.psu_injection, ids, `${boardId}: rails.json`);
 
-  // depends_on references valid rails
-  rails.forEach((r, idx) => {
-    const ctx = `${boardId}: rails[${idx}] (${r.id})`;
-    (r.depends_on || []).forEach((dep) => {
-      if (!ids.has(dep)) fail(`${ctx}: depends_on references missing rail "${dep}"`);
-    });
-  });
+  topoLintRails(railsJson.rails, `${boardId}: topology`);
 
   ok(`${boardId}: rails.json OK (${rails.length} rails)`);
   return ids;

@@ -1,0 +1,188 @@
+{
+  "version": 1,
+  "nodes": [
+    "VBUS_5V",
+    "VBAT",
+    "VSYS",
+    "VDISP",
+    "VCORE",
+    "VIO",
+    "VDDR",
+    "VPH_PWR",
+    "VREG_1V8_ALW",
+    "VREG_3V0_ALW",
+    "VRTC",
+    "VDD_CPU",
+    "VDD_GPU",
+    "VDD_SOC",
+    "VDD_DDR",
+    "VDDQ_DDR",
+    "VDD2_DDR",
+    "VDD_IO_1V8",
+    "VDD_IO_3V0",
+    "VDD_UFS_2V9",
+    "VCCQ_UFS_1V8",
+    "VUSB",
+    "VDD_USB_PHY_1V2",
+    "VDD_RF_1V3",
+    "VDD_PA_3V4",
+    "VDD_WLAN_1V8",
+    "VDD_BT_1V8",
+    "VDD_GNSS_1V8",
+    "VCAM_AVDD_2V8",
+    "VCAM_DVDD_1V2",
+    "VCAM_IOVDD_1V8"
+  ],
+  "edges": [
+    {
+      "from": "VBUS_5V",
+      "to": "VBAT",
+      "kind": "charger"
+    },
+    {
+      "from": "VBAT",
+      "to": "VSYS",
+      "kind": "switch"
+    },
+    {
+      "from": "VSYS",
+      "to": "VDISP",
+      "kind": "switch"
+    },
+    {
+      "from": "VSYS",
+      "to": "VCORE",
+      "kind": "buck"
+    },
+    {
+      "from": "VDISP",
+      "to": "VIO",
+      "kind": "ldo"
+    },
+    {
+      "from": "VSYS",
+      "to": "VDDR",
+      "kind": "ldo"
+    },
+    {
+      "from": "VBAT",
+      "to": "VPH_PWR",
+      "kind": "buck"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VREG_1V8_ALW",
+      "kind": "ldo"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VREG_3V0_ALW",
+      "kind": "ldo"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VRTC",
+      "kind": "ldo"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VDD_CPU",
+      "kind": "buck"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VDD_GPU",
+      "kind": "buck"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VDD_SOC",
+      "kind": "buck"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VDD_DDR",
+      "kind": "buck"
+    },
+    {
+      "from": "VDD_DDR",
+      "to": "VDDQ_DDR",
+      "kind": "buck"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VDD2_DDR",
+      "kind": "buck"
+    },
+    {
+      "from": "VREG_1V8_ALW",
+      "to": "VDD_IO_1V8",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_3V0_ALW",
+      "to": "VDD_IO_3V0",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_3V0_ALW",
+      "to": "VDD_UFS_2V9",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_1V8_ALW",
+      "to": "VCCQ_UFS_1V8",
+      "kind": "ldo"
+    },
+    {
+      "from": "VBUS_5V",
+      "to": "VUSB",
+      "kind": "switch"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VDD_USB_PHY_1V2",
+      "kind": "switch"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VDD_RF_1V3",
+      "kind": "ldo"
+    },
+    {
+      "from": "VBAT",
+      "to": "VDD_PA_3V4",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_1V8_ALW",
+      "to": "VDD_WLAN_1V8",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_1V8_ALW",
+      "to": "VDD_BT_1V8",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_1V8_ALW",
+      "to": "VDD_GNSS_1V8",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_3V0_ALW",
+      "to": "VCAM_AVDD_2V8",
+      "kind": "ldo"
+    },
+    {
+      "from": "VPH_PWR",
+      "to": "VCAM_DVDD_1V2",
+      "kind": "ldo"
+    },
+    {
+      "from": "VREG_1V8_ALW",
+      "to": "VCAM_IOVDD_1V8",
+      "kind": "ldo"
+    }
+  ]
+}

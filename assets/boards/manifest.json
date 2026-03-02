@@ -3,34 +3,34 @@
   "catalog_version": "1.0.0",
   "boards": [
     {
-      "id": "hp_15_da0xx_mb_v1",
-      "name": "HP 15-da0xx Motherboard v1",
-      "board_url": "/api/boards/hp_15_da0xx_mb_v1/board"
+      "id": "samsung_galaxy_s24",
+      "name": "Samsung Galaxy S24",
+      "board_url": "/api/boards/samsung_galaxy_s24/board"
     },
     {
-      "id": "hp_15s_du1xxx",
-      "name": "HP 15s-du1xxx Motherboard",
-      "board_url": "/api/boards/hp_15s_du1xxx/board"
+      "id": "samsung_galaxy_z_fold6",
+      "name": "Samsung Galaxy Z Fold6",
+      "board_url": "/api/boards/samsung_galaxy_z_fold6/board"
     },
     {
-      "id": "hp_250_g7",
-      "name": "HP 250 G7 Motherboard",
-      "board_url": "/api/boards/hp_250_g7/board"
+      "id": "samsung_galaxy_a55_5g",
+      "name": "Samsung Galaxy A55 5G",
+      "board_url": "/api/boards/samsung_galaxy_a55_5g/board"
     },
     {
-      "id": "hp_pavilion_x360",
-      "name": "HP Pavilion x360 Motherboard",
-      "board_url": "/api/boards/hp_pavilion_x360/board"
+      "id": "samsung_galaxy_s24_fe",
+      "name": "Samsung Galaxy S24 FE",
+      "board_url": "/api/boards/samsung_galaxy_s24_fe/board"
     },
     {
-      "id": "hp_elitebook_840",
-      "name": "HP EliteBook 840 G6 Motherboard",
-      "board_url": "/api/boards/hp_elitebook_840/board"
+      "id": "samsung_galaxy_a15",
+      "name": "Samsung Galaxy A15",
+      "board_url": "/api/boards/samsung_galaxy_a15/board"
     },
     {
-      "id": "hp_chromebook_14",
-      "name": "HP Chromebook 14 G5 Motherboard",
-      "board_url": "/api/boards/hp_chromebook_14/board"
+      "id": "samsung_galaxy_m55_5g",
+      "name": "Samsung Galaxy M55 5G",
+      "board_url": "/api/boards/samsung_galaxy_m55_5g/board"
     }
   ]
 }

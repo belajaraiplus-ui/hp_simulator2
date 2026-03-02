@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "id": "hp_pavilion_x360",
-  "name": "HP Pavilion x360 Motherboard",
+  "id": "samsung_galaxy_s24_fe",
+  "name": "Samsung Galaxy S24 FE",
   "image": {
     "full_width_px": 18000,
     "full_height_px": 11000
@@ -17,7 +17,7 @@
     "overlap": 0,
     "format": "jpg",
     "max_level": 15,
-    "url_template": "/api/boards/hp_pavilion_x360/tiles/{level}/{x}_{y}.jpg"
+    "url_template": "/api/boards/samsung_galaxy_s24_fe/tiles/{level}/{x}_{y}.jpg"
   },
   "units": {
     "mm_per_px": 0.005,
@@ -32,8 +32,8 @@
     "tx": 0,
     "ty": 0
   },
-  "components_url": "/api/boards/hp_pavilion_x360/components",
-  "rails_url": "/api/boards/hp_pavilion_x360/rails",
-  "topology_url": "/api/boards/hp_pavilion_x360/topology",
-  "thermal_url": "/api/boards/hp_pavilion_x360/thermal"
+  "components_url": "/api/boards/samsung_galaxy_s24_fe/components",
+  "rails_url": "/api/boards/samsung_galaxy_s24_fe/rails",
+  "topology_url": "/api/boards/samsung_galaxy_s24_fe/topology",
+  "thermal_url": "/api/boards/samsung_galaxy_s24_fe/thermal"
 }

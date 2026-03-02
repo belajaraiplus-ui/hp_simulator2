@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "id": "hp_15s_du1xxx",
-  "name": "HP 15s-du1xxx Motherboard",
+  "id": "samsung_galaxy_z_fold6",
+  "name": "Samsung Galaxy Z Fold6",
   "image": {
     "full_width_px": 20000,
     "full_height_px": 12000
@@ -17,7 +17,7 @@
     "overlap": 0,
     "format": "jpg",
     "max_level": 16,
-    "url_template": "/api/boards/hp_15s_du1xxx/tiles/{level}/{x}_{y}.jpg"
+    "url_template": "/api/boards/samsung_galaxy_z_fold6/tiles/{level}/{x}_{y}.jpg"
   },
   "units": {
     "mm_per_px": 0.005,
@@ -32,8 +32,8 @@
     "tx": 0,
     "ty": 0
   },
-  "components_url": "/api/boards/hp_15s_du1xxx/components",
-  "rails_url": "/api/boards/hp_15s_du1xxx/rails",
-  "topology_url": "/api/boards/hp_15s_du1xxx/topology",
-  "thermal_url": "/api/boards/hp_15s_du1xxx/thermal"
+  "components_url": "/api/boards/samsung_galaxy_z_fold6/components",
+  "rails_url": "/api/boards/samsung_galaxy_z_fold6/rails",
+  "topology_url": "/api/boards/samsung_galaxy_z_fold6/topology",
+  "thermal_url": "/api/boards/samsung_galaxy_z_fold6/thermal"
 }
