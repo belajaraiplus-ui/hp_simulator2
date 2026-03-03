@@ -11,6 +11,8 @@ on:
       - "tools/**"
       - "assets/boards/**"
       - "github/workflows/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
 
 jobs:
   rust-and-scenarios:
@@ -22,11 +24,8 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Engine tests
-        run: cargo test --manifest-path engine/Cargo.toml
-
-      - name: PCB registry tests
-        run: cargo test --manifest-path pcb-registry/Cargo.toml
+      - name: Workspace tests
+        run: cargo test --workspace
 
       - name: Scenario validation (all)
         run: cargo run --quiet --manifest-path tools/scenario_cli/Cargo.toml -- validate-all scenarios

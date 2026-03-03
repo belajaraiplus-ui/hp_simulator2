@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "engine",
-  "pcb-registry"
+  "pcb-registry",
+  "tools/scenario_cli"
 ]
 resolver = "2"
