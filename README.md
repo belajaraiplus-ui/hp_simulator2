@@ -1,34 +1,33 @@
 # HP Simulator
 
-Simulator berbasis web untuk melatih pengambilan keputusan teknis pada diagnosis perangkat HP, dengan engine simulasi kausal (bukan panduan reparasi instan).
+Simulator diagnosis perangkat berbasis web dengan engine kausal. Fokus repo saat ini adalah simulasi power rail, fault injection, dan workflow pengukuran tool (multimeter, probe PCB, PSU).
 
-## Status Project Saat Ini
+## Kondisi Repo Saat Ini
 
-- Workspace Rust berisi 2 crate utama: `engine` dan `pcb-registry`
-- Frontend aktif ada di `web-app` (Vite)
-- Data board ada di `assets/boards` (manifest + metadata board)
-- Skenario ada di folder `scenarios`
-- Tool validasi tersedia untuk board metadata dan scenario DSL
+- Workspace Rust: `engine` dan `pcb-registry`
+- Frontend aktif: `web-app` (Vite)
+- Data board: `assets/boards`
+- Scenario: `scenarios`
+- Validasi metadata dan scenario tersedia di folder `tools`
 
 ## Struktur Utama
 
 - `engine/` -> core simulation engine (Rust + wasm-bindgen)
-- `pcb-registry/` -> HTTP API lokal untuk data board (`127.0.0.1:8080`)
-- `web-app/` -> UI simulator (Vite, proxy `/api` ke `pcb-registry`)
-- `assets/boards/` -> data board, komponen, rails, topology, tiles
-- `scenarios/` -> file scenario JSON
-- `tools/validate-board.mjs` -> validator metadata board
-- `tools/scenario_cli/` -> CLI validasi/inspeksi scenario DSL
-- `docs/` -> arsitektur, kontrak API, aturan authoring
+- `pcb-registry/` -> API lokal board data (`127.0.0.1:8080`)
+- `web-app/` -> UI simulator (Vite)
+- `assets/boards/` -> manifest + metadata board (board/components/rails/topology/thermal/tiles)
+- `scenarios/` -> scenario JSON
+- `tools/validate-board.mjs` -> validasi metadata board
+- `tools/scenario_cli/` -> CLI validasi/inspect scenario
+- `docs/` -> dokumentasi arsitektur dan kontrak
 
-## Prasyarat
+## Menjalankan Local Development
 
+Prasyarat:
 - Rust toolchain
 - Node.js + npm
 
-## Menjalankan Project (Local Development)
-
-1. Jalankan backend registry board:
+1. Jalankan backend:
 
 ```bash
 cargo run -p pcb-registry
@@ -41,37 +40,78 @@ npm -C web-app install
 npm -C web-app run dev
 ```
 
-3. Buka aplikasi dari URL Vite (default `http://127.0.0.1:5173` atau sesuai output terminal).
+3. Buka URL dari Vite (default `http://127.0.0.1:5173`).
 
 Catatan:
-- `web-app/vite.config.js` sudah mem-proxy `/api` ke `http://127.0.0.1:8080`
-- Jika lokasi data board non-default, set env var `PCB_DATA_DIR` sebelum menjalankan `pcb-registry`
+- `web-app/vite.config.js` mem-proxy `/api` ke `http://127.0.0.1:8080`
+- Jika data board bukan lokasi default, set env `PCB_DATA_DIR` sebelum menjalankan `pcb-registry`
 
-## Validasi Data
+## Runtime Power (Step 9E-9H)
 
-Validasi metadata board:
+Fitur runtime power yang aktif di frontend:
+
+- Runtime multimeter `voltage`, `resistance`, `continuity` (rail)
+- Runtime disimpan per-board (switch board tidak menghapus fault board lain)
+- State power disimpan ke `localStorage` per-board dengan key:
+  - `hpSim.power.<board_id>`
+- Query URL didukung (otomatis di-apply setelah board aktif load):
+  - `?mode=SLEEP`
+  - `?fault=VBUS_5V:short,VBAT:open`
+
+Persisted payload:
+
+```json
+{
+  "system_mode": "S0",
+  "faults": {
+    "VBAT": { "type": "open" }
+  }
+}
+```
+
+## Debug Runtime (Browser Console)
+
+Global helper tersedia:
+
+```js
+window.hpSim.injectFault("VBAT", { type: "short" });
+window.hpSim.clearFault("VBAT");
+window.hpSim.setSystemMode("SLEEP");
+window.hpSim.dumpPower();
+```
+
+`dumpPower()` menampilkan runtime termasuk `reason.upstream_status` saat rail drop karena upstream.
+
+## Validasi
+
+Validasi board:
 
 ```bash
 node tools/validate-board.mjs
 ```
 
-Validasi scenario DSL:
+Validasi scenario:
 
 ```bash
 cargo run --manifest-path tools/scenario_cli/Cargo.toml -- validate scenarios/display_ghost_touch_emi.json
 ```
 
-Inspect scenario DSL:
+Inspect scenario:
 
 ```bash
 cargo run --manifest-path tools/scenario_cli/Cargo.toml -- inspect scenarios/display_ghost_touch_emi.json
 ```
 
-## API Lokal (pcb-registry)
+Build frontend:
+
+```bash
+npm -C web-app run build
+```
+
+## API Lokal pcb-registry
 
 Base URL: `http://127.0.0.1:8080`
 
-Endpoint utama:
 - `GET /api/boards`
 - `GET /api/boards/:id/board`
 - `GET /api/boards/:id/components`
@@ -80,7 +120,7 @@ Endpoint utama:
 - `GET /api/boards/:id/thermal`
 - `GET /api/boards/:id/tiles/:level/:tile`
 
-## Dokumentasi
+## Referensi Dokumen
 
 - `docs/README.md`
 - `docs/architecture.md`

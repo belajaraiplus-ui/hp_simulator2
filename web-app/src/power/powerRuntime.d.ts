@@ -22,6 +22,7 @@ export type RailRuntime = {
   reason: {
     decided_by: "default_state" | "enabled_by" | "upstream" | "fault";
     upstream_blocker?: string;
+    upstream_status?: RailStatus;
     fault?: RailFault;
   };
 

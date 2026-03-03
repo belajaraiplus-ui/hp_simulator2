@@ -163,6 +163,37 @@ function toNumberFlex(v) {
   return null;
 }
 
+function parseRuntimeQuery() {
+  const parsed = { mode: null, faults: [] };
+  if (typeof window === "undefined") return parsed;
+
+  let params;
+  try {
+    params = new URLSearchParams(window.location.search || "");
+  } catch {
+    return parsed;
+  }
+
+  const modeRaw = String(params.get("mode") || "").trim().toUpperCase();
+  if (["ALW", "S0", "SLEEP", "OFF"].includes(modeRaw)) {
+    parsed.mode = modeRaw;
+  }
+
+  const faultRaw = params.getAll("fault").join(",");
+  for (const token of String(faultRaw || "").split(",")) {
+    const part = token.trim();
+    if (!part) continue;
+    const [railIdRaw, typeRaw] = part.split(":");
+    const railId = String(railIdRaw || "").trim();
+    const type = String(typeRaw || "").trim().toLowerCase();
+    if (!railId) continue;
+    if (type !== "short" && type !== "open" && type !== "disable_regulator") continue;
+    parsed.faults.push({ railId, type });
+  }
+
+  return parsed;
+}
+
 function updateStatus(msg) {
   if (!statusEl) return;
   statusEl.textContent = msg;
@@ -494,6 +525,19 @@ document.addEventListener("DOMContentLoaded", () => {
         if (board?.id) {
           try {
             await Tools.loadBoardRails(board.id, { baseUrl: "" });
+
+            const runtimeQuery = parseRuntimeQuery();
+            if (runtimeQuery.mode) {
+              setSystemMode(runtimeQuery.mode);
+            }
+            if (runtimeQuery.faults.length) {
+              const knownRails = new Set((Tools.state.board.rails || []).map((r) => String(r?.id || "")));
+              for (const f of runtimeQuery.faults) {
+                if (!knownRails.has(f.railId)) continue;
+                injectFault(f.railId, { type: f.type });
+              }
+            }
+
             Tools.setPSUConfig({ targetRail: null });
             dispatchToolAction({ ClearPSUTargetRail: {} });
             renderPsuTargetOptions(

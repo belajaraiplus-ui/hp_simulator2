@@ -1,5 +1,9 @@
 import init, * as engine from "./wasm/engine.js";
-import { measureRailVoltage } from "../power/runtime.js";
+import {
+  measureRailVoltage,
+  measureRailResistance,
+  measureContinuity,
+} from "../power/runtime.js";
 
 const API_VERSION = 1;
 const DEFAULT_TIMEOUT = 5000;
@@ -177,14 +181,24 @@ export async function multimeterMeasure({ mode, a, b = null }) {
   const normalizedMode = normalizeMeterMode(mode);
   if (!normalizedMode || !a) return null;
 
-  // Step 9: runtime DAG power propagation (voltage only, single-ended)
-  if (normalizedMode === "voltage" && a && (b === null || b === undefined)) {
-    try {
+  // Step 9: runtime multimeter interception (fallback tetap ke engine bila gagal)
+  try {
+    if (normalizedMode === "voltage" && (b === null || b === undefined)) {
       const v = measureRailVoltage(a);
-      return { ok: true, v };
-    } catch (e) {
-      console.warn("runtime voltage measure failed, fallback to engine:", e);
+      return { ok: true, mode: "voltage", v };
     }
+    if (normalizedMode === "resistance") {
+      const ohm = measureRailResistance(a, b);
+      if (Number.isFinite(ohm)) return { ok: true, mode: "resistance", ohm };
+    }
+    if (normalizedMode === "continuity") {
+      const continuity = measureContinuity(a, b);
+      if (continuity === 0 || continuity === 1) {
+        return { ok: true, mode: "continuity", continuity };
+      }
+    }
+  } catch (e) {
+    console.warn("runtime multimeter measure failed, fallback to engine:", e);
   }
 
   try {

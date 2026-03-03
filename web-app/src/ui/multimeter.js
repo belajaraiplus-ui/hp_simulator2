@@ -51,6 +51,10 @@ export function renderMultimeterResult(multimeterResultEl, mode, value) {
   }
 
   if (mode === "continuity") {
+    if (value === 0 || value === 1) {
+      multimeterResultEl.textContent = value > 0 ? "BEEP" : "OL";
+      return;
+    }
     if (value >= 1.0e8) {
       multimeterResultEl.textContent = "OL";
     } else if (value <= 50) {

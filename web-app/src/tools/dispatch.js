@@ -1,6 +1,6 @@
 import { dispatchToolAction, measureTool, multimeterMeasure } from "../engine/adapter.js";
 import { buildMultimeterLabel } from "../ui/multimeter.js";
-import { initPowerRuntime } from "../power/runtime.js";
+import { initPowerRuntime, setActiveBoard } from "../power/runtime.js";
 
 /**
  * Tool Dispatcher: satu pintu untuk aksi tool.
@@ -41,6 +41,7 @@ export function createToolDispatcher() {
     // Step 9: init runtime power propagation
     try {
       initPowerRuntime({ board_id: boardId, rails, system_mode: "S0" });
+      setActiveBoard(boardId);
     } catch (e) {
       console.warn("initPowerRuntime failed:", e);
     }
@@ -149,6 +150,32 @@ export function createToolDispatcher() {
     if (typeof component === "string") state.multimeter.component = component;
   }
 
+  function extractRuntimeMeterValue(mode, result) {
+    const m = String(mode || "").toLowerCase();
+    if (!result || typeof result !== "object") return null;
+
+    if (m === "voltage") {
+      const n = Number(result.v);
+      return Number.isFinite(n) ? n : null;
+    }
+    if (m === "resistance" || m === "ohm") {
+      const n = Number(result.ohm ?? result.r_ohm);
+      return Number.isFinite(n) ? n : null;
+    }
+    if (m === "continuity") {
+      const n = Number(result.continuity);
+      if (n === 0 || n === 1) return n;
+      return null;
+    }
+    if (m === "temperature" || m === "temp") {
+      const n = Number(result.c);
+      return Number.isFinite(n) ? n : null;
+    }
+
+    const fallback = Number(result.value ?? result.measurement ?? result.reading);
+    return Number.isFinite(fallback) ? fallback : null;
+  }
+
   async function measureMultimeter(railB = null) {
     const label = buildMultimeterLabel(
       state.multimeter.mode,
@@ -157,25 +184,23 @@ export function createToolDispatcher() {
       state.multimeter.component
     );
     
-    // Check if this mode supports differential measurement (b parameter)
-    const supportsDifferential = ["voltage", "temperature"].includes(state.multimeter.mode);
-    
-    let result;
-    if (supportsDifferential && railB) {
-      // Use direct multimeterMeasure for differential
+    if (state.multimeter.targetType === "rail" && state.multimeter.rail) {
       const mode = state.multimeter.mode;
-      result = await multimeterMeasure({ 
-        mode, 
-        a: state.multimeter.rail, 
-        b: railB 
+      const result = await multimeterMeasure({
+        mode,
+        a: state.multimeter.rail,
+        b: railB || null,
       });
-      return { 
-        label, 
-        value: result?.v ?? result?.c ?? result ?? 0 
-      };
+      const runtimeValue = extractRuntimeMeterValue(mode, result);
+      if (runtimeValue != null) {
+        return {
+          label,
+          value: runtimeValue,
+        };
+      }
     }
-    
-    // Original label-based approach
+
+    // Fallback: legacy label-based measurement
     const val = await measureTool(label);
     return { label, value: val };
   }
