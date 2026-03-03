@@ -1,4 +1,5 @@
 use clap::{Parser, Subcommand};
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -146,9 +147,21 @@ fn validate_all(dir: &str) -> Result<(), String> {
         return Err(format!("No scenario JSON files found in {}", dir));
     }
 
+    let mut ids: HashMap<String, String> = HashMap::new();
+
     for f in &files {
         let display = f.display().to_string();
-        validate(&display).map_err(|e| format!("{} => {}", display, e))?;
+        let dsl = load(&display).map_err(|e| format!("{} => {}", display, e))?;
+        validate_dsl(&dsl).map_err(|e| format!("{} => {}", display, e))?;
+
+        if let Some(prev) = ids.insert(dsl.id.clone(), display.clone()) {
+            return Err(format!(
+                "Duplicate scenario id '{}' found in {} and {}",
+                dsl.id, prev, display
+            ));
+        }
+
+        println!("OK: scenario DSL valid");
     }
 
     println!("OK: validated {} scenario file(s)", files.len());
@@ -196,6 +209,26 @@ mod tests {
         dsl.notes = Some("indikasi short muncul".to_string());
         let err = validate_dsl(&dsl).expect_err("expected forbidden term to fail");
         assert!(err.contains("Forbidden technical term"));
+    }
+
+    #[test]
+    fn validate_all_rejects_duplicate_ids() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        let temp = std::env::temp_dir().join(format!("hp_sim_scenario_cli_dup_{nonce}"));
+        std::fs::create_dir_all(&temp).expect("create temp dir");
+
+        let payload = r#"{"id":"dup_id","title":"Judul","world_profile":"STABLE_LAB","customer_complaint":"Keluhan","background_story":"Latar"}"#;
+        std::fs::write(temp.join("one.json"), payload).expect("write one");
+        std::fs::write(temp.join("two.json"), payload).expect("write two");
+
+        let err = validate_all(temp.to_str().expect("utf8 path"))
+            .expect_err("expected duplicate id to fail");
+        assert!(err.contains("Duplicate scenario id"));
+
+        std::fs::remove_dir_all(temp).expect("cleanup temp dir");
     }
 
     #[test]
