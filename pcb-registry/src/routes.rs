@@ -7,6 +7,7 @@ use axum::{
 use axum::http::{header, HeaderValue};
 use axum::body::Body;
 use std::sync::Arc;
+use std::path::Path as FsPath;
 
 use crate::{
     model::{BoardFile, ComponentsFile, Manifest, RailsFile, ScenarioFile, TopologyFile, ThermalFile},
@@ -14,48 +15,46 @@ use crate::{
 };
 
 
-pub async fn get_scenarios(State(st): State<AppState>) -> impl IntoResponse {
-    let mut dir = match tokio::fs::read_dir(&st.scenarios_dir).await {
-        Ok(v) => v,
-        Err(e) => {
-            tracing::warn!("scenarios read_dir failed: path={} err={}", st.scenarios_dir.display(), e);
-            return (StatusCode::NOT_FOUND, "scenarios directory not found").into_response();
-        }
-    };
+
+fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, String> {
+    let entries = std::fs::read_dir(path)
+        .map_err(|e| format!("read_dir failed: {}", e))?;
 
     let mut scenarios: Vec<ScenarioFile> = Vec::new();
-
-    loop {
-        let entry = match dir.next_entry().await {
+    for entry in entries {
+        let entry = match entry {
             Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("scenarios next_entry failed: err={}", e);
-                return (StatusCode::INTERNAL_SERVER_ERROR, "failed to read scenarios").into_response();
-            }
+            Err(_) => continue,
         };
 
-        let Some(entry) = entry else { break };
-        let path = entry.path();
-        if path.extension().and_then(|x| x.to_str()) != Some("json") {
+        let file_path = entry.path();
+        if file_path.extension().and_then(|x| x.to_str()) != Some("json") {
             continue;
         }
 
-        let bytes = match tokio::fs::read(&path).await {
+        let bytes = match std::fs::read(&file_path) {
             Ok(v) => v,
-            Err(e) => {
-                tracing::warn!("scenario read failed: path={} err={}", path.display(), e);
-                continue;
-            }
+            Err(_) => continue,
         };
 
-        match serde_json::from_slice::<ScenarioFile>(&bytes) {
-            Ok(s) => scenarios.push(s),
-            Err(e) => tracing::warn!("scenario parse failed: path={} err={}", path.display(), e),
+        if let Ok(s) = serde_json::from_slice::<ScenarioFile>(&bytes) {
+            scenarios.push(s);
         }
     }
 
     scenarios.sort_by(|a, b| a.title.cmp(&b.title));
-    (StatusCode::OK, Json(scenarios)).into_response()
+    Ok(scenarios)
+}
+
+
+pub async fn get_scenarios(State(st): State<AppState>) -> impl IntoResponse {
+    match load_scenarios_from_dir(&st.scenarios_dir) {
+        Ok(scenarios) => (StatusCode::OK, Json(scenarios)).into_response(),
+        Err(e) => {
+            tracing::warn!("scenarios load failed: path={} err={}", st.scenarios_dir.display(), e);
+            (StatusCode::NOT_FOUND, "scenarios directory not found").into_response()
+        }
+    }
 }
 
 fn valid_board_id(id: &str) -> bool {
@@ -353,4 +352,57 @@ fn parse_tile_name(tile_name: &str) -> Option<(u32, u32, String)> {
     let x: u32 = xs.parse().ok()?;
     let y: u32 = ys.parse().ok()?;
     Some((x, y, ext.to_lowercase()))
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn temp_dir(prefix: &str) -> std::path::PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before unix epoch")
+            .as_nanos();
+        let dir = std::env::temp_dir().join(format!("{}_{}", prefix, nonce));
+        std::fs::create_dir_all(&dir).expect("create temp dir");
+        dir
+    }
+
+    #[test]
+    fn load_scenarios_from_dir_sorts_and_filters() {
+        let dir = temp_dir("hp_sim_scenarios");
+
+        std::fs::write(
+            dir.join("a.json"),
+            r#"{"id":"s2","title":"Z Title","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write scenario");
+        std::fs::write(
+            dir.join("b.json"),
+            r#"{"id":"s1","title":"A Title","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write scenario");
+        std::fs::write(dir.join("bad.json"), "{not-json}").expect("write bad");
+        std::fs::write(dir.join("readme.txt"), "ignore").expect("write txt");
+
+        let out = load_scenarios_from_dir(&dir).expect("load scenarios");
+        assert_eq!(out.len(), 2);
+        assert_eq!(out[0].title, "A Title");
+        assert_eq!(out[1].title, "Z Title");
+
+        std::fs::remove_dir_all(dir).expect("cleanup temp dir");
+    }
+
+    #[test]
+    fn load_scenarios_from_dir_errors_for_missing_dir() {
+        let missing = std::env::temp_dir().join("hp_sim_missing_dir_should_not_exist");
+        if missing.exists() {
+            std::fs::remove_dir_all(&missing).expect("remove stale dir");
+        }
+
+        let err = load_scenarios_from_dir(&missing).expect_err("expected missing dir error");
+        assert!(err.contains("read_dir failed"));
+    }
 }
