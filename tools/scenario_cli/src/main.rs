@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use std::fs;
+use std::path::Path;
 
 use engine::scenario_dsl::model::ScenarioDsl;
 use engine::scenario::presets as scenario_presets;
@@ -23,6 +24,11 @@ enum Commands {
     Inspect {
         file: String,
     },
+
+    /// Validasi semua scenario JSON di dalam direktori
+    ValidateAll {
+        dir: String,
+    },
 }
 
 fn main() {
@@ -31,6 +37,7 @@ fn main() {
     let result = match cli.command {
         Commands::Validate { file } => validate(&file),
         Commands::Inspect { file } => inspect(&file),
+        Commands::ValidateAll { dir } => validate_all(&dir),
     };
 
     if let Err(e) = result {
@@ -128,5 +135,36 @@ fn inspect(file: &str) -> Result<(), String> {
         println!("Notes: {}", n);
     }
 
+    Ok(())
+}
+
+
+fn validate_all(dir: &str) -> Result<(), String> {
+    let path = Path::new(dir);
+    if !path.exists() {
+        return Err(format!("Directory not found: {}", dir));
+    }
+
+    let mut files = Vec::new();
+    for entry in fs::read_dir(path).map_err(|e| format!("Failed to read dir: {}", e))? {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let p = entry.path();
+        if p.extension().and_then(|x| x.to_str()) == Some("json") {
+            files.push(p);
+        }
+    }
+
+    files.sort();
+
+    if files.is_empty() {
+        return Err(format!("No scenario JSON files found in {}", dir));
+    }
+
+    for f in &files {
+        let display = f.display().to_string();
+        validate(&display).map_err(|e| format!("{} => {}", display, e))?;
+    }
+
+    println!("OK: validated {} scenario file(s)", files.len());
     Ok(())
 }
