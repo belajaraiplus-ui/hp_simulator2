@@ -57,6 +57,11 @@ fn validate(file: &str) -> Result<(), String> {
         "IDEAL_BENCH",
         "HOT_HUMID_WORKSHOP",
         "PREVIOUSLY_REPAIRED_DEVICE",
+        "POST_PREVIOUS_REPAIR",
+        "STABLE_LAB",
+        "NOISY_POWER_ENV",
+        "POST_WATER_EXPOSURE",
+        "RF_UNSTABLE_ENVIRONMENT",
         scenario_presets::RF_UNSTABLE_ENVIRONMENT.name,
     ];
 

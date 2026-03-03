@@ -402,6 +402,28 @@ pub struct ComponentSearchItem {
     pub location: ComponentLocation,
 }
 
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScenarioConstraints {
+    #[serde(default)]
+    pub tools: Option<String>,
+    #[serde(default)]
+    pub time_pressure: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScenarioFile {
+    pub id: String,
+    pub title: String,
+    pub world_profile: String,
+    pub customer_complaint: String,
+    pub background_story: String,
+    #[serde(default)]
+    pub constraints: Option<ScenarioConstraints>,
+    #[serde(default)]
+    pub notes: Option<String>,
+}
+
 /* ============================================================
 MANIFEST (existing - enhanced)
 ============================================================ */

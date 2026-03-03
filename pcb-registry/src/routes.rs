@@ -9,9 +9,54 @@ use axum::body::Body;
 use std::sync::Arc;
 
 use crate::{
-    model::{BoardFile, ComponentsFile, Manifest, RailsFile, TopologyFile, ThermalFile},
+    model::{BoardFile, ComponentsFile, Manifest, RailsFile, ScenarioFile, TopologyFile, ThermalFile},
     state::AppState,
 };
+
+
+pub async fn get_scenarios(State(st): State<AppState>) -> impl IntoResponse {
+    let mut dir = match tokio::fs::read_dir(&st.scenarios_dir).await {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!("scenarios read_dir failed: path={} err={}", st.scenarios_dir.display(), e);
+            return (StatusCode::NOT_FOUND, "scenarios directory not found").into_response();
+        }
+    };
+
+    let mut scenarios: Vec<ScenarioFile> = Vec::new();
+
+    loop {
+        let entry = match dir.next_entry().await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("scenarios next_entry failed: err={}", e);
+                return (StatusCode::INTERNAL_SERVER_ERROR, "failed to read scenarios").into_response();
+            }
+        };
+
+        let Some(entry) = entry else { break };
+        let path = entry.path();
+        if path.extension().and_then(|x| x.to_str()) != Some("json") {
+            continue;
+        }
+
+        let bytes = match tokio::fs::read(&path).await {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!("scenario read failed: path={} err={}", path.display(), e);
+                continue;
+            }
+        };
+
+        match serde_json::from_slice::<ScenarioFile>(&bytes) {
+            Ok(s) => scenarios.push(s),
+            Err(e) => tracing::warn!("scenario parse failed: path={} err={}", path.display(), e),
+        }
+    }
+
+    scenarios.sort_by(|a, b| a.title.cmp(&b.title));
+    (StatusCode::OK, Json(scenarios)).into_response()
+}
 
 fn valid_board_id(id: &str) -> bool {
     !id.is_empty()

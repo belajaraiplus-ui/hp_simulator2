@@ -1,38 +1,12 @@
 {
   "id": "battery_sense_data_instability",
   "title": "Status baterai berubah-ubah tanpa pola yang konsisten",
-  "domain": "battery_behavior",
   "world_profile": "POST_PREVIOUS_REPAIR",
-
-  "initial_conditions": {
-    "power_state": "on",
-    "battery_level": "unknown",
-    "recent_history": [
-      "perangkat pernah dibongkar",
-      "baterai pernah dilepas pasang"
-    ]
+  "customer_complaint": "Persentase baterai meloncat tanpa transisi wajar",
+  "background_story": "perangkat pernah dibongkar; baterai pernah dilepas pasang",
+  "constraints": {
+    "tools": "Riwayat servis tidak lengkap; Pengujian tidak melibatkan pembongkaran",
+    "time_pressure": "sedang"
   },
-
-  "symptoms": [
-    "Persentase baterai meloncat tanpa transisi wajar",
-    "Perangkat tiba-tiba mati lalu bisa menyala kembali"
-  ],
-
-  "constraints": [
-    "Riwayat servis tidak lengkap",
-    "Pengujian tidak melibatkan pembongkaran"
-  ],
-
-  "starting_context": {
-    "customer_expectation": "Perangkat tidak mati mendadak",
-    "time_pressure": "sedang",
-    "service_history_confidence": "rendah"
-  },
-
-  "author_notes": {
-    "intent": "Menunjukkan ketergantungan sistem pada data sense",
-    "avoid": [
-      "mengaitkan langsung ke kapasitas baterai"
-    ]
-  }
+  "notes": "Menunjukkan ketergantungan sistem pada data sense Hindari asumsi: mengaitkan langsung ke kapasitas baterai Domain konteks: battery_behavior"
 }

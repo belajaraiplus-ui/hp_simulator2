@@ -1,38 +1,12 @@
 {
   "id": "battery_mid_soc_sudden_shutdown",
   "title": "Perangkat mati mendadak meskipun baterai masih tersisa",
-  "domain": "battery_behavior",
   "world_profile": "NOISY_POWER_ENV",
-
-  "initial_conditions": {
-    "power_state": "on",
-    "battery_level": "medium",
-    "recent_history": [
-      "perangkat digunakan dengan beban tidak tetap",
-      "sumber daya eksternal sering berubah"
-    ]
+  "customer_complaint": "Perangkat mati tiba-tiba di tengah penggunaan",
+  "background_story": "perangkat digunakan dengan beban tidak tetap; sumber daya eksternal sering berubah",
+  "constraints": {
+    "tools": "Tidak ada log penggunaan detail; Lingkungan listrik tidak stabil",
+    "time_pressure": "tinggi"
   },
-
-  "symptoms": [
-    "Perangkat mati tiba-tiba di tengah penggunaan",
-    "Persentase baterai sebelumnya tidak menunjukkan kritis"
-  ],
-
-  "constraints": [
-    "Tidak ada log penggunaan detail",
-    "Lingkungan listrik tidak stabil"
-  ],
-
-  "starting_context": {
-    "customer_expectation": "Perangkat tidak mati tiba-tiba",
-    "time_pressure": "tinggi",
-    "service_history_confidence": "rendah"
-  },
-
-  "author_notes": {
-    "intent": "Melatih analisa margin daya di tengah SOC",
-    "avoid": [
-      "menganggap shutdown hanya terjadi di baterai habis"
-    ]
-  }
+  "notes": "Melatih analisa margin daya di tengah SOC Hindari asumsi: menganggap shutdown hanya terjadi di baterai habis Domain konteks: battery_behavior"
 }

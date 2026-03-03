@@ -1,41 +1,12 @@
 {
   "id": "power_fake_charging_charge_illusion",
   "title": "Indikator pengisian muncul, namun kapasitas baterai tidak bertambah",
-  "domain": "power_and_charging",
   "world_profile": "NOISY_POWER_ENV",
-
-  "initial_conditions": {
-    "power_state": "on",
-    "battery_level": "low",
-    "recent_history": [
-      "perangkat sering diisi ulang menggunakan sumber daya berbeda",
-      "pengisian dilakukan di lingkungan dengan kualitas listrik tidak stabil"
-    ]
+  "customer_complaint": "Ikon pengisian daya muncul saat charger terhubung",
+  "background_story": "perangkat sering diisi ulang menggunakan sumber daya berbeda; pengisian dilakukan di lingkungan dengan kualitas listrik tidak stabil",
+  "constraints": {
+    "tools": "Tidak tersedia charger bawaan pabrik; Kualitas sumber daya eksternal bervariasi; Pengujian dilakukan tanpa membuka perangkat",
+    "time_pressure": "sedang"
   },
-
-  "symptoms": [
-    "Ikon pengisian daya muncul saat charger terhubung",
-    "Persentase baterai tidak bertambah meskipun waktu pengisian lama",
-    "Perangkat tetap kehilangan daya saat digunakan"
-  ],
-
-  "constraints": [
-    "Tidak tersedia charger bawaan pabrik",
-    "Kualitas sumber daya eksternal bervariasi",
-    "Pengujian dilakukan tanpa membuka perangkat"
-  ],
-
-  "starting_context": {
-    "customer_expectation": "Ingin pengisian daya kembali normal",
-    "time_pressure": "sedang",
-    "service_history_confidence": "rendah"
-  },
-
-  "author_notes": {
-    "intent": "Melatih skeptisisme terhadap indikator pengisian dan angka persentase",
-    "avoid": [
-      "menganggap indikator pengisian sebagai bukti arus efektif",
-      "mengaitkan masalah secara langsung ke satu komponen"
-    ]
-  }
+  "notes": "Melatih skeptisisme terhadap indikator pengisian dan angka persentase Hindari asumsi: menganggap indikator pengisian sebagai bukti arus efektif; mengaitkan masalah secara langsung ke satu komponen Domain konteks: power_and_charging"
 }

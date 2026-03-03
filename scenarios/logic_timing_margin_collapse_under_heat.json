@@ -1,38 +1,12 @@
 {
   "id": "logic_timing_margin_collapse_under_heat",
   "title": "Perangkat menjadi tidak stabil setelah suhu meningkat",
-  "domain": "logic_and_timing",
   "world_profile": "HOT_HUMID_WORKSHOP",
-
-  "initial_conditions": {
-    "power_state": "on",
-    "battery_level": "medium",
-    "recent_history": [
-      "perangkat digunakan dalam waktu lama",
-      "lingkungan kerja panas"
-    ]
+  "customer_complaint": "Perangkat restart atau freeze setelah panas",
+  "background_story": "perangkat digunakan dalam waktu lama; lingkungan kerja panas",
+  "constraints": {
+    "tools": "Tidak tersedia pendinginan aktif; Pengujian dibatasi pada penggunaan normal",
+    "time_pressure": "sedang"
   },
-
-  "symptoms": [
-    "Perangkat restart atau freeze setelah panas",
-    "Kinerja kembali normal setelah didinginkan sementara"
-  ],
-
-  "constraints": [
-    "Tidak tersedia pendinginan aktif",
-    "Pengujian dibatasi pada penggunaan normal"
-  ],
-
-  "starting_context": {
-    "customer_expectation": "Perangkat stabil dalam penggunaan lama",
-    "time_pressure": "sedang",
-    "service_history_confidence": "sedang"
-  },
-
-  "author_notes": {
-    "intent": "Menunjukkan runtuhnya margin timing akibat panas",
-    "avoid": [
-      "menganggap masalah hanya berasal dari software"
-    ]
-  }
+  "notes": "Menunjukkan runtuhnya margin timing akibat panas Hindari asumsi: menganggap masalah hanya berasal dari software Domain konteks: logmodul_and_timing"
 }

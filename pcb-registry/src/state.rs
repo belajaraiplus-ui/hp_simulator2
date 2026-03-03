@@ -6,6 +6,7 @@ use crate::model::{BoardFile, ComponentsFile, Manifest, RailsFile, ThermalFile, 
 #[derive(Clone)]
 pub struct AppState {
     pub data_dir: PathBuf,
+    pub scenarios_dir: PathBuf,
 
     pub manifest_cache: Arc<tokio::sync::RwLock<Option<Manifest>>>,
 
@@ -17,9 +18,10 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(data_dir: PathBuf) -> Self {
+    pub fn new(data_dir: PathBuf, scenarios_dir: PathBuf) -> Self {
         Self {
             data_dir,
+            scenarios_dir,
             manifest_cache: Arc::new(tokio::sync::RwLock::new(None)),
             board_cache: Arc::new(DashMap::new()),
             components_cache: Arc::new(DashMap::new()),
@@ -32,6 +34,7 @@ impl AppState {
     pub fn manifest_path(&self) -> PathBuf {
         self.data_dir.join("manifest.json")
     }
+
 
     pub fn board_path(&self, board_id: &str) -> PathBuf {
         self.data_dir.join(board_id).join("board.json")

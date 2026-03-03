@@ -1,38 +1,12 @@
 {
   "id": "water_progressive_electrochemical_corrosion",
   "title": "Perangkat mengalami masalah bertahap setelah paparan cairan",
-  "domain": "water_and_corrosion",
   "world_profile": "POST_WATER_EXPOSURE",
-
-  "initial_conditions": {
-    "power_state": "on",
-    "battery_level": "medium",
-    "recent_history": [
-      "perangkat pernah terkena cairan",
-      "masalah muncul beberapa hari kemudian"
-    ]
+  "customer_complaint": "Fungsi tertentu berhenti bekerja secara bertahap",
+  "background_story": "perangkat pernah terkena cairan; masalah muncul beberapa hari kemudian",
+  "constraints": {
+    "tools": "Tidak ada bekas cairan terlihat dari luar; Pengujian dilakukan tanpa pembongkaran",
+    "time_pressure": "rendah"
   },
-
-  "symptoms": [
-    "Fungsi tertentu berhenti bekerja secara bertahap",
-    "Perilaku tidak konsisten antar sesi penggunaan"
-  ],
-
-  "constraints": [
-    "Tidak ada bekas cairan terlihat dari luar",
-    "Pengujian dilakukan tanpa pembongkaran"
-  ],
-
-  "starting_context": {
-    "customer_expectation": "Perangkat tetap dapat digunakan",
-    "time_pressure": "rendah",
-    "service_history_confidence": "rendah"
-  },
-
-  "author_notes": {
-    "intent": "Menunjukkan sifat progresif korosi",
-    "avoid": [
-      "menganggap perangkat aman karena masih menyala"
-    ]
-  }
+  "notes": "Menunjukkan sifat progresif korosi Hindari asumsi: menganggap perangkat aman karena masih menyala Domain konteks: water_and_corrosion"
 }
