@@ -206,7 +206,6 @@ for (_id, zone) in state.thermal.zones.iter_mut() {
 
 | Board | Zones | Links | Status |
 |-------|-------|-------|--------|
-| hp_15_da0xx_mb_v1 | 1 (pmic_zone) | 0 | ❌ Minimal |
 | hp_elitebook_840 | 1 | 1 | ⚠️ Basic |
 | hp_pavilion_x360 | 1 | 0 | ❌ Minimal |
 
@@ -296,13 +295,14 @@ ToolAction::SetZoneThrottling {
 
 ### Board Configuration (Updated)
 
-hp_15_da0xx_mb_v1 now has:
-- 5 thermal zones: soc, pmic_zone, battery_zone, board, vddr_zone
-- 5 thermal links between zones
-- Convection coefficients and surface areas defined
-- Throttling thresholds configured
+Thermal board profile now includes:
+- Multiple thermal zones (for SoC, PMIC, battery, and board)
+- Thermal links between zones
+- Convection coefficients and surface areas
+- Throttling thresholds
 
 ---
 
 *Generated: Feb 2026*
 *Engine Version: 0.1.0*
+

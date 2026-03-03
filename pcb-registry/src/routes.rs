@@ -237,21 +237,10 @@ pub async fn get_tile(
         return (StatusCode::BAD_REQUEST, "invalid tile extension").into_response();
     }
 
-    // ==========================================================
-    // IMPORTANT FIX:
-    // Disk tiles kamu levelnya "terbalik" dibanding OpenSeadragon.
-    // Kamu punya folder 0..11, dan level 10 di disk hanya 2x3 tiles,
-    // artinya disk level tinggi = zoom-out (tile sedikit).
-    //
-    // Maka kita map: disk_level = MAX_LEVEL - requested_level
-    // ==========================================================
     const MAX_LEVEL: u32 = 17;
-
     if level > MAX_LEVEL {
         return (StatusCode::NOT_FOUND, "tile not found").into_response();
     }
-
-    let disk_level = level;
 
     // Fallback extension search order:
     // - coba ext yang diminta dulu
@@ -264,39 +253,43 @@ pub async fn get_tile(
 
     let mut last_err: Option<std::io::Error> = None;
 
-    for ext in try_exts {
-        let path = st.tile_path(&board_id, disk_level, x, y, &ext);
+    for ext in &try_exts {
+        let candidate_paths = [
+            st.tile_path(&board_id, level, x, y, ext),
+            st.pcb_files_tile_path(&board_id, level, x, y, ext),
+        ];
 
-        match tokio::fs::read(&path).await {
-            Ok(bytes) => {
-                let content_type = match ext.as_str() {
-                    "jpg" | "jpeg" => "image/jpeg",
-                    "png" => "image/png",
-                    _ => "application/octet-stream",
-                };
+        for path in candidate_paths {
+            match tokio::fs::read(&path).await {
+                Ok(bytes) => {
+                    let content_type = match ext.as_str() {
+                        "jpg" | "jpeg" => "image/jpeg",
+                        "png" => "image/png",
+                        _ => "application/octet-stream",
+                    };
 
-                let mut resp = Response::new(Body::from(bytes));
-                *resp.status_mut() = StatusCode::OK;
-                resp.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
-                resp.headers_mut().insert(
-                    header::CACHE_CONTROL,
-                    HeaderValue::from_static("public, max-age=31536000, immutable"),
-                );
-                return resp;
-            }
-            Err(e) => {
-                last_err = Some(e);
-                continue;
+                    let mut resp = Response::new(Body::from(bytes));
+                    *resp.status_mut() = StatusCode::OK;
+                    resp.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+                    resp.headers_mut().insert(
+                        header::CACHE_CONTROL,
+                        HeaderValue::from_static("public, max-age=31536000, immutable"),
+                    );
+                    return resp;
+                }
+                Err(e) => {
+                    last_err = Some(e);
+                    continue;
+                }
             }
         }
     }
 
-    // If all attempts fail, log with both requested and mapped levels
+    // If all attempts fail, log with request context.
     tracing::warn!(
-        "tile read failed: id={} req_level={} disk_level={} x={} y={} tile={} err={}",
+        "tile read failed: id={} req_level={} x={} y={} tile={} err={}",
         board_id,
         level,
-        disk_level,
         x,
         y,
         tile_name,

@@ -1,9 +1,12 @@
 import init, * as engine from "./wasm/engine.js";
+import { measureRailVoltage } from "../power/runtime.js";
 
 const API_VERSION = 1;
 const DEFAULT_TIMEOUT = 5000;
 
 let initialized = false;
+let loadTopologyGraphSupported = true;
+let warnedLoadTopologyGraphUnsupported = false;
 
 class ApiError extends Error {
   constructor(code, message, details = null) {
@@ -174,6 +177,16 @@ export async function multimeterMeasure({ mode, a, b = null }) {
   const normalizedMode = normalizeMeterMode(mode);
   if (!normalizedMode || !a) return null;
 
+  // Step 9: runtime DAG power propagation (voltage only, single-ended)
+  if (normalizedMode === "voltage" && a && (b === null || b === undefined)) {
+    try {
+      const v = measureRailVoltage(a);
+      return { ok: true, v };
+    } catch (e) {
+      console.warn("runtime voltage measure failed, fallback to engine:", e);
+    }
+  }
+
   try {
     return await safeDispatch({
       version: API_VERSION,
@@ -312,6 +325,13 @@ export async function readPsu() {
 }
 
 export async function applyTopologyGraph(topology) {
+  if (!topology || typeof topology !== "object") {
+    return false;
+  }
+  if (!loadTopologyGraphSupported) {
+    return false;
+  }
+
   try {
     await safeDispatch({
       version: API_VERSION,
@@ -322,6 +342,15 @@ export async function applyTopologyGraph(topology) {
     });
     return true;
   } catch (e) {
+    const msg = String(e?.message || "");
+    if (msg.includes("unknown variant `LoadTopologyGraph`")) {
+      loadTopologyGraphSupported = false;
+      if (!warnedLoadTopologyGraphUnsupported) {
+        warnedLoadTopologyGraphUnsupported = true;
+        console.warn("LoadTopologyGraph is not supported by the current engine build; skipping topology sync.");
+      }
+      return false;
+    }
     console.error("apply topology graph failed:", e);
     return false;
   }

@@ -1,36 +1,17 @@
 {
   "version": 1,
-  "catalog_version": "1.0.0",
   "boards": [
-    {
-      "id": "samsung_galaxy_s24",
-      "name": "Samsung Galaxy S24",
-      "board_url": "/api/boards/samsung_galaxy_s24/board"
-    },
-    {
-      "id": "samsung_galaxy_z_fold6",
-      "name": "Samsung Galaxy Z Fold6",
-      "board_url": "/api/boards/samsung_galaxy_z_fold6/board"
-    },
     {
       "id": "samsung_galaxy_a55_5g",
       "name": "Samsung Galaxy A55 5G",
+      "category": "Smartphone",
       "board_url": "/api/boards/samsung_galaxy_a55_5g/board"
     },
     {
-      "id": "samsung_galaxy_s24_fe",
-      "name": "Samsung Galaxy S24 FE",
-      "board_url": "/api/boards/samsung_galaxy_s24_fe/board"
-    },
-    {
-      "id": "samsung_galaxy_a15",
-      "name": "Samsung Galaxy A15",
-      "board_url": "/api/boards/samsung_galaxy_a15/board"
-    },
-    {
-      "id": "samsung_galaxy_m55_5g",
-      "name": "Samsung Galaxy M55 5G",
-      "board_url": "/api/boards/samsung_galaxy_m55_5g/board"
+      "id": "samsung_galaxy_s24",
+      "name": "Samsung Galaxy S24",
+      "category": "Smartphone",
+      "board_url": "/api/boards/samsung_galaxy_s24/board"
     }
   ]
 }

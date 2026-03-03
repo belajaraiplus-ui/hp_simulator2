@@ -1,5 +1,6 @@
 import { dispatchToolAction, measureTool, multimeterMeasure } from "../engine/adapter.js";
 import { buildMultimeterLabel } from "../ui/multimeter.js";
+import { initPowerRuntime } from "../power/runtime.js";
 
 /**
  * Tool Dispatcher: satu pintu untuk aksi tool.
@@ -37,6 +38,12 @@ export function createToolDispatcher() {
     const json = await r.json();
 
     const rails = Array.isArray(json.rails) ? json.rails : [];
+    // Step 9: init runtime power propagation
+    try {
+      initPowerRuntime({ board_id: boardId, rails, system_mode: "S0" });
+    } catch (e) {
+      console.warn("initPowerRuntime failed:", e);
+    }
     const injectable = rails
       .filter((x) => x?.psu_injection?.enabled === true)
       .map((x) => x.id);

@@ -41,9 +41,9 @@ export const BOARD_LAYOUTS = {
   /**
    * Contoh: kalau nanti Anda ingin layout spesifik per board,
    * taruh di key board_id dari manifest.json, mis:
-   * "hp_15_da0xx_mb_v1": { ... }
+   * "samsung_galaxy_a55_5g": { ... }
    */
-  // "hp_15_da0xx_mb_v1": { ... }
+  // "samsung_galaxy_a55_5g": { ... }
 };
 
 /**

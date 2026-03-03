@@ -5,7 +5,6 @@
 ### 1. Add data_space field to board.json files
 - [x] Created `tools/normalize-data-space.mjs` script
 - [x] Updated all 6 board.json files with data_space field:
-  - hp_15_da0xx_mb_v1
   - hp_15s_du1xxx
   - hp_250_g7
   - hp_chromebook_14

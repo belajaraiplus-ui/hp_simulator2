@@ -404,7 +404,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       viewerInstance = await createDeepZoomViewer({
         el: canvasTarget,
         board: boardData,
-        getTileUrl: (level, x, y) => getTileUrl(boardId, level, x, y),
+        getTileUrl: (level, x, y) => getTileUrl(boardData, level, x, y),
       });
 
       const components = await loadComponents(boardId);

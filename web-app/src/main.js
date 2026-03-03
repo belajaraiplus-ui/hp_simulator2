@@ -30,6 +30,7 @@ import { applyRestoredSession, consumePendingRestore, initSaveLoad } from "./per
 import { showOutcomeModal } from "./outcome/display.js";
 import { showOscilloscope, toggleOscilloscope } from "./ui/oscilloscope.js";
 import { createToolDispatcher } from "./tools/dispatch.js";
+import { injectFault, clearFault, setSystemMode, debugDumpPower } from "./power/runtime.js";
 
 const Tools = createToolDispatcher();
 
@@ -411,6 +412,13 @@ let engineLoopId = null;
 let engineReady = false;
 
 document.addEventListener("DOMContentLoaded", () => {
+  window.hpSim = {
+    injectFault,
+    clearFault,
+    setSystemMode,
+    dumpPower: debugDumpPower,
+  };
+
   handleResize();
   window.addEventListener("resize", debounce(handleResize, 100));
   const pendingRestoreSession = consumePendingRestore();

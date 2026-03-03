@@ -410,6 +410,7 @@ MANIFEST (existing - enhanced)
 pub struct Manifest {
     pub version: u32,
     pub boards: Vec<BoardListItem>,
+    #[serde(default)]
     pub catalog_version: String,
 }
 

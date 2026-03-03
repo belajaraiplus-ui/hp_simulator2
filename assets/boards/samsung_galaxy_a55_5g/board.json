@@ -3,8 +3,8 @@
   "id": "samsung_galaxy_a55_5g",
   "name": "Samsung Galaxy A55 5G",
   "image": {
-    "full_width_px": 22000,
-    "full_height_px": 14000
+    "full_width_px": 1536,
+    "full_height_px": 1024
   },
   "data_space": {
     "width_px": 1000,
