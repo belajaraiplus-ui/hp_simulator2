@@ -405,4 +405,55 @@ mod tests {
         let err = load_scenarios_from_dir(&missing).expect_err("expected missing dir error");
         assert!(err.contains("read_dir failed"));
     }
+
+    #[tokio::test]
+    async fn api_scenarios_endpoint_returns_sorted_json() {
+        let scenarios_dir = temp_dir("hp_sim_scenarios_api");
+        std::fs::write(
+            scenarios_dir.join("z.json"),
+            r#"{"id":"z","title":"Zeta","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write z scenario");
+        std::fs::write(
+            scenarios_dir.join("a.json"),
+            r#"{"id":"a","title":"Alpha","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write a scenario");
+
+        let boards_dir = temp_dir("hp_sim_boards_dummy");
+        let st = AppState::new(boards_dir.clone(), scenarios_dir.clone());
+
+        let resp = get_scenarios(State(st)).await.into_response();
+        assert_eq!(resp.status(), StatusCode::OK);
+
+        let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .expect("read body bytes");
+        let parsed: Vec<ScenarioFile> = serde_json::from_slice(&body).expect("parse scenarios json");
+
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].title, "Alpha");
+        assert_eq!(parsed[1].title, "Zeta");
+
+        std::fs::remove_dir_all(scenarios_dir).expect("cleanup scenarios dir");
+        std::fs::remove_dir_all(boards_dir).expect("cleanup boards dir");
+    }
+
+    #[tokio::test]
+    async fn api_scenarios_endpoint_returns_404_for_missing_dir() {
+        let missing = std::env::temp_dir().join("hp_sim_missing_api_scenarios_dir");
+        if missing.exists() {
+            std::fs::remove_dir_all(&missing).expect("remove stale dir");
+        }
+
+        let boards_dir = temp_dir("hp_sim_boards_dummy_missing");
+        let st = AppState::new(boards_dir.clone(), missing);
+
+        let resp = get_scenarios(State(st)).await.into_response();
+        assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+
+        std::fs::remove_dir_all(boards_dir).expect("cleanup boards dir");
+    }
+
+
 }
