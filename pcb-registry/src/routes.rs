@@ -21,7 +21,55 @@ use crate::{
 enum ScenarioLoadError {
     ReadDir(String),
     Parse { path: String, reason: String },
+    Semantic { path: String, reason: String },
     DuplicateId { id: String, first: String, second: String },
+}
+
+
+fn known_world_profiles() -> [&'static str; 8] {
+    [
+        "IDEAL_BENCH",
+        "HOT_HUMID_WORKSHOP",
+        "PREVIOUSLY_REPAIRED_DEVICE",
+        "POST_PREVIOUS_REPAIR",
+        "STABLE_LAB",
+        "NOISY_POWER_ENV",
+        "POST_WATER_EXPOSURE",
+        "RF_UNSTABLE_ENVIRONMENT",
+    ]
+}
+
+fn validate_scenario_semantics(s: &ScenarioFile) -> Result<(), String> {
+    if !known_world_profiles().contains(&s.world_profile.as_str()) {
+        return Err(format!("Unknown world_profile: {}", s.world_profile));
+    }
+
+    let forbidden = [
+        "ic", "pa", "pmic", "short", "konslet", "ganti", "rusak", "solusi", "ntc", "baseband",
+    ];
+
+    let notes = s.notes.clone().unwrap_or_default();
+    let text = format!(
+        "{} {} {} {}",
+        s.title,
+        s.customer_complaint,
+        s.background_story,
+        notes
+    )
+    .to_lowercase();
+
+    let tokens: std::collections::HashSet<&str> = text
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|t| !t.is_empty())
+        .collect();
+
+    for word in forbidden {
+        if tokens.contains(word) {
+            return Err(format!("Forbidden term detected: {}", word));
+        }
+    }
+
+    Ok(())
 }
 
 fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, ScenarioLoadError> {
@@ -53,6 +101,11 @@ fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, ScenarioL
                 path: file_path.display().to_string(),
                 reason: e.to_string(),
             }
+        })?;
+
+        validate_scenario_semantics(&s).map_err(|e| ScenarioLoadError::Semantic {
+            path: file_path.display().to_string(),
+            reason: e,
         })?;
 
         let scenario_id = s.id.clone();
@@ -88,6 +141,10 @@ pub async fn get_scenarios(State(st): State<AppState>) -> impl IntoResponse {
         Err(ScenarioLoadError::Parse { path, reason }) => {
             tracing::warn!("scenario parse failed: path={} err={}", path, reason);
             (StatusCode::INTERNAL_SERVER_ERROR, "invalid scenario file detected").into_response()
+        }
+        Err(ScenarioLoadError::Semantic { path, reason }) => {
+            tracing::warn!("scenario semantic invalid: path={} err={}", path, reason);
+            (StatusCode::INTERNAL_SERVER_ERROR, "invalid scenario semantics detected").into_response()
         }
         Err(ScenarioLoadError::DuplicateId { id, first, second }) => {
             tracing::warn!(
@@ -485,6 +542,45 @@ mod tests {
         std::fs::write(scenarios_dir.join("bad.json"), "{not-json}").expect("write bad");
 
         let boards_dir = temp_dir("hp_sim_boards_dummy_invalid");
+        let st = AppState::new(boards_dir.clone(), scenarios_dir.clone());
+
+        let resp = get_scenarios(State(st)).await.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        std::fs::remove_dir_all(scenarios_dir).expect("cleanup scenarios dir");
+        std::fs::remove_dir_all(boards_dir).expect("cleanup boards dir");
+    }
+
+
+
+    #[test]
+    fn load_scenarios_from_dir_rejects_unknown_world() {
+        let dir = temp_dir("hp_sim_scenarios_bad_world");
+        std::fs::write(
+            dir.join("bad_world.json"),
+            r#"{"id":"s1","title":"A Title","world_profile":"UNKNOWN_WORLD","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write bad world");
+
+        let err = load_scenarios_from_dir(&dir).expect_err("expected semantic error");
+        match err {
+            ScenarioLoadError::Semantic { reason, .. } => assert!(reason.contains("Unknown world_profile")),
+            _ => panic!("expected Semantic error"),
+        }
+
+        std::fs::remove_dir_all(dir).expect("cleanup temp dir");
+    }
+
+    #[tokio::test]
+    async fn api_scenarios_endpoint_returns_500_for_invalid_semantics() {
+        let scenarios_dir = temp_dir("hp_sim_scenarios_api_semantic");
+        std::fs::write(
+            scenarios_dir.join("bad_world.json"),
+            r#"{"id":"s1","title":"A Title","world_profile":"UNKNOWN_WORLD","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write bad world");
+
+        let boards_dir = temp_dir("hp_sim_boards_dummy_semantic");
         let st = AppState::new(boards_dir.clone(), scenarios_dir.clone());
 
         let resp = get_scenarios(State(st)).await.into_response();
