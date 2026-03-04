@@ -20,6 +20,7 @@ use crate::{
 #[derive(Debug)]
 enum ScenarioLoadError {
     ReadDir(String),
+    Parse { path: String, reason: String },
     DuplicateId { id: String, first: String, second: String },
 }
 
@@ -47,24 +48,29 @@ fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, ScenarioL
             Err(_) => continue,
         };
 
-        if let Ok(s) = serde_json::from_slice::<ScenarioFile>(&bytes) {
-            let scenario_id = s.id.clone();
-            let source = file_path.display().to_string();
-            if seen_ids.contains(&scenario_id) {
-                let first = first_path_by_id
-                    .get(&scenario_id)
-                    .cloned()
-                    .unwrap_or_else(|| "unknown".to_string());
-                return Err(ScenarioLoadError::DuplicateId {
-                    id: scenario_id,
-                    first,
-                    second: source,
-                });
+        let s = serde_json::from_slice::<ScenarioFile>(&bytes).map_err(|e| {
+            ScenarioLoadError::Parse {
+                path: file_path.display().to_string(),
+                reason: e.to_string(),
             }
-            seen_ids.insert(scenario_id.clone());
-            first_path_by_id.insert(scenario_id, source);
-            scenarios.push(s);
+        })?;
+
+        let scenario_id = s.id.clone();
+        let source = file_path.display().to_string();
+        if seen_ids.contains(&scenario_id) {
+            let first = first_path_by_id
+                .get(&scenario_id)
+                .cloned()
+                .unwrap_or_else(|| "unknown".to_string());
+            return Err(ScenarioLoadError::DuplicateId {
+                id: scenario_id,
+                first,
+                second: source,
+            });
         }
+        seen_ids.insert(scenario_id.clone());
+        first_path_by_id.insert(scenario_id, source);
+        scenarios.push(s);
     }
 
     scenarios.sort_by(|a, b| a.title.cmp(&b.title));
@@ -78,6 +84,10 @@ pub async fn get_scenarios(State(st): State<AppState>) -> impl IntoResponse {
         Err(ScenarioLoadError::ReadDir(e)) => {
             tracing::warn!("scenarios read_dir failed: path={} err={}", st.scenarios_dir.display(), e);
             (StatusCode::NOT_FOUND, "scenarios directory not found").into_response()
+        }
+        Err(ScenarioLoadError::Parse { path, reason }) => {
+            tracing::warn!("scenario parse failed: path={} err={}", path, reason);
+            (StatusCode::INTERNAL_SERVER_ERROR, "invalid scenario file detected").into_response()
         }
         Err(ScenarioLoadError::DuplicateId { id, first, second }) => {
             tracing::warn!(
@@ -418,7 +428,6 @@ mod tests {
             r#"{"id":"s1","title":"A Title","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#,
         )
         .expect("write scenario");
-        std::fs::write(dir.join("bad.json"), "{not-json}").expect("write bad");
         std::fs::write(dir.join("readme.txt"), "ignore").expect("write txt");
 
         let out = load_scenarios_from_dir(&dir).expect("load scenarios");
@@ -441,6 +450,48 @@ mod tests {
             ScenarioLoadError::ReadDir(msg) => assert!(msg.contains("read_dir failed")),
             _ => panic!("expected ReadDir error"),
         }
+    }
+
+
+
+    #[test]
+    fn load_scenarios_from_dir_rejects_invalid_json() {
+        let dir = temp_dir("hp_sim_scenarios_invalid");
+
+        std::fs::write(
+            dir.join("ok.json"),
+            r#"{"id":"s1","title":"A Title","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write scenario");
+        std::fs::write(dir.join("bad.json"), "{not-json}").expect("write bad");
+
+        let err = load_scenarios_from_dir(&dir).expect_err("expected parse error");
+        match err {
+            ScenarioLoadError::Parse { path, .. } => assert!(path.ends_with("bad.json")),
+            _ => panic!("expected Parse error"),
+        }
+
+        std::fs::remove_dir_all(dir).expect("cleanup temp dir");
+    }
+
+    #[tokio::test]
+    async fn api_scenarios_endpoint_returns_500_for_invalid_json() {
+        let scenarios_dir = temp_dir("hp_sim_scenarios_api_invalid");
+        std::fs::write(
+            scenarios_dir.join("ok.json"),
+            r#"{"id":"s1","title":"A Title","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#,
+        )
+        .expect("write scenario");
+        std::fs::write(scenarios_dir.join("bad.json"), "{not-json}").expect("write bad");
+
+        let boards_dir = temp_dir("hp_sim_boards_dummy_invalid");
+        let st = AppState::new(boards_dir.clone(), scenarios_dir.clone());
+
+        let resp = get_scenarios(State(st)).await.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        std::fs::remove_dir_all(scenarios_dir).expect("cleanup scenarios dir");
+        std::fs::remove_dir_all(boards_dir).expect("cleanup boards dir");
     }
 
 
