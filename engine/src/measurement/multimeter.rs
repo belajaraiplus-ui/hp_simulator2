@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::measurement::engine::MeasurementEngine;
 use crate::measurement::tool::MeasurementTool;
 use crate::state::ids::RailId;

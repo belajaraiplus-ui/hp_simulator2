@@ -30,6 +30,22 @@ jobs:
       - name: Scenario validation (all)
         run: cargo run --quiet --manifest-path tools/scenario_cli/Cargo.toml -- validate-all scenarios
 
+      - name: Basic smoke test (pcb-registry API)
+        run: |
+          cargo run --quiet --manifest-path pcb-registry/Cargo.toml >/tmp/pcb_registry.log 2>&1 &
+          PID=$!
+          trap "kill $PID" EXIT
+          for i in $(seq 1 30); do
+            if curl -sSf http://127.0.0.1:8080/api/boards >/dev/null && \
+               curl -sSf http://127.0.0.1:8080/api/scenarios >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "pcb-registry smoke test failed"
+          cat /tmp/pcb_registry.log
+          exit 1
+
   web-and-board-data:
     runs-on: ubuntu-latest
     steps:

@@ -150,7 +150,11 @@ Dengan urutan ini, langkah berikutnya akan dibangun di atas fondasi yang terukur
 
 ### Warning budget / dead code isolation
 - Untuk Phase 1, dead code model legacy di `pcb-registry/src/model.rs` diisolasi granular dengan `#[allow(dead_code)]` per-item, bukan allow global crate.
+- Modul legacy yang belum diaktifkan penuh di `engine` diisolasi per-modul via `#![allow(dead_code)]` (bukan allow global crate), sehingga warning tidak bocor ke build default dan ruang refactor tetap jelas.
 - Ditambah guardrail pada CLI scenario (`tools/scenario_cli`) dengan `#![deny(warnings)]` agar regresi warning di crate ini fail-fast.
+
+### CI basic smoke test
+- Workflow `Quality Gate` sekarang menambah step smoke test API untuk `pcb-registry` (`/api/boards` dan `/api/scenarios`) agar kontrak runtime dasar tervalidasi, tidak hanya unit test.
 
 ### Verifikasi lokal (reproducible)
 ```bash

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::api::types::{ActionKind, ActionRequest, ApiError, ApiVersion};
 
 pub struct ApiContract;

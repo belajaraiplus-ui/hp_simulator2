@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::state::phone_state::PhoneState;
 
 pub fn repetition_factor(state: &mut PhoneState, tool: &str, target: &str) -> f64 {

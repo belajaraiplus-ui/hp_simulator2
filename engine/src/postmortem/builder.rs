@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::postmortem::types::PostMortem;
 use crate::session::state::SessionState;
 use crate::state::phone_state::PhoneState;
