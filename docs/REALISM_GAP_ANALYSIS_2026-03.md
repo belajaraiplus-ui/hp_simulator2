@@ -164,3 +164,187 @@ node tools/tests/validate-board-orphan.test.mjs
 node tools/validate-board.mjs
 npm -C web-app run build
 ```
+
+## 11) Roadmap Detail Phase 2 — Kalibrasi Realisme Fisik (4–6 Minggu)
+
+Tujuan Phase 2 adalah mengubah simulator dari "masuk akal" menjadi "terukur" terhadap baseline nyata.
+Fokus utama: dataset benchmark nyata, fitting parameter, dan metrik error kuantitatif.
+
+### 11.1 Scope Deliverable Phase 2
+
+1. **Benchmark dataset nyata (minimal 3 use case):**
+   - no power,
+   - fake charging,
+   - thermal runaway.
+2. **Calibration harness** yang bisa menjalankan simulasi batch terhadap dataset baseline.
+3. **Parameter fitting sederhana** (least-squares + heuristic search).
+4. **Laporan metrik error** per use case + agregat release (MAPE/MAE + metrik termal).
+
+### 11.2 Struktur Kerja dan Artefak yang Harus Dibuat
+
+#### A. Dataset & metadata
+- `datasets/phase2/no_power/*.json`
+- `datasets/phase2/fake_charging/*.json`
+- `datasets/phase2/thermal_runaway/*.json`
+- `datasets/phase2/schema/measurement_trace.schema.json`
+- `datasets/phase2/README.md`
+
+#### B. Tooling kalibrasi
+- `tools/calibration_cli/` (crate/tool terpisah)
+  - `ingest` (cek schema + normalisasi unit)
+  - `simulate` (jalankan model dengan parameter tertentu)
+  - `fit` (least-squares / heuristic search)
+  - `report` (keluarkan MAE/MAPE + confidence summary)
+
+#### C. Output evaluasi
+- `reports/calibration/<date>/summary.json`
+- `reports/calibration/<date>/summary.md`
+- `reports/calibration/<date>/plots/*.csv` (opsional untuk visualisasi eksternal)
+
+### 11.3 Spesifikasi Minimum Dataset Benchmark
+
+Untuk tiap trace benchmark, minimal berisi:
+- metadata perangkat: `board_id`, `ambient_temp_c`, `humidity`, `battery_soc`, `charger_type`;
+- konfigurasi skenario: `use_case`, `world_profile`, `initial_fault_assumption` (opsional);
+- seri waktu pengukuran:
+  - `timestamp_ms`,
+  - `rail_voltage_v` (minimal VBAT, VBUS/VCHG, VSYS),
+  - `input_current_a`,
+  - `surface_temp_c` (untuk thermal case);
+- quality flag:
+  - `instrument_grade`,
+  - `missing_data_policy`,
+  - `outlier_policy`.
+
+**Target kuantitas minimum (Phase 2):**
+- per use case: >= 10 trace valid,
+- total: >= 30 trace valid,
+- tiap trace durasi cukup untuk karakteristik kasus:
+  - no power: 5–20 detik,
+  - fake charging: 2–10 menit,
+  - thermal runaway: sampai fase kenaikan temperatur stabil/plateau.
+
+### 11.4 Parameter Model yang Dikunci untuk Fitting Awal
+
+Parameter yang dikalibrasi dulu (v1):
+1. **Noise model**
+   - offset measurement,
+   - jitter amplitude,
+   - bias tergantung arus.
+2. **Leakage model**
+   - equivalent leakage resistance per domain,
+   - suhu vs leakage coupling (koefisien linear awal).
+3. **Thermal dissipation model**
+   - thermal mass efektif,
+   - heat dissipation factor,
+   - thermal coupling antar zona utama.
+
+Parameter yang **ditahan tetap** di Phase 2 (belum di-fit):
+- seluruh fault progression kompleks,
+- efek mekanik intermittent multi-event,
+- detail tool-loading nonlinier tingkat lanjut.
+
+### 11.5 Rencana Mingguan (4–6 Minggu)
+
+#### Minggu 1 — Data foundation & schema freeze
+- Finalisasi schema dataset benchmark + validator schema.
+- Buat pipeline ingest awal (parse + unit normalization + integrity checks).
+- Import trace nyata awal untuk 3 use case (minimal 3 trace/use case).
+
+**Exit criteria minggu 1:**
+- semua trace lolos schema validator,
+- ada laporan data quality awal (missing/outlier coverage).
+
+#### Minggu 2 — Calibration harness MVP
+- Implement `simulate` + `report` command untuk batch run.
+- Definisikan baseline metric computation (MAE/MAPE voltage-current).
+- Hubungkan harness ke parameter config tunggal (`calibration_config.json`).
+
+**Exit criteria minggu 2:**
+- bisa membandingkan 1 set parameter vs semua trace,
+- report JSON + markdown otomatis terbentuk.
+
+#### Minggu 3 — Fitting loop v1 (least-squares)
+- Implement objective function multi-sinyal (V/I/T).
+- Jalankan least-squares untuk no power + fake charging.
+- Evaluasi sensitivitas parameter (parameter importance sederhana).
+
+**Exit criteria minggu 3:**
+- parameter set v1 menghasilkan error lebih baik dari baseline default.
+
+#### Minggu 4 — Heuristic search + thermal tuning
+- Tambah heuristic search (grid/random/local search) untuk escape local minima.
+- Fokus tuning thermal case (thermal runaway).
+- Tambah guard agar parameter tetap dalam boundary fisik realistis.
+
+**Exit criteria minggu 4:**
+- 3 use case punya hasil fit yang stabil lintas rerun (seed tetap).
+
+#### Minggu 5 (opsional, jika 5–6 minggu) — Robustness & cross-validation
+- Split train/validation per use case.
+- Cek overfitting parameter pada trace tertentu.
+- Tambah confidence interval sederhana untuk metrik utama.
+
+#### Minggu 6 (opsional) — Packaging for Phase 3
+- Bekukan parameter profile `calibrated_v1`.
+- Integrasikan report ringkas ke dokumentasi release.
+- Siapkan checklist handoff ke tim gameplay/pedagogy.
+
+### 11.6 Metrik Error & Ambang DoD Phase 2
+
+#### Metrik wajib
+1. **Voltage MAE** per rail utama (VBAT, VBUS/VCHG, VSYS).
+2. **Current MAPE** untuk kurva input current.
+3. **Thermal MAE** untuk temperatur permukaan/zona.
+4. **Composite score** berbobot lintas use case.
+
+#### Ambang awal (dapat disepakati ulang bersama tim)
+- no power:
+  - Voltage MAE <= 0.15 V,
+  - Current MAE <= 0.08 A.
+- fake charging:
+  - Current MAPE <= 15%,
+  - trend error SOC proxy <= 20%.
+- thermal runaway:
+  - Thermal MAE <= 3.0 °C,
+  - error waktu mencapai threshold panas <= 20%.
+
+**DoD Phase 2 dianggap tercapai jika:**
+- semua use case memenuhi ambang minimum,
+- hasil validasi tidak regress pada dataset validation split,
+- report kalibrasi tersimpan sebagai artefak release.
+
+### 11.7 Risk Register (Khusus Phase 2)
+
+1. **Kualitas data lapangan tidak seragam**
+   - mitigasi: quality flag + filtering policy per trace.
+2. **Overfitting ke satu board/use case**
+   - mitigasi: train/validation split + cap parameter drift.
+3. **Runtime kalibrasi terlalu lama**
+   - mitigasi: dua mode (`quick-fit` dan `full-fit`).
+4. **Model terlalu sederhana untuk menangkap dinamika nyata**
+   - mitigasi: catat residual pattern untuk backlog Phase 2.5/3.
+
+### 11.8 Command Verifikasi Phase 2 (Target)
+
+```bash
+# 1) validasi dataset
+node tools/validate-dataset.mjs datasets/phase2
+
+# 2) evaluasi baseline parameter saat ini
+cargo run --manifest-path tools/calibration_cli/Cargo.toml -- simulate --dataset datasets/phase2 --config calibration/default.json
+
+# 3) fitting
+cargo run --manifest-path tools/calibration_cli/Cargo.toml -- fit --dataset datasets/phase2 --config calibration/default.json --out calibration/calibrated_v1.json
+
+# 4) report
+cargo run --manifest-path tools/calibration_cli/Cargo.toml -- report --dataset datasets/phase2 --config calibration/calibrated_v1.json --out reports/calibration/latest
+```
+
+### 11.9 Handoff ke Phase 3
+
+Output Phase 2 yang wajib dibawa ke Phase 3:
+- `calibrated_v1.json` (parameter profile resmi),
+- `summary.json` metrik error lintas use case,
+- daftar residual gap fisika yang belum tertutup,
+- rekomendasi prioritas dampak gameplay (mis. konsekuensi diagnosis yang paling sensitif terhadap error model).
