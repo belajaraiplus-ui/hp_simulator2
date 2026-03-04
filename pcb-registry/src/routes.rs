@@ -6,6 +6,7 @@ use axum::{
 };
 use axum::http::{header, HeaderValue};
 use axum::body::Body;
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::path::Path as FsPath;
 
@@ -16,11 +17,20 @@ use crate::{
 
 
 
-fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, String> {
+#[derive(Debug)]
+enum ScenarioLoadError {
+    ReadDir(String),
+    DuplicateId { id: String, first: String, second: String },
+}
+
+fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, ScenarioLoadError> {
     let entries = std::fs::read_dir(path)
-        .map_err(|e| format!("read_dir failed: {}", e))?;
+        .map_err(|e| ScenarioLoadError::ReadDir(format!("read_dir failed: {}", e)))?;
 
     let mut scenarios: Vec<ScenarioFile> = Vec::new();
+    let mut seen_ids: HashSet<String> = HashSet::new();
+    let mut first_path_by_id: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+
     for entry in entries {
         let entry = match entry {
             Ok(v) => v,
@@ -38,6 +48,21 @@ fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, String> {
         };
 
         if let Ok(s) = serde_json::from_slice::<ScenarioFile>(&bytes) {
+            let scenario_id = s.id.clone();
+            let source = file_path.display().to_string();
+            if seen_ids.contains(&scenario_id) {
+                let first = first_path_by_id
+                    .get(&scenario_id)
+                    .cloned()
+                    .unwrap_or_else(|| "unknown".to_string());
+                return Err(ScenarioLoadError::DuplicateId {
+                    id: scenario_id,
+                    first,
+                    second: source,
+                });
+            }
+            seen_ids.insert(scenario_id.clone());
+            first_path_by_id.insert(scenario_id, source);
             scenarios.push(s);
         }
     }
@@ -50,9 +75,18 @@ fn load_scenarios_from_dir(path: &FsPath) -> Result<Vec<ScenarioFile>, String> {
 pub async fn get_scenarios(State(st): State<AppState>) -> impl IntoResponse {
     match load_scenarios_from_dir(&st.scenarios_dir) {
         Ok(scenarios) => (StatusCode::OK, Json(scenarios)).into_response(),
-        Err(e) => {
-            tracing::warn!("scenarios load failed: path={} err={}", st.scenarios_dir.display(), e);
+        Err(ScenarioLoadError::ReadDir(e)) => {
+            tracing::warn!("scenarios read_dir failed: path={} err={}", st.scenarios_dir.display(), e);
             (StatusCode::NOT_FOUND, "scenarios directory not found").into_response()
+        }
+        Err(ScenarioLoadError::DuplicateId { id, first, second }) => {
+            tracing::warn!(
+                "duplicate scenario id detected: id={} first={} second={}",
+                id,
+                first,
+                second
+            );
+            (StatusCode::INTERNAL_SERVER_ERROR, "duplicate scenario id detected").into_response()
         }
     }
 }
@@ -403,8 +437,47 @@ mod tests {
         }
 
         let err = load_scenarios_from_dir(&missing).expect_err("expected missing dir error");
-        assert!(err.contains("read_dir failed"));
+        match err {
+            ScenarioLoadError::ReadDir(msg) => assert!(msg.contains("read_dir failed")),
+            _ => panic!("expected ReadDir error"),
+        }
     }
+
+
+    #[test]
+    fn load_scenarios_from_dir_rejects_duplicate_ids() {
+        let dir = temp_dir("hp_sim_scenarios_dup");
+
+        let payload = r#"{"id":"dup","title":"Case","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#;
+        std::fs::write(dir.join("one.json"), payload).expect("write one");
+        std::fs::write(dir.join("two.json"), payload).expect("write two");
+
+        let err = load_scenarios_from_dir(&dir).expect_err("expected duplicate id error");
+        match err {
+            ScenarioLoadError::DuplicateId { id, .. } => assert_eq!(id, "dup"),
+            _ => panic!("expected DuplicateId error"),
+        }
+
+        std::fs::remove_dir_all(dir).expect("cleanup temp dir");
+    }
+
+    #[tokio::test]
+    async fn api_scenarios_endpoint_returns_500_for_duplicate_ids() {
+        let scenarios_dir = temp_dir("hp_sim_scenarios_api_dup");
+        let payload = r#"{"id":"dup","title":"Case","world_profile":"STABLE_LAB","customer_complaint":"c","background_story":"b"}"#;
+        std::fs::write(scenarios_dir.join("one.json"), payload).expect("write one");
+        std::fs::write(scenarios_dir.join("two.json"), payload).expect("write two");
+
+        let boards_dir = temp_dir("hp_sim_boards_dummy_dup");
+        let st = AppState::new(boards_dir.clone(), scenarios_dir.clone());
+
+        let resp = get_scenarios(State(st)).await.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        std::fs::remove_dir_all(scenarios_dir).expect("cleanup scenarios dir");
+        std::fs::remove_dir_all(boards_dir).expect("cleanup boards dir");
+    }
+
 
     #[tokio::test]
     async fn api_scenarios_endpoint_returns_sorted_json() {
