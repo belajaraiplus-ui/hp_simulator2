@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 function fail(msg) {
   console.error("❌", msg);
@@ -213,7 +213,68 @@ function validateRailMetadata(rail, ctx) {
   }
 }
 
-function topoLintRails(rails, ctx) {
+export function findOrphanRails(rails) {
+  const ids = new Set(rails.map(r => r.id));
+
+  // Smartphone recommendation: treat VBAT/VBUS/VPH_PWR as primary sources if exist
+  const preferred = ["VBAT", "VBUS_5V", "VPH_PWR"];
+  const rootCandidates = preferred.filter(x => ids.has(x));
+
+  const sources = new Set(
+    rails
+      .filter(r => !r.depends_on || r.depends_on.length === 0)
+      .map(r => r.id)
+  );
+
+  const roots = rootCandidates.length ? new Set(rootCandidates) : sources;
+
+  const reachable = new Set();
+  const children = new Map();
+  for (const r of rails) {
+    for (const d of (r.depends_on || [])) {
+      if (!children.has(d)) children.set(d, []);
+      children.get(d).push(r.id);
+    }
+  }
+
+  const q = [...roots];
+  while (q.length) {
+    const cur = q.shift();
+    if (reachable.has(cur)) continue;
+    reachable.add(cur);
+    for (const ch of (children.get(cur) || [])) q.push(ch);
+  }
+
+  const orphans = rails
+    .map(r => r.id)
+    .filter(id => !reachable.has(id));
+
+  return {
+    roots: [...roots],
+    reachable: [...reachable],
+    orphans,
+  };
+}
+
+export function validateOrphanRails(rails, allowedOrphans = []) {
+  const orphanState = findOrphanRails(rails);
+  const allowed = new Set(allowedOrphans);
+
+  for (const id of allowed) {
+    if (!rails.some(r => r.id === id)) {
+      throw new Error(`orphan exception references unknown rail: ${id}`);
+    }
+  }
+
+  const unresolved = orphanState.orphans.filter(id => !allowed.has(id));
+  return {
+    ...orphanState,
+    unresolved,
+    allowed: [...allowed],
+  };
+}
+
+function topoLintRails(rails, ctx, allowedOrphans = []) {
   const ids = new Set(rails.map(r => r.id));
   const deps = new Map(); // id -> [depIds]
   for (const r of rails) deps.set(r.id, Array.isArray(r.depends_on) ? r.depends_on : []);
@@ -251,39 +312,30 @@ function topoLintRails(rails, ctx) {
     if ((color.get(id) || 0) === 0) dfs(id);
   }
 
-  // Orphan detection: rails not reachable from "sources"
-  const sources = new Set(
-    rails
-      .filter(r => !r.depends_on || r.depends_on.length === 0)
-      .map(r => r.id)
-  );
+  // Orphan detection: rails not reachable from primary roots.
+  let orphanResult;
+  try {
+    orphanResult = validateOrphanRails(rails, allowedOrphans);
+  } catch (e) {
+    fail(`${ctx}: ${e.message}`);
+  }
 
-  // Smartphone recommendation: treat VBAT/VBUS/VPH_PWR as primary sources if exist
-  const preferred = ["VBAT", "VBUS_5V", "VPH_PWR"];
-  const rootCandidates = preferred.filter(x => ids.has(x));
-  const roots = rootCandidates.length ? new Set(rootCandidates) : sources;
+  if (orphanResult.unresolved.length > 0) {
+    fail(
+      `${ctx}: orphan rail(s) unresolved from roots ${orphanResult.roots.join(", ")}: ${orphanResult.unresolved.join(", ")}`
+    );
+  }
+  for (const id of orphanResult.orphans) {
+    if (orphanResult.allowed.includes(id)) {
+      warn(`${ctx}: orphan rail allowed by validation_exceptions.orphan_rails: ${id}`);
+    }
+  }
 
-  const reachable = new Set();
-  // reverse graph: dep -> children
   const children = new Map();
   for (const r of rails) {
     for (const d of (r.depends_on || [])) {
       if (!children.has(d)) children.set(d, []);
       children.get(d).push(r.id);
-    }
-  }
-
-  const q = [...roots];
-  while (q.length) {
-    const cur = q.shift();
-    if (reachable.has(cur)) continue;
-    reachable.add(cur);
-    for (const ch of (children.get(cur) || [])) q.push(ch);
-  }
-
-  for (const r of rails) {
-    if (!reachable.has(r.id)) {
-      warn(`${ctx}: orphan rail (not reachable from roots ${[...roots].join(", ")}): ${r.id}`);
     }
   }
 
@@ -399,7 +451,17 @@ function validateRails(railsJson, boardJson, boardId) {
 
   validatePsuInjection(railsJson.psu_injection, ids, `${boardId}: rails.json`);
 
-  topoLintRails(railsJson.rails, `${boardId}: topology`);
+  const orphanAllowList = railsJson?.validation_exceptions?.orphan_rails ?? [];
+  if (!Array.isArray(orphanAllowList)) {
+    fail(`${boardId}: rails.json validation_exceptions.orphan_rails must be array`);
+  }
+  orphanAllowList.forEach((x, i) => {
+    if (typeof x !== "string" || !x) {
+      fail(`${boardId}: rails.json validation_exceptions.orphan_rails[${i}] must be non-empty string`);
+    }
+  });
+
+  topoLintRails(railsJson.rails, `${boardId}: topology`, orphanAllowList);
 
   ok(`${boardId}: rails.json OK (${rails.length} rails)`);
   return ids;
@@ -546,4 +608,6 @@ function main() {
   console.log("\n✅ All boards validated.");
 }
 
-main();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
+}

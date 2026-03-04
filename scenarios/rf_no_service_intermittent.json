@@ -1,38 +1,12 @@
 {
   "id": "rf_no_service_intermittent",
   "title": "Perangkat mendeteksi kartu SIM namun tidak mendapatkan layanan jaringan",
-  "domain": "rf_and_network",
   "world_profile": "POST_PREVIOUS_REPAIR",
-
-  "initial_conditions": {
-    "power_state": "on",
-    "battery_level": "medium",
-    "recent_history": [
-      "perangkat pernah terjatuh",
-      "sinyal sebelumnya tidak bermasalah"
-    ]
+  "customer_complaint": "Indikator sinyal muncul lalu hilang berulang",
+  "background_story": "perangkat pernah terjatuh; sinyal sebelumnya tidak bermasalah",
+  "constraints": {
+    "tools": "Tidak tersedia lokasi uji jaringan alternatif; Pengujian dibatasi pada satu operator",
+    "time_pressure": "sedang"
   },
-
-  "symptoms": [
-    "Indikator sinyal muncul lalu hilang berulang",
-    "Panggilan dan data tidak dapat digunakan secara konsisten"
-  ],
-
-  "constraints": [
-    "Tidak tersedia lokasi uji jaringan alternatif",
-    "Pengujian dibatasi pada satu operator"
-  ],
-
-  "starting_context": {
-    "customer_expectation": "Sinyal kembali stabil",
-    "time_pressure": "sedang",
-    "service_history_confidence": "rendah"
-  },
-
-  "author_notes": {
-    "intent": "Melatih analisa kestabilan jalur RF",
-    "avoid": [
-      "menyimpulkan kerusakan jaringan operator"
-    ]
-  }
+  "notes": "Melatih analisa kestabilan jalur RF Hindari asumsi: menyimpulkan kerusakan jaringan operator Domain konteks: rf_and_network"
 }

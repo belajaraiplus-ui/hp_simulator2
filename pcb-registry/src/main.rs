@@ -27,6 +27,26 @@ fn default_data_dir() -> PathBuf {
     PathBuf::from("../assets/boards")
 }
 
+
+fn default_scenarios_dir() -> PathBuf {
+    let cwd_candidate = PathBuf::from("scenarios");
+    if cwd_candidate.exists() {
+        return cwd_candidate;
+    }
+
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
+
+    let candidate = exe_dir.join("..").join("..").join("scenarios");
+    if candidate.exists() {
+        return candidate;
+    }
+
+    PathBuf::from("../scenarios")
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
@@ -43,10 +63,21 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("PCB_DATA_DIR does not exist: {}", data_dir.display());
     }
 
-    let state = AppState::new(data_dir);
+    let scenarios_dir = std::env::var("SCENARIO_DATA_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| default_scenarios_dir());
+
+    tracing::info!("SCENARIO_DATA_DIR resolved to: {}", scenarios_dir.display());
+
+    if !scenarios_dir.exists() {
+        anyhow::bail!("SCENARIO_DATA_DIR does not exist: {}", scenarios_dir.display());
+    }
+
+    let state = AppState::new(data_dir, scenarios_dir);
 
     let app = Router::new()
         .route("/api/boards", get(routes::get_boards))
+        .route("/api/scenarios", get(routes::get_scenarios))
         .route("/api/boards/:id/board", get(routes::get_board))
         .route("/api/boards/:id/components", get(routes::get_components))
         .route("/api/boards/:id/rails", get(routes::get_rails))

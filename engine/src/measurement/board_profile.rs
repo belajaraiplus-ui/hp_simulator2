@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::state::ids::RailId;
 
 /// Satu item komponen di katalog board (mis. testpoint, capacitor, resistor).

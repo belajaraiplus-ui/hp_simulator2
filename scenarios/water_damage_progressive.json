@@ -1,17 +1,12 @@
 {
   "id": "water_damage_progressive",
   "title": "Bekas Air, Masih Nyala",
-
   "world_profile": "HOT_HUMID_WORKSHOP",
-
   "customer_complaint": "HP kadang mati sendiri. Setelah dikeringkan sempat normal, tapi sekarang makin sering bermasalah.",
-
   "background_story": "Perangkat pernah terkena air hujan beberapa minggu lalu saat baterai masih terpasang. Tidak langsung mati, hanya dikeringkan tanpa dibongkar.",
-
   "constraints": {
     "tools": "Multimeter tersedia. PSU bench ada. Tidak ada ultrasonic cleaner.",
     "time_pressure": "Pemilik ingin tahu apakah masih layak dipakai atau harus ganti."
   },
-
   "notes": "Kerusakan akibat air sering bersifat progresif. Elektrolisis dan korosi mikro dapat memperburuk kondisi seiring panas, arus, dan interaksi pengukuran."
 }

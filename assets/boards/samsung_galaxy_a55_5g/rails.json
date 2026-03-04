@@ -182,7 +182,9 @@
           "label": "VCCIN"
         }
       ],
-      "depends_on": []
+      "depends_on": [
+        "VBUS_5V"
+      ]
     },
     {
       "id": "VSYS",

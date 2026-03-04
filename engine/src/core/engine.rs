@@ -100,6 +100,7 @@ impl Engine {
     }
 }
 
+#[allow(dead_code)]
 pub fn sim_tick(state: &mut PhoneState, dt: f64) {
     // 1. Apply fault dulu (ubah health/status)
     apply_faults(state);

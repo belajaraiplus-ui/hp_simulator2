@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::core::engine::Engine as CoreEngine;
 use crate::session::state::SessionState;
 use crate::state::bootstrap::bootstrap_state;

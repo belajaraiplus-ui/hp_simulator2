@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use crate::state::phone_state::PhoneState;
 use serde_json::{json, Value};
 

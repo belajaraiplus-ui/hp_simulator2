@@ -1,38 +1,12 @@
 {
   "id": "logic_peripheral_bus_contention",
   "title": "Fungsi periferal saling mengganggu saat digunakan bersamaan",
-  "domain": "logic_and_timing",
   "world_profile": "POST_PREVIOUS_REPAIR",
-
-  "initial_conditions": {
-    "power_state": "on",
-    "battery_level": "medium",
-    "recent_history": [
-      "perangkat pernah dibongkar",
-      "beberapa fungsi periferal menunjukkan perilaku tidak konsisten"
-    ]
+  "customer_complaint": "Satu fungsi periferal gagal saat fungsi lain aktif",
+  "background_story": "perangkat pernah dibongkar; beberapa fungsi periferal menunjukkan perilaku tidak konsisten",
+  "constraints": {
+    "tools": "Tidak tersedia skema jalur internal; Pengujian tanpa pembongkaran ulang",
+    "time_pressure": "sedang"
   },
-
-  "symptoms": [
-    "Satu fungsi periferal gagal saat fungsi lain aktif",
-    "Masalah berpindah antar periferal tanpa pola tetap"
-  ],
-
-  "constraints": [
-    "Tidak tersedia skema jalur internal",
-    "Pengujian tanpa pembongkaran ulang"
-  ],
-
-  "starting_context": {
-    "customer_expectation": "Semua fitur berfungsi bersamaan",
-    "time_pressure": "sedang",
-    "service_history_confidence": "rendah"
-  },
-
-  "author_notes": {
-    "intent": "Menunjukkan konflik jalur bersama",
-    "avoid": [
-      "menyimpulkan kerusakan satu periferal saja"
-    ]
-  }
+  "notes": "Menunjukkan konflik jalur bersama Hindari asumsi: menyimpulkan kerusakan satu periferal saja Domain konteks: logmodul_and_timing"
 }

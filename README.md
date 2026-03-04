@@ -127,3 +127,4 @@ Base URL: `http://127.0.0.1:8080`
 - `docs/API_CONTRACT.md`
 - `docs/authoring_rules.md`
 - `docs/roadmap_v1.md`
+- `docs/REALISM_GAP_ANALYSIS_2026-03.md`

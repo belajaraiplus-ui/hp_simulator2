@@ -1,37 +1,72 @@
-name: Scenario DSL Validation
+name: Quality Gate
 
 on:
   pull_request:
   push:
     paths:
-      - "scenarios/**"
       - "engine/**"
+      - "pcb-registry/**"
+      - "web-app/**"
+      - "scenarios/**"
       - "tools/**"
+      - "assets/boards/**"
+      - "github/workflows/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
 
 jobs:
-  validate-scenarios:
-    runs-on: windows-latest
-
+  rust-and-scenarios:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: actions-rs/toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Workspace tests
+        run: cargo test --workspace
+
+      - name: Scenario validation (all)
+        run: cargo run --quiet --manifest-path tools/scenario_cli/Cargo.toml -- validate-all scenarios
+
+      - name: Basic smoke test (pcb-registry API)
+        run: |
+          cargo run --quiet --manifest-path pcb-registry/Cargo.toml >/tmp/pcb_registry.log 2>&1 &
+          PID=$!
+          trap "kill $PID" EXIT
+          for i in $(seq 1 30); do
+            if curl -sSf http://127.0.0.1:8080/api/boards >/dev/null && \
+               curl -sSf http://127.0.0.1:8080/api/scenarios >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "pcb-registry smoke test failed"
+          cat /tmp/pcb_registry.log
+          exit 1
+
+  web-and-board-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          toolchain: stable
-          profile: minimal
-          override: true
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web-app/package-lock.json
 
-      - name: Build scenario CLI
-        run: |
-          cd tools/scenario_cli
-          cargo build --quiet
+      - name: Install web dependencies
+        run: npm -C web-app ci
 
-      - name: Validate all scenarios
-        shell: pwsh
-        run: |
-          Get-ChildItem ../../scenarios -Filter *.json | ForEach-Object {
-            Write-Host "Validating $($_.Name)"
-            cargo run --quiet -- validate "../../scenarios/$($_.Name)"
-          }
+      - name: Validate board orphan rules (tests)
+        run: node tools/tests/validate-board-orphan.test.mjs
+
+      - name: Validate board metadata
+        run: node tools/validate-board.mjs
+
+      - name: Build web app
+        run: npm -C web-app run build

@@ -1,22 +1,12 @@
 {
   "id": "rf_no_service_intermit",
   "title": "No Service, Sinyal Kadang Muncul",
-
   "world_profile": "HOT_HUMID_WORKSHOP",
-
-  "customer_complaint":
-    "SIM terbaca, tapi tidak ada sinyal. Kadang muncul sebentar lalu hilang lagi.",
-
-  "background_story":
-    "Perangkat pernah jatuh dan lama dipakai panas. Pernah diservis ringan tanpa catatan jelas.",
-
+  "customer_complaint": "SIM terbaca, tapi tidak ada sinyal. Kadang muncul sebentar lalu hilang lagi.",
+  "background_story": "Perangkat pernah jatuh dan lama dipakai panas. Pernah diservis ringan tanpa catatan jelas.",
   "constraints": {
-    "tools":
-      "Multimeter & PSU tersedia. Oscilloscope ada tapi jarang dipakai untuk RF.",
-    "time_pressure":
-      "Pemilik ingin cepat karena perangkat dipakai untuk komunikasi utama."
+    "tools": "Multimeter & PSU tersedia. Oscilloscope ada tapi jarang dipakai untuk RF.",
+    "time_pressure": "Pemilik ingin cepat karena perangkat dipakai untuk komunikasi utama."
   },
-
-  "notes":
-    "Kasus RF sering tidak meninggalkan bukti listrik yang jelas."
+  "notes": "Kasus RF sering tidak meninggalkan bukti listrik yang jelas."
 }

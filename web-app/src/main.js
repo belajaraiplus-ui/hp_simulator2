@@ -594,13 +594,14 @@ document.addEventListener("DOMContentLoaded", () => {
   initBoardSelector();
 
   // 3) INIT SCENARIO SELECTOR
-  try {
-    initScenarioSelector();
-    updateScenarioDisplay();
-    console.log("📋 Scenario selector ready");
-  } catch (e) {
-    console.error("Scenario selector init failed:", e);
-  }
+  initScenarioSelector()
+    .then(() => {
+      updateScenarioDisplay();
+      console.log("📋 Scenario selector ready");
+    })
+    .catch((e) => {
+      console.error("Scenario selector init failed:", e);
+    });
 
   // 4) INIT EXPORT REPORT
   try {
