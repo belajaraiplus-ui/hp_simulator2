@@ -16,6 +16,8 @@ const defaultScenario = {
 
 let scenarios = [defaultScenario];
 let currentScenario = defaultScenario;
+let scenariosCatalogLoaded = false;
+let pendingScenarioId = null;
 
 function worldToDifficulty(world) {
   switch (world) {
@@ -86,7 +88,14 @@ export function getCurrentScenario() {
 
 export function setScenario(scenarioId) {
   const scenario = scenarios.find((s) => s.id === scenarioId);
-  if (!scenario) return false;
+  if (!scenario) {
+    if (!scenariosCatalogLoaded) {
+      pendingScenarioId = scenarioId;
+    }
+    return false;
+  }
+
+  pendingScenarioId = null;
 
   currentScenario = scenario;
   State.setScenario(scenario);
@@ -136,6 +145,8 @@ export async function initScenarioSelector() {
   } catch (err) {
     console.error("Failed loading scenarios from API, fallback to default only:", err);
     scenarios = [defaultScenario];
+  } finally {
+    scenariosCatalogLoaded = true;
   }
 
   select.innerHTML = "";
@@ -163,6 +174,13 @@ export async function initScenarioSelector() {
       group.appendChild(opt);
     }
     select.appendChild(group);
+  }
+
+  if (pendingScenarioId) {
+    const restored = setScenario(pendingScenarioId);
+    if (!restored) {
+      console.warn("Pending scenario restore failed after catalog load:", pendingScenarioId);
+    }
   }
 
   select.value = currentScenario.id;
