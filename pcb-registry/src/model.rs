@@ -6,11 +6,13 @@ COMPONENT CATALOG - Real-world component definitions
 ============================================================ */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentCatalog {
     pub components: Vec<ComponentDef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentDef {
     pub id: String,
     pub name: String,
@@ -78,6 +80,7 @@ pub struct ComponentElectrical {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct FailureMode {
     pub name: String,
     pub probability: f64,
@@ -87,6 +90,7 @@ pub struct FailureMode {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub enum FailureSeverity {
     #[serde(rename = "critical")]
     Critical,
@@ -99,6 +103,8 @@ pub enum FailureSeverity {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub struct MeasurementPoint {
     pub name: String,
     pub pin: String,
@@ -108,6 +114,8 @@ pub struct MeasurementPoint {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub enum MeasurementMode {
     #[serde(rename = "voltage")]
     Voltage,
@@ -126,6 +134,7 @@ PCB INSTANCE - Actual board with components
 ============================================================ */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PCBInstance {
     pub board_id: String,
     pub serial_number: String,
@@ -136,6 +145,7 @@ pub struct PCBInstance {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PCBComponent {
     pub component_id: String,
     pub refdes: String,
@@ -147,6 +157,7 @@ pub struct PCBComponent {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentLocation {
     pub x: f64,
     pub y: f64,
@@ -155,6 +166,7 @@ pub struct ComponentLocation {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentHealth {
     pub overall: f64,
     pub thermal: f64,
@@ -165,6 +177,7 @@ pub struct ComponentHealth {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Measurement {
     pub timestamp: u64,
     pub point: String,
@@ -175,6 +188,8 @@ pub struct Measurement {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub enum MeasurementStatus {
     #[serde(rename = "ok")]
     OK,
@@ -187,6 +202,7 @@ pub enum MeasurementStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentFault {
     pub fault_type: String,
     pub detected_at: u64,
@@ -196,6 +212,7 @@ pub struct ComponentFault {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct PCBRail {
     pub id: String,
     pub name: String,
@@ -222,6 +239,7 @@ pub enum RailSource {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub enum RailStatus {
     #[serde(rename = "ok")]
     OK,
@@ -236,17 +254,22 @@ pub enum RailStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub struct NetList {
     pub nets: Vec<Net>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct Net {
     pub name: String,
     pub nodes: Vec<NetNode>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub struct NetNode {
     pub component: String,
     pub pin: String,
@@ -257,6 +280,7 @@ FAULT STATUS
 ============================================================ */
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[allow(dead_code)]
 pub struct FaultStatus {
     pub active_faults: Vec<ActiveFault>,
     pub resolved_faults: Vec<ResolvedFault>,
@@ -264,6 +288,7 @@ pub struct FaultStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ActiveFault {
     pub id: String,
     pub component: String,
@@ -275,6 +300,7 @@ pub struct ActiveFault {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ResolvedFault {
     pub id: String,
     pub component: String,
@@ -288,6 +314,7 @@ ANALYSIS REQUEST/RESPONSE
 ============================================================ */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AnalysisRequest {
     pub board_id: String,
     pub components: Vec<ComponentMeasurementInput>,
@@ -295,18 +322,22 @@ pub struct AnalysisRequest {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentMeasurementInput {
     pub refdes: String,
     pub measurements: Vec<MeasurementInput>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+#[allow(dead_code)]
 pub struct MeasurementInput {
     pub point: String,
     pub value: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct RailMeasurementInput {
     pub rail_id: String,
     pub voltage: f64,
@@ -314,6 +345,7 @@ pub struct RailMeasurementInput {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AnalysisResponse {
     pub summary: AnalysisSummary,
     pub component_analysis: Vec<ComponentAnalysis>,
@@ -323,6 +355,7 @@ pub struct AnalysisResponse {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct AnalysisSummary {
     pub overall_health: f64,
     pub fault_count: usize,
@@ -333,6 +366,7 @@ pub struct AnalysisSummary {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentAnalysis {
     pub refdes: String,
     pub status: ComponentStatus,
@@ -342,6 +376,7 @@ pub struct ComponentAnalysis {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub enum ComponentStatus {
     #[serde(rename = "healthy")]
     Healthy,
@@ -354,6 +389,7 @@ pub enum ComponentStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct RailAnalysis {
     pub rail_id: String,
     pub status: RailStatus,
@@ -363,6 +399,7 @@ pub struct RailAnalysis {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct RiskAssessment {
     pub level: String,
     pub factors: Vec<String>,
@@ -375,6 +412,7 @@ SEARCH & FILTER
 ============================================================ */
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentQuery {
     pub search: Option<String>,
     pub category: Option<ComponentCategory>,
@@ -385,6 +423,7 @@ pub struct ComponentQuery {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct SearchResult {
     pub components: Vec<ComponentSearchItem>,
     pub total: usize,
@@ -393,6 +432,7 @@ pub struct SearchResult {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
 pub struct ComponentSearchItem {
     pub refdes: String,
     pub name: String,

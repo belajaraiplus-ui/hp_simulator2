@@ -136,3 +136,27 @@ Status saat ini: fondasi simulasi sudah kuat (engine Rust/WASM, alur measurement
 ---
 
 Dengan urutan ini, langkah berikutnya akan dibangun di atas fondasi yang terukur dan dapat diuji, sehingga target akhir “simulator reparasi HP yang identik dengan dunia nyata” menjadi realistis untuk dicapai secara engineering.
+
+## 10) Phase 1 Closure Notes (Update)
+
+### A55 orphan rail realism fix
+- Root cause: cabang `VCHG -> VSYS -> (VPA/VCORE/VDISP/VIO)` tidak terhubung ke root validator (`VBAT`, `VBUS_5V`, `VPH_PWR`) karena `VCHG` tidak mendeklarasikan parent rail.
+- Perbaikan data:
+  - `assets/boards/samsung_galaxy_a55_5g/rails.json`: `VCHG.depends_on = ["VBUS_5V"]`.
+  - `assets/boards/samsung_galaxy_a55_5g/topology.json`: tambah edge `VBUS_5V -> VCHG` (`kind: "charger"`).
+- Hardening validator:
+  - orphan rail sekarang dianggap **error** (bukan warning) pada `tools/validate-board.mjs`.
+  - pengecualian by-design didukung secara formal lewat `rails.json.validation_exceptions.orphan_rails`.
+
+### Warning budget / dead code isolation
+- Untuk Phase 1, dead code model legacy di `pcb-registry/src/model.rs` diisolasi granular dengan `#[allow(dead_code)]` per-item, bukan allow global crate.
+- Ditambah guardrail pada CLI scenario (`tools/scenario_cli`) dengan `#![deny(warnings)]` agar regresi warning di crate ini fail-fast.
+
+### Verifikasi lokal (reproducible)
+```bash
+cargo test --workspace
+cargo run --quiet --manifest-path tools/scenario_cli/Cargo.toml -- validate-all scenarios
+node tools/tests/validate-board-orphan.test.mjs
+node tools/validate-board.mjs
+npm -C web-app run build
+```

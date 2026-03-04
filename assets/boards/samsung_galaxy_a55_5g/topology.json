@@ -41,6 +41,11 @@
       "kind": "charger"
     },
     {
+      "from": "VBUS_5V",
+      "to": "VCHG",
+      "kind": "charger"
+    },
+    {
       "from": "VCHG",
       "to": "VSYS",
       "kind": "switch"
