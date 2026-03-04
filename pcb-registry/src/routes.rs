@@ -591,6 +591,45 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn load_scenarios_from_dir_rejects_forbidden_terms() {
+        let dir = temp_dir("hp_sim_scenarios_forbidden");
+        std::fs::write(
+            dir.join("bad_term.json"),
+            r#"{"id":"s1","title":"A Title","world_profile":"STABLE_LAB","customer_complaint":"indikasi short saat diuji","background_story":"b"}"#,
+        )
+        .expect("write bad term");
+
+        let err = load_scenarios_from_dir(&dir).expect_err("expected semantic error");
+        match err {
+            ScenarioLoadError::Semantic { reason, .. } => assert!(reason.contains("Forbidden term detected")),
+            _ => panic!("expected Semantic error"),
+        }
+
+        std::fs::remove_dir_all(dir).expect("cleanup temp dir");
+    }
+
+    #[tokio::test]
+    async fn api_scenarios_endpoint_returns_500_for_forbidden_terms() {
+        let scenarios_dir = temp_dir("hp_sim_scenarios_api_forbidden");
+        std::fs::write(
+            scenarios_dir.join("bad_term.json"),
+            r#"{"id":"s1","title":"A Title","world_profile":"STABLE_LAB","customer_complaint":"indikasi short saat diuji","background_story":"b"}"#,
+        )
+        .expect("write bad term");
+
+        let boards_dir = temp_dir("hp_sim_boards_dummy_forbidden");
+        let st = AppState::new(boards_dir.clone(), scenarios_dir.clone());
+
+        let resp = get_scenarios(State(st)).await.into_response();
+        assert_eq!(resp.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        std::fs::remove_dir_all(scenarios_dir).expect("cleanup scenarios dir");
+        std::fs::remove_dir_all(boards_dir).expect("cleanup boards dir");
+    }
+
+
     #[test]
     fn load_scenarios_from_dir_rejects_duplicate_ids() {
         let dir = temp_dir("hp_sim_scenarios_dup");
