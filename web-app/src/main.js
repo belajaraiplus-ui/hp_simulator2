@@ -163,6 +163,24 @@ function toNumberFlex(v) {
   return null;
 }
 
+
+async function loadSessionReviewPanel() {
+  const summaryEl = document.getElementById("sessionReviewSummary");
+  const timelineEl = document.getElementById("sessionReviewTimeline");
+  if (!summaryEl || !timelineEl) return;
+  try {
+    const res = await fetch("/reports/pedagogy/latest/session_review_sample.json");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const review = await res.json();
+    summaryEl.textContent = `Score ${review.reasoning?.score_total ?? "-"} (${review.reasoning?.status ?? "unknown"}) · Risky ${review.risk_summary?.risky_actions_count ?? 0} · Secondary ${review.risk_summary?.secondary_damage_events ?? 0}`;
+    const items = (review.timeline || []).slice(-8).map((e) => `<div class="measItem"><span class="measTime">t${e.tick}</span><span class="measTarget">${e.action?.tool}:${e.action?.target}</span><span class="measValue">${e.consequence?.level}</span></div>`).join("");
+    timelineEl.innerHTML = items || '<div class="measEmpty">No timeline entries</div>';
+  } catch {
+    summaryEl.textContent = "Session review JSON unavailable (run pedagogy acceptance).";
+    timelineEl.innerHTML = '<div class="measEmpty">No review timeline loaded</div>';
+  }
+}
+
 function parseRuntimeQuery() {
   const parsed = { mode: null, faults: [] };
   if (typeof window === "undefined") return parsed;
@@ -880,4 +898,6 @@ document.addEventListener("DOMContentLoaded", () => {
   `;
   scopeBtn.onclick = toggleOscilloscope;
   document.body.appendChild(scopeBtn);
+
+  loadSessionReviewPanel();
 });
