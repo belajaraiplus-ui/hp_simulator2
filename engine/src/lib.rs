@@ -6,9 +6,11 @@ mod api;
 mod core;
 pub mod fault;
 mod measurement;
+pub mod pedagogy;
 pub mod physics;
 mod postmortem;
 pub mod power;
+pub mod replay;
 pub mod scenario;
 pub mod scenario_dsl;
 pub mod session;
@@ -66,7 +68,8 @@ pub fn dispatch(action_json: &str) -> String {
             ctx.engine.step(&mut ctx.phone, &mut ctx.session);
 
             // Thermal Step Integration: Kumpulkan power per zone
-            let mut p_zone: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+            let mut p_zone: std::collections::HashMap<String, f64> =
+                std::collections::HashMap::new();
             ctx.phone.thermal.ensure_zone("board");
 
             for (rail_id, rail) in ctx.phone.electrical.rails.iter() {
@@ -75,7 +78,13 @@ pub fn dispatch(action_json: &str) -> String {
                 let p = (v * v) / r2g; // P = V^2 / R (Leakage power)
 
                 let rid = format!("{:?}", rail_id);
-                let zone = ctx.phone.thermal.rail_zone.get(&rid).cloned().unwrap_or_else(|| "board".to_string());
+                let zone = ctx
+                    .phone
+                    .thermal
+                    .rail_zone
+                    .get(&rid)
+                    .cloned()
+                    .unwrap_or_else(|| "board".to_string());
                 ctx.phone.thermal.add_power(&zone, p, &mut p_zone);
             }
 
@@ -107,6 +116,8 @@ pub fn dispatch(action_json: &str) -> String {
 
         ActionKind::Tool => {
             let result = ctx.apply_tool_action(&req);
+            let target = req.tool.as_deref().unwrap_or("runtime");
+            ctx.record_action("tool", target, None);
             result.to_string()
         }
 
@@ -121,7 +132,7 @@ pub fn dispatch(action_json: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::{json, Value};
+    use serde_json::{Value, json};
 
     #[test]
     fn test_propagate_power_integration() {

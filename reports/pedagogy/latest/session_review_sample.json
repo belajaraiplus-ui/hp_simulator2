@@ -1,0 +1,178 @@
+{
+  "metadata": {
+    "scenario_id": "power_fake_charging_charge_illusion",
+    "use_case": "fake-charging diagnosis path",
+    "seed": 424242,
+    "duration_ticks": 4
+  },
+  "timeline": [
+    {
+      "tick": 1,
+      "seed": 424242,
+      "action": {
+        "tool": "multimeter",
+        "target": "vbat",
+        "at_tick": 1,
+        "metadata": {
+          "user_intent": "diagnose"
+        }
+      },
+      "consequence": {
+        "level": "safe",
+        "reason_code": "SAFE_BASELINE",
+        "description": "SAFE_BASELINE",
+        "probability": 0,
+        "applied_state_delta_summary": "delta"
+      },
+      "state_delta_hash": "c1e702bdf78698cd6d59d2c761e752a7"
+    },
+    {
+      "tick": 2,
+      "seed": 424242,
+      "action": {
+        "tool": "psu",
+        "target": "vbat",
+        "at_tick": 2,
+        "metadata": {
+          "user_intent": "diagnose"
+        }
+      },
+      "consequence": {
+        "level": "risky",
+        "reason_code": "HIGH_CURRENT_OVERHEAT",
+        "description": "HIGH_CURRENT_OVERHEAT",
+        "probability": 0.82,
+        "applied_state_delta_summary": "delta"
+      },
+      "state_delta_hash": "7481c5f728c7813cbd7f5fed180299fb"
+    },
+    {
+      "tick": 3,
+      "seed": 424242,
+      "action": {
+        "tool": "usb_trigger",
+        "target": "pmic",
+        "at_tick": 3,
+        "metadata": {
+          "user_intent": "diagnose"
+        }
+      },
+      "consequence": {
+        "level": "misleading_measurement",
+        "reason_code": "BAD_CHARGER_NEGOTIATION",
+        "description": "BAD_CHARGER_NEGOTIATION",
+        "probability": 0.61,
+        "applied_state_delta_summary": "delta"
+      },
+      "state_delta_hash": "b463bb432ff73e394b04b56c137c10ec"
+    },
+    {
+      "tick": 4,
+      "seed": 424242,
+      "action": {
+        "tool": "jumper",
+        "target": "rail:vcore",
+        "at_tick": 4,
+        "metadata": {
+          "user_intent": "diagnose"
+        }
+      },
+      "consequence": {
+        "level": "damage_secondary",
+        "reason_code": "RAIL_SHORT",
+        "description": "RAIL_SHORT",
+        "probability": 0.9,
+        "applied_state_delta_summary": "delta"
+      },
+      "state_delta_hash": "9f3b4100ae3ef785c9b4869e712741c3"
+    }
+  ],
+  "evidence_graph": {
+    "nodes": [
+      {
+        "id": "m1",
+        "kind": "measurement",
+        "text": "VBAT low",
+        "tick": 1
+      },
+      {
+        "id": "h1",
+        "kind": "hypothesis",
+        "text": "input path unstable",
+        "tick": 2
+      },
+      {
+        "id": "j1",
+        "kind": "justification",
+        "text": "inject controlled current",
+        "tick": 2
+      }
+    ],
+    "edges": [
+      {
+        "from": "m1",
+        "to": "h1",
+        "kind": "supports",
+        "tick": 2
+      },
+      {
+        "from": "h1",
+        "to": "j1",
+        "kind": "risk_introduced",
+        "tick": 2
+      },
+      {
+        "from": "h1",
+        "to": "m1",
+        "kind": "untested_assumption",
+        "tick": 3
+      }
+    ]
+  },
+  "reasoning": {
+    "score_total": 74,
+    "subscores": {
+      "evidence_completeness": 78,
+      "sequence_quality": 72,
+      "risk_handling": 70,
+      "hypothesis_revision_quality": 76
+    },
+    "status": "acceptable",
+    "top_findings": [
+      "Evidence was collected before most actions",
+      "One risky action had explicit rationale",
+      "Hypothesis revision occurred after contradictory signal"
+    ],
+    "recommendations": [
+      "Add second confirmatory measurement before rail intervention",
+      "Validate ground reference before differential probing",
+      "Use lower current pre-check before sustained injection"
+    ],
+    "blind_spots": [
+      "Ground quality assumed stable",
+      "Thermal escalation checkpoint delayed",
+      "Protection path not validated"
+    ]
+  },
+  "risk_summary": {
+    "risky_actions_count": 1,
+    "secondary_damage_events": 1,
+    "misleading_measurements": 1
+  },
+  "acceptance": {
+    "paths": {
+      "no_power": {
+        "novice": "needs_guidance",
+        "advanced": "acceptable"
+      },
+      "fake_charging": {
+        "novice": "needs_guidance",
+        "advanced": "trainer_ready"
+      },
+      "thermal_escalation": {
+        "novice": "needs_guidance",
+        "advanced": "acceptable"
+      }
+    }
+  }
+}
