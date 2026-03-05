@@ -14,13 +14,22 @@ use crate::state::ids::RailId;
 use crate::util::rng::XorShift64;
 
 use crate::api::types::{ActionRequest, MeterMode, ToolAction};
-use serde_json::{json, Value};
+use crate::pedagogy::evidence_graph::{EvidenceEdgeKind, EvidenceGraph, EvidenceNodeKind};
+use crate::pedagogy::risk_model::{
+    ActionEvent, ActionMetadata, ConsequenceLevel, RiskContext, RiskModel, TrainingMode,
+};
+use crate::replay::audit_log::{AuditLog, AuditLogEntry};
+use serde_json::{Value, json};
 
 pub struct WasmContext {
     pub engine: CoreEngine,
     pub phone: PhoneState,
     pub session: SessionState,
     pub current_scenario: String,
+    pub training_mode: TrainingMode,
+    pub seed: u64,
+    pub audit_log: AuditLog,
+    pub evidence_graph: EvidenceGraph,
 }
 
 impl WasmContext {
@@ -65,6 +74,63 @@ impl WasmContext {
             phone: bootstrap_state(),
             session: SessionState::new(),
             current_scenario: "default".to_string(),
+            training_mode: TrainingMode::Standard,
+            seed: 0xC0DEC0DE,
+            audit_log: AuditLog::default(),
+            evidence_graph: EvidenceGraph::default(),
+        }
+    }
+
+    fn evaluate_and_record_consequence(&mut self, action: ActionEvent) {
+        let context = RiskContext {
+            thermal_stress: self.phone.stress.thermal,
+            electrical_stress: self.phone.stress.electrical,
+            active_faults: self
+                .phone
+                .faults
+                .active
+                .keys()
+                .map(|k| format!("{:?}", k))
+                .collect(),
+            world_profile: self.current_scenario.clone(),
+            has_stable_ground_reference: self.phone.electrical.ground_integrity > 0.75,
+            current_a: self.phone.electrical.input.measured_current,
+            voltage_v: self.phone.electrical.input.voltage,
+            charger_negotiation_valid: self.phone.electrical.input.vchg_enabled,
+            protection_bypassed: false,
+            measurement_noise: self.phone.electrical.transient_noise,
+        };
+        let consequence = RiskModel::evaluate(&action, &context, self.training_mode);
+        let state_delta_hash = format!(
+            "{:016x}",
+            Self::hash_label_64(&format!(
+                "{}:{}:{}",
+                action.tool, action.target, consequence.reason_code
+            ))
+        );
+        self.audit_log.append(AuditLogEntry {
+            tick: action.at_tick,
+            wall_timestamp_ms: None,
+            seed: self.seed,
+            action: action.clone(),
+            consequence: consequence.clone(),
+            state_delta_hash,
+            notes: None,
+        });
+        let node_id = format!("justification:{}", action.at_tick);
+        self.evidence_graph.add_node(
+            node_id.clone(),
+            EvidenceNodeKind::Justification,
+            format!("{} {}", action.tool, action.target),
+            action.at_tick,
+        );
+        if consequence.level != ConsequenceLevel::Safe {
+            self.evidence_graph.add_edge(
+                node_id,
+                format!("risk:{}", consequence.reason_code),
+                EvidenceEdgeKind::RiskIntroduced,
+                action.at_tick,
+            );
         }
     }
 
@@ -120,6 +186,16 @@ impl WasmContext {
         Some((mode, component))
     }
 
+    pub fn record_action(&mut self, tool: &str, target: &str, setting: Option<String>) {
+        self.evaluate_and_record_consequence(ActionEvent {
+            tool: tool.to_string(),
+            setting,
+            target: target.to_string(),
+            at_tick: self.phone.electrical.tick,
+            metadata: ActionMetadata::default(),
+        });
+    }
+
     /// Semua measurement HARUS lewat MeasurementEngine
     /// Return langsung ANGKA (agar kompatibel UI lama)
     pub fn measure(&mut self, req: &ActionRequest) -> Value {
@@ -172,15 +248,15 @@ impl WasmContext {
             None
         };
 
-        match value {
-            // UI lama mengharapkan: measurement = <angka>
+        let response = match value {
             Some(v) => json!(v),
-
             None => json!({
                 "error": "Unknown measurement target",
                 "target": raw
             }),
-        }
+        };
+        self.record_action("multimeter", raw, req.tool.clone());
+        response
     }
 
     // ============================================
