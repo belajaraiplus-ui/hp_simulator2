@@ -1,0 +1,71 @@
+{
+  "seed": 1337,
+  "noise": {
+    "measurement_offset": 0.0013453541033624688,
+    "measurement_jitter": 0.0,
+    "current_dependent_bias": 0.0
+  },
+  "leakage": {
+    "leakage_resistance_per_domain": {
+      "VBAT": 1199.629832269287,
+      "VBUS": 2220.906642265709,
+      "VSYS": 1377.1353529701335
+    },
+    "thermal_leakage_coefficient": 0.015938404125939838
+  },
+  "thermal": {
+    "thermal_mass": 17.978408664551075,
+    "heat_dissipation_factor": 0.026316315421100397,
+    "thermal_coupling_matrix": [
+      [
+        1.0,
+        0.18,
+        0.15
+      ],
+      [
+        0.18,
+        1.0,
+        0.14
+      ],
+      [
+        0.15,
+        0.14,
+        1.0
+      ]
+    ]
+  },
+  "bounds": {
+    "measurement_offset": [
+      -0.2,
+      0.2
+    ],
+    "measurement_jitter": [
+      0.0,
+      0.1
+    ],
+    "current_dependent_bias": [
+      0.0,
+      0.2
+    ],
+    "leakage_resistance_per_domain": [
+      10.0,
+      100000.0
+    ],
+    "thermal_leakage_coefficient": [
+      0.0,
+      0.5
+    ],
+    "thermal_mass": [
+      1.0,
+      200.0
+    ],
+    "heat_dissipation_factor": [
+      0.0,
+      1.0
+    ],
+    "thermal_coupling_matrix": [
+      0.0,
+      1.0
+    ]
+  }
+}

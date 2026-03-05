@@ -1,0 +1,4 @@
+use_case,voltage_mae_vbat,voltage_mae_vbus,voltage_mae_vsys,current_mape,thermal_mae,composite_score
+fake_charging,0.001899,0.000914,0.001295,0.000000,0.007594,0.002826
+no_power,0.001727,0.001337,0.001276,0.000000,0.008826,0.003227
+thermal_runaway,0.001979,0.002738,0.001429,0.000000,0.009651,0.003715

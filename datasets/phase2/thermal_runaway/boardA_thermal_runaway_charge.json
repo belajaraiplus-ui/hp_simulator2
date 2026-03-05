@@ -1,0 +1,27 @@
+{
+  "metadata": {
+    "board_id": "boardA",
+    "ambient_temp_c": 26.0,
+    "humidity": 40,
+    "battery_soc": 62,
+    "charger_type": "pd"
+  },
+  "scenario": {
+    "use_case": "thermal_runaway",
+    "world_profile": "stress_lab_v1",
+    "initial_fault_assumption": "thermal_path_degraded"
+  },
+  "quality": {
+    "instrument_grade": "synthetic_placeholder",
+    "missing_data_policy": "drop",
+    "outlier_policy": "remove"
+  },
+  "trace": [
+    {"timestamp_ms": 0, "rail_voltage_v": {"VBAT": 3.95, "VBUS": 9.03, "VSYS": 3.75}, "input_current_a": 1.10, "surface_temp_c": 31.0},
+    {"timestamp_ms": 200, "rail_voltage_v": {"VBAT": 3.97, "VBUS": 9.05, "VSYS": 3.78}, "input_current_a": 1.22, "surface_temp_c": 35.5},
+    {"timestamp_ms": 400, "rail_voltage_v": {"VBAT": 3.98, "VBUS": 9.06, "VSYS": 3.81}, "input_current_a": 1.30, "surface_temp_c": 40.8},
+    {"timestamp_ms": 600, "rail_voltage_v": {"VBAT": 4.00, "VBUS": 9.08, "VSYS": 3.84}, "input_current_a": 1.35, "surface_temp_c": 46.7},
+    {"timestamp_ms": 800, "rail_voltage_v": {"VBAT": 4.01, "VBUS": 9.09, "VSYS": 3.86}, "input_current_a": 1.38, "surface_temp_c": 53.1},
+    {"timestamp_ms": 1000, "rail_voltage_v": {"VBAT": 4.02, "VBUS": 9.10, "VSYS": 3.88}, "input_current_a": 1.40, "surface_temp_c": 59.2}
+  ]
+}
