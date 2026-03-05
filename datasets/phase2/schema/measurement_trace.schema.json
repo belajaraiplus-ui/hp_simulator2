@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://hp-simulator.local/schemas/measurement_trace.schema.json",
+  "title": "Phase 2 Measurement Trace",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["metadata", "scenario", "quality", "trace"],
+  "properties": {
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["board_id", "ambient_temp_c", "humidity", "battery_soc", "charger_type"],
+      "properties": {
+        "board_id": { "type": "string", "minLength": 1 },
+        "ambient_temp_c": { "type": "number", "minimum": -40, "maximum": 100 },
+        "humidity": { "type": "number", "minimum": 0, "maximum": 100 },
+        "battery_soc": { "type": "number", "minimum": 0, "maximum": 100 },
+        "charger_type": { "type": "string", "enum": ["usb", "pd", "dc"] }
+      }
+    },
+    "scenario": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["use_case", "world_profile", "initial_fault_assumption"],
+      "properties": {
+        "use_case": { "type": "string", "enum": ["no_power", "fake_charging", "thermal_runaway"] },
+        "world_profile": { "type": "string", "minLength": 1 },
+        "initial_fault_assumption": { "type": ["string", "null"] }
+      }
+    },
+    "quality": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["instrument_grade", "missing_data_policy", "outlier_policy"],
+      "properties": {
+        "instrument_grade": { "type": "string", "enum": ["lab", "field", "synthetic_placeholder"] },
+        "missing_data_policy": { "type": "string", "enum": ["drop", "interpolate"] },
+        "outlier_policy": { "type": "string", "enum": ["clip", "remove", "none"] }
+      }
+    },
+    "trace": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["timestamp_ms", "rail_voltage_v", "input_current_a", "surface_temp_c"],
+        "properties": {
+          "timestamp_ms": { "type": "number", "minimum": 0 },
+          "rail_voltage_v": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["VBAT", "VBUS", "VSYS"],
+            "properties": {
+              "VBAT": { "type": "number", "minimum": 0, "maximum": 6 },
+              "VBUS": { "type": "number", "minimum": 0, "maximum": 25 },
+              "VSYS": { "type": "number", "minimum": 0, "maximum": 12 }
+            }
+          },
+          "input_current_a": { "type": "number", "minimum": 0, "maximum": 30 },
+          "surface_temp_c": { "type": ["number", "null"], "minimum": -40, "maximum": 250 }
+        }
+      }
+    }
+  }
+}

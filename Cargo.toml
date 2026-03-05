@@ -2,6 +2,7 @@
 members = [
   "engine",
   "pcb-registry",
-  "tools/scenario_cli"
+  "tools/scenario_cli",
+  "tools/calibration_cli"
 ]
 resolver = "2"

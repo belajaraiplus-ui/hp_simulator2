@@ -1,0 +1,21 @@
+{
+  "gameplay_sensitive_regions": [
+    {
+      "region": "low_soc_boot_boundary",
+      "why_sensitive": "small VBAT errors near UVLO create binary boot/no-boot outcomes"
+    },
+    {
+      "region": "fake_charge_indicator_threshold",
+      "why_sensitive": "current estimation drift impacts player-visible charging icon realism"
+    },
+    {
+      "region": "thermal_throttle_onset",
+      "why_sensitive": "thermal MAE near throttle threshold changes failure diagnosis timing"
+    }
+  ],
+  "unmodeled_effects": [
+    "Battery internal resistance aging drift across SOC",
+    "Charge-pump transient ringing during adapter negotiation",
+    "Spatial thermal gradients beyond single surface sensor"
+  ]
+}

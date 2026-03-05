@@ -1,0 +1,50 @@
+{
+  "composite_score": 0.0032844570492812294,
+  "dataset_counts": {
+    "fake_charging": 1,
+    "no_power": 1,
+    "thermal_runaway": 1
+  },
+  "global_metrics": {
+    "composite_score": 0.0032844570492812294,
+    "current_mape": 0.0,
+    "thermal_mae": 0.008750569962072019,
+    "voltage_mae": {
+      "VBAT": 0.0018754310889257941,
+      "VBUS": 0.0017302214454840647,
+      "VSYS": 0.001338992920537319
+    }
+  },
+  "per_use_case_metrics": {
+    "fake_charging": {
+      "composite_score": 0.002825943394067695,
+      "current_mape": 0.0,
+      "thermal_mae": 0.007594045635941881,
+      "voltage_mae": {
+        "VBAT": 0.0018989800198042418,
+        "VBUS": 0.0009140835085133858,
+        "VSYS": 0.0012949092463208523
+      }
+    },
+    "no_power": {
+      "composite_score": 0.0032265466873646247,
+      "current_mape": 0.0,
+      "thermal_mae": 0.008826198350140401,
+      "voltage_mae": {
+        "VBAT": 0.0017272603822473087,
+        "VBUS": 0.0013372493052329834,
+        "VSYS": 0.00127564417993849
+      }
+    },
+    "thermal_runaway": {
+      "composite_score": 0.0037148103968896785,
+      "current_mape": 0.0,
+      "thermal_mae": 0.009651316577123481,
+      "voltage_mae": {
+        "VBAT": 0.001979282568759159,
+        "VBUS": 0.0027378131765021982,
+        "VSYS": 0.0014285199328833986
+      }
+    }
+  }
+}

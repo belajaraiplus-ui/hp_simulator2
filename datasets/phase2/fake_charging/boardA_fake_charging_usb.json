@@ -1,0 +1,26 @@
+{
+  "metadata": {
+    "board_id": "boardA",
+    "ambient_temp_c": 25.1,
+    "humidity": 42,
+    "battery_soc": 51,
+    "charger_type": "usb"
+  },
+  "scenario": {
+    "use_case": "fake_charging",
+    "world_profile": "bench_v1",
+    "initial_fault_assumption": "sense_line_offset"
+  },
+  "quality": {
+    "instrument_grade": "synthetic_placeholder",
+    "missing_data_policy": "interpolate",
+    "outlier_policy": "clip"
+  },
+  "trace": [
+    {"timestamp_ms": 0, "rail_voltage_v": {"VBAT": 3.88, "VBUS": 5.02, "VSYS": 3.62}, "input_current_a": 0.09, "surface_temp_c": 25.2},
+    {"timestamp_ms": 250, "rail_voltage_v": {"VBAT": 3.89, "VBUS": 5.01, "VSYS": 3.63}, "input_current_a": 0.10, "surface_temp_c": 25.4},
+    {"timestamp_ms": 500, "rail_voltage_v": {"VBAT": 3.89, "VBUS": 5.02, "VSYS": 3.64}, "input_current_a": 0.09, "surface_temp_c": 25.6},
+    {"timestamp_ms": 750, "rail_voltage_v": {"VBAT": 3.90, "VBUS": 5.03, "VSYS": 3.64}, "input_current_a": 0.08, "surface_temp_c": 25.8},
+    {"timestamp_ms": 1000, "rail_voltage_v": {"VBAT": 3.90, "VBUS": 5.01, "VSYS": 3.65}, "input_current_a": 0.08, "surface_temp_c": 26.0}
+  ]
+}
