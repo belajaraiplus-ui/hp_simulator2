@@ -502,6 +502,8 @@ pub struct BoardFile {
     pub units: UnitsMeta,
     pub transform: AffineTransform,
     #[serde(default)]
+    pub source_url: Option<String>,
+    #[serde(default)]
     pub components_url: Option<String>,
     #[serde(default)]
     pub rails_url: Option<String>,

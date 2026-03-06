@@ -563,6 +563,27 @@ function validateThermalIntegrity(railsJson, thermalJson, boardId) {
   ok(`${boardId}: thermal integrity OK`);
 }
 
+function validateSourceAssets(dir, boardId) {
+  const sourceDir = path.join(dir, "source");
+  if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
+    fail(`${boardId}: missing source/ directory`);
+  }
+
+  const candidates = fs
+    .readdirSync(sourceDir, { withFileTypes: true })
+    .filter(entry => entry.isFile())
+    .map(entry => entry.name)
+    .filter(name => /\.(png|jpe?g)$/i.test(name))
+    .sort((a, b) => a.localeCompare(b));
+
+  if (!candidates.length) {
+    fail(`${boardId}: source/ must contain at least one PNG or JPG image`);
+  }
+  if (candidates.length > 1) {
+    warn(`${boardId}: source/ contains multiple images, API will serve "${candidates[0]}"`);
+  }
+}
+
 function validateBoardFolder(boardRoot, boardId) {
   const dir = path.join(boardRoot, boardId);
   if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) fail(`Board folder missing: ${dir}`);
@@ -579,9 +600,30 @@ function validateBoardFolder(boardRoot, boardId) {
   if (!boardJson?.data_space?.width_px) fail(`${boardId}: board.json data_space.width_px required`);
   if (!boardJson?.data_space?.height_px) fail(`${boardId}: board.json data_space.height_px required`);
   if (!boardJson?.data_space?.origin) fail(`${boardId}: board.json data_space.origin required`);
+  if (boardJson?.id !== boardId) fail(`${boardId}: board.json id must match folder/manifest id`);
   
   if (!boardJson?.tiles?.url_template) warn(`${boardId}: board.json missing tiles.url_template`);
+  if (boardJson?.tiles?.url_template && !boardJson.tiles.url_template.startsWith(`/api/boards/${boardId}/tiles/`)) {
+    fail(`${boardId}: board.json tiles.url_template must target this board id`);
+  }
 
+  const expectedEndpoints = new Map([
+    ["source_url", `/api/boards/${boardId}/source`],
+    ["components_url", `/api/boards/${boardId}/components`],
+    ["rails_url", `/api/boards/${boardId}/rails`],
+    ["topology_url", `/api/boards/${boardId}/topology`],
+    ["thermal_url", `/api/boards/${boardId}/thermal`],
+  ]);
+  for (const [key, expected] of expectedEndpoints.entries()) {
+    if (typeof boardJson[key] !== "string" || !boardJson[key]) {
+      fail(`${boardId}: board.json ${key} required`);
+    }
+    if (boardJson[key] !== expected) {
+      fail(`${boardId}: board.json ${key} must be "${expected}"`);
+    }
+  }
+
+  validateSourceAssets(dir, boardId);
   const railIds = validateRails(railsJson, boardJson, boardId);
   validateComponents(compsJson, boardId);
   validateTopology(topJson, railIds, boardId);
@@ -601,6 +643,9 @@ function main() {
 
   boards.forEach((b, i) => {
     if (!b.id) fail(`manifest.boards[${i}] missing id`);
+    if (b.board_url && b.board_url !== `/api/boards/${b.id}/board`) {
+      fail(`manifest.boards[${i}].board_url must be "/api/boards/${b.id}/board"`);
+    }
     console.log(`\n--- Validating board: ${b.id} ---`);
     validateBoardFolder(boardRoot, b.id);
   });

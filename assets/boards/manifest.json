@@ -2,16 +2,28 @@
   "version": 1,
   "boards": [
     {
+      "id": "samsung_galaxy_a15",
+      "name": "Samsung Galaxy A15",
+      "category": "Smartphone",
+      "board_url": "/api/boards/samsung_galaxy_a15/board"
+    },
+    {
       "id": "samsung_galaxy_a55_5g",
       "name": "Samsung Galaxy A55 5G",
       "category": "Smartphone",
       "board_url": "/api/boards/samsung_galaxy_a55_5g/board"
     },
     {
-      "id": "samsung_galaxy_s24",
-      "name": "Samsung Galaxy S24",
+      "id": "samsung_galaxy_m52",
+      "name": "Samsung Galaxy M52",
       "category": "Smartphone",
-      "board_url": "/api/boards/samsung_galaxy_s24/board"
+      "board_url": "/api/boards/samsung_galaxy_m52/board"
+    },
+    {
+      "id": "samsung_galaxy_SM-a015",
+      "name": "Samsung Galaxy SM-A015",
+      "category": "Smartphone",
+      "board_url": "/api/boards/samsung_galaxy_SM-a015/board"
     }
   ]
 }

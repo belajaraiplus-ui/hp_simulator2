@@ -1,0 +1,40 @@
+{
+  "version": 1,
+  "id": "samsung_galaxy_m52",
+  "name": "Samsung Galaxy M52",
+  "image": {
+    "full_width_px": 16000,
+    "full_height_px": 10000
+  },
+  "data_space": {
+    "width_px": 1000,
+    "height_px": 600,
+    "origin": "top_left"
+  },
+  "tiles": {
+    "type": "dzi-like",
+    "tile_size": 256,
+    "overlap": 0,
+    "format": "jpg",
+    "max_level": 15,
+    "url_template": "/api/boards/samsung_galaxy_m52/tiles/{level}/{x}_{y}.jpg"
+  },
+  "units": {
+    "mm_per_px": 0.005,
+    "origin": "top_left"
+  },
+  "transform": {
+    "type": "affine",
+    "a": 0.005,
+    "b": 0,
+    "c": 0,
+    "d": 0.005,
+    "tx": 0,
+    "ty": 0
+  },
+  "source_url": "/api/boards/samsung_galaxy_m52/source",
+  "components_url": "/api/boards/samsung_galaxy_m52/components",
+  "rails_url": "/api/boards/samsung_galaxy_m52/rails",
+  "topology_url": "/api/boards/samsung_galaxy_m52/topology",
+  "thermal_url": "/api/boards/samsung_galaxy_m52/thermal"
+}

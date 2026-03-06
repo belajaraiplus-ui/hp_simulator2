@@ -32,6 +32,7 @@
     "tx": 0,
     "ty": 0
   },
+  "source_url": "/api/boards/samsung_galaxy_a55_5g/source",
   "components_url": "/api/boards/samsung_galaxy_a55_5g/components",
   "rails_url": "/api/boards/samsung_galaxy_a55_5g/rails",
   "topology_url": "/api/boards/samsung_galaxy_a55_5g/topology",

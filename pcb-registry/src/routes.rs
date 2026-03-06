@@ -8,7 +8,7 @@ use axum::http::{header, HeaderValue};
 use axum::body::Body;
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::path::Path as FsPath;
+use std::path::{Path as FsPath, PathBuf};
 
 use crate::{
     model::{BoardFile, ComponentsFile, Manifest, RailsFile, ScenarioFile, TopologyFile, ThermalFile},
@@ -162,6 +162,39 @@ fn valid_board_id(id: &str) -> bool {
     !id.is_empty()
         && id.len() <= 128
         && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+fn source_content_type(ext: &str) -> Option<&'static str> {
+    match ext {
+        "jpg" | "jpeg" => Some("image/jpeg"),
+        "png" => Some("image/png"),
+        _ => None,
+    }
+}
+
+fn find_source_image_path(source_dir: &FsPath) -> std::io::Result<Option<(PathBuf, String)>> {
+    let mut candidates: Vec<(PathBuf, String)> = Vec::new();
+    let entries = std::fs::read_dir(source_dir)?;
+
+    for entry in entries {
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let ext = path
+            .extension()
+            .and_then(|v| v.to_str())
+            .map(|v| v.to_ascii_lowercase())
+            .unwrap_or_default();
+        if source_content_type(&ext).is_some() {
+            candidates.push((path, ext));
+        }
+    }
+
+    candidates.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(candidates.into_iter().next())
 }
 
 pub async fn get_boards(State(st): State<AppState>) -> impl IntoResponse {
@@ -362,6 +395,57 @@ pub async fn get_thermal(
     let arc = Arc::new(parsed);
     st.thermal_cache.insert(board_id.clone(), arc.clone());
     (StatusCode::OK, Json(arc.as_ref().clone())).into_response()
+}
+
+pub async fn get_source(
+    Path(board_id): Path<String>,
+    State(st): State<AppState>,
+) -> impl IntoResponse {
+    if !valid_board_id(&board_id) {
+        return (StatusCode::BAD_REQUEST, "invalid board id").into_response();
+    }
+
+    let source_dir = st.source_dir(&board_id);
+    let (source_path, ext) = match find_source_image_path(&source_dir) {
+        Ok(Some(v)) => v,
+        Ok(None) => return (StatusCode::NOT_FOUND, "source image not found").into_response(),
+        Err(e) => {
+            tracing::warn!(
+                "source dir read failed: id={} path={} err={}",
+                board_id,
+                source_dir.display(),
+                e
+            );
+            return (StatusCode::NOT_FOUND, "source image not found").into_response();
+        }
+    };
+
+    let bytes = match tokio::fs::read(&source_path).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(
+                "source image read failed: id={} path={} err={}",
+                board_id,
+                source_path.display(),
+                e
+            );
+            return (StatusCode::NOT_FOUND, "source image not found").into_response();
+        }
+    };
+
+    let content_type = match source_content_type(&ext) {
+        Some(v) => v,
+        None => return (StatusCode::BAD_REQUEST, "unsupported source image extension").into_response(),
+    };
+
+    let mut resp = Response::new(Body::from(bytes));
+    *resp.status_mut() = StatusCode::OK;
+    resp.headers_mut().insert(header::CONTENT_TYPE, HeaderValue::from_static(content_type));
+    resp.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("public, max-age=3600"),
+    );
+    resp
 }
 
 pub async fn get_tile(

@@ -55,7 +55,14 @@ export async function createDeepZoomViewer({ el, board, getTileUrl }) {
     defaultZoomLevel: 0,
   });
 
-  viewer.open(new HpTileSource(board, getTileUrl));
+  if (typeof board?.source_url === "string" && board.source_url.length > 0) {
+    viewer.open({
+      type: "image",
+      url: board.source_url,
+    });
+  } else {
+    viewer.open(new HpTileSource(board, getTileUrl));
+  }
 
   return viewer;
 }
