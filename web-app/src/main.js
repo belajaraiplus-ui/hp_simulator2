@@ -31,6 +31,7 @@ import { showOutcomeModal } from "./outcome/display.js";
 import { showOscilloscope, toggleOscilloscope } from "./ui/oscilloscope.js";
 import { createToolDispatcher } from "./tools/dispatch.js";
 import { injectFault, clearFault, setSystemMode, debugDumpPower } from "./power/runtime.js";
+import { setFault as setDiagnosisFault, clearFaultsForTarget, debugComponent as diagnosisDebugComponent, debugRail as diagnosisDebugRail } from "./power/electrical_diagnosis.js";
 
 const Tools = createToolDispatcher();
 
@@ -57,6 +58,12 @@ const multimeterRailEl = document.getElementById("multimeterRail");
 const multimeterRailBEl = document.getElementById("multimeterRailB");
 const multimeterComponentEl = document.getElementById("multimeterComponent");
 const multimeterResultEl = document.getElementById("multimeterResult");
+const diagnosticTargetEl = document.getElementById("diagnosticTarget");
+const diagnosticRailEl = document.getElementById("diagnosticRail");
+const diagnosticNodesEl = document.getElementById("diagnosticNodes");
+const diagnosticFaultsEl = document.getElementById("diagnosticFaults");
+const diagnosticStateEl = document.getElementById("diagnosticState");
+const diagnosticExplainEl = document.getElementById("diagnosticExplain");
 const boardProfileLabelEl = document.getElementById("boardProfileLabel");
 
 const psuEnableEl = document.getElementById("psuEnable");
@@ -76,6 +83,40 @@ const railTogglePanel = document.getElementById("railTogglePanel");
    MEASUREMENT HISTORY
    ========================================================== */
 let measurementHistoryData = [];
+
+
+function renderDiagnosisInfo(diagnosis) {
+  if (!diagnosis) return;
+  const selection = diagnosis.selection || {};
+  const faults = diagnosis.faults || [];
+  const warnings = selection.warnings || [];
+
+  if (diagnosticTargetEl) {
+    diagnosticTargetEl.textContent = `${selection.targetType || "target"}: ${selection.targetId || "-"}`;
+  }
+  if (diagnosticRailEl) {
+    diagnosticRailEl.textContent = selection.railId || selection.rail?.id || "unresolved";
+  }
+  if (diagnosticNodesEl) {
+    const nodes = Array.isArray(selection.nodeIds) ? selection.nodeIds : [];
+    diagnosticNodesEl.textContent = nodes.length ? nodes.join(", ") : "none";
+  }
+  if (diagnosticFaultsEl) {
+    diagnosticFaultsEl.textContent = faults.length
+      ? faults.map((f) => `${f.type}@${f.targetId}`).join(", ")
+      : "none";
+  }
+  if (diagnosticStateEl) {
+    const up = Array.isArray(selection.upstream) ? selection.upstream.join(", ") : "";
+    const down = Array.isArray(selection.downstream) ? selection.downstream.join(", ") : "";
+    diagnosticStateEl.textContent = `upstream=[${up}] downstream=[${down}]`;
+  }
+  if (diagnosticExplainEl) {
+    const explain = Array.isArray(diagnosis.explanation) ? diagnosis.explanation : [];
+    const text = [...explain, ...warnings].filter(Boolean).join(" ");
+    diagnosticExplainEl.textContent = text || "Reading within nominal simulation assumptions.";
+  }
+}
 
 function formatTime(t) {
   if (t == null) return "0.0s";
@@ -466,6 +507,13 @@ document.addEventListener("DOMContentLoaded", () => {
     clearFault,
     setSystemMode,
     dumpPower: debugDumpPower,
+    dumpElectricalGraph: () => Tools.getDiagnosisSnapshot()?.graph,
+    dumpSelectedTarget: () => Tools.getDiagnosisSnapshot()?.lastSelection,
+    dumpFaults: () => Tools.getDiagnosisSnapshot()?.faults,
+    setDiagnosisFault,
+    clearFaultsForTarget,
+    debugComponent: (componentId) => diagnosisDebugComponent(componentId),
+    debugRail: (railId) => diagnosisDebugRail(railId),
   };
 
   handleResize();
@@ -553,6 +601,8 @@ document.addEventListener("DOMContentLoaded", () => {
               for (const f of runtimeQuery.faults) {
                 if (!knownRails.has(f.railId)) continue;
                 injectFault(f.railId, { type: f.type });
+                if (f.type === "short") setDiagnosisFault({ type: "short_gnd", targetType: "rail", targetId: f.railId });
+                if (f.type === "open") setDiagnosisFault({ type: "open_line", targetType: "rail", targetId: f.railId });
               }
             }
 
@@ -687,6 +737,8 @@ document.addEventListener("DOMContentLoaded", () => {
       multimeterRailEl.value = railId;
     }
     renderMultimeterResult(multimeterResultEl, multimeterModeEl?.value || "voltage", value);
+    const probeSelection = Tools.inspectTarget("rail", railId);
+    renderDiagnosisInfo({ selection: probeSelection, faults: probeSelection?.faults || [], explanation: [] });
 
     // Keep history panel in sync with latest engine measurement stream
     try {
@@ -749,8 +801,10 @@ document.addEventListener("DOMContentLoaded", () => {
         component: multimeterComponentEl.value,
       });
 
-      const { value } = await Tools.measureMultimeter(railB);
+      const measurement = await Tools.measureMultimeter(railB);
+      const value = measurement?.value;
       renderMultimeterResult(multimeterResultEl, multimeterModeEl.value, Number(value));
+      renderDiagnosisInfo(measurement?.diagnosis);
       
       // Update measurement history immediately
       const snap = await snapshot();

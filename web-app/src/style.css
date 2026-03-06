@@ -714,3 +714,31 @@ h2 { font-size: 14px; text-transform: uppercase; letter-spacing: 0.05em; color: 
     grid-template-columns: 1fr;
   }
 }
+
+.diag-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.diag-span {
+  grid-column: 1 / -1;
+}
+
+.diag-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.diag-value {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border-secondary);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  min-height: 30px;
+}
