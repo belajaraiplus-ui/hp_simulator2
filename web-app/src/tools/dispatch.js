@@ -1,6 +1,12 @@
 import { dispatchToolAction, measureTool, multimeterMeasure } from "../engine/adapter.js";
 import { buildMultimeterLabel } from "../ui/multimeter.js";
 import { initPowerRuntime, setActiveBoard } from "../power/runtime.js";
+import {
+  initElectricalDiagnosis,
+  measureSelection,
+  resolveSelection,
+  getDiagnosisState,
+} from "../power/electrical_diagnosis.js";
 
 /**
  * Tool Dispatcher: satu pintu untuk aksi tool.
@@ -25,6 +31,10 @@ export function createToolDispatcher() {
       targetType: "rail", // "rail" | "component"
       rail: "vbat",
       component: "tp_vbat",
+    },
+    diagnosis: {
+      selection: null,
+      latest: null,
     },
   };
 
@@ -68,7 +78,34 @@ export function createToolDispatcher() {
     }
 
     // Panggil thermal loader saat board berubah
-    await loadBoardThermal(boardId, { baseUrl });
+    const thermal = await loadBoardThermal(boardId, { baseUrl });
+
+    // Load optional electrical graph context for diagnosis-aware meter behavior.
+    let components = [];
+    let topology = null;
+    try {
+      const [cRes, tRes] = await Promise.all([
+        fetch(`${baseUrl}/assets/boards/${boardId}/components.json`),
+        fetch(`${baseUrl}/assets/boards/${boardId}/topology.json`),
+      ]);
+      if (cRes.ok) {
+        const cJson = await cRes.json();
+        components = Array.isArray(cJson?.components) ? cJson.components : [];
+      }
+      if (tRes.ok) {
+        topology = await tRes.json();
+      }
+    } catch (e) {
+      console.warn("Diagnosis graph assets load failed:", e);
+    }
+
+    initElectricalDiagnosis({
+      boardId,
+      rails,
+      topology,
+      components,
+      thermal,
+    });
 
     return { rails, injectableRails: injectable };
   }
@@ -102,6 +139,7 @@ export function createToolDispatcher() {
     // links (optional)
     const links = (t.links || []).map(l => [l.a, l.b, l.conductance ?? 0.1]);
     dispatchToolAction({ SetThermalLinks: { links } });
+    return t;
   }
 
   // ---- PSU actions ----
@@ -184,25 +222,49 @@ export function createToolDispatcher() {
       state.multimeter.component
     );
     
-    if (state.multimeter.targetType === "rail" && state.multimeter.rail) {
-      const mode = state.multimeter.mode;
-      const result = await multimeterMeasure({
-        mode,
-        a: state.multimeter.rail,
-        b: railB || null,
+    const targetType = state.multimeter.targetType === "component" ? "component" : "rail";
+    const targetId = targetType === "component" ? state.multimeter.component : state.multimeter.rail;
+    if (targetId) {
+      const diagnosis = measureSelection({
+        mode: state.multimeter.mode,
+        targetType,
+        targetId,
+        railB,
       });
-      const runtimeValue = extractRuntimeMeterValue(mode, result);
-      if (runtimeValue != null) {
+      if (diagnosis && Number.isFinite(Number(diagnosis.value))) {
+        state.diagnosis.selection = diagnosis.selection;
+        state.diagnosis.latest = diagnosis;
         return {
           label,
-          value: runtimeValue,
+          value: diagnosis.value,
+          diagnosis,
         };
+      }
+    }
+
+    if (targetType === "rail" && state.multimeter.rail) {
+      const mode = state.multimeter.mode;
+      const result = await multimeterMeasure({ mode, a: state.multimeter.rail, b: railB || null });
+      const runtimeValue = extractRuntimeMeterValue(mode, result);
+      if (runtimeValue != null) {
+        return { label, value: runtimeValue };
       }
     }
 
     // Fallback: legacy label-based measurement
     const val = await measureTool(label);
     return { label, value: val };
+  }
+
+  function inspectTarget(targetType, targetId) {
+    if (!targetId) return null;
+    const selection = resolveSelection(targetType, targetId);
+    state.diagnosis.selection = selection;
+    return selection;
+  }
+
+  function getDiagnosisSnapshot() {
+    return getDiagnosisState();
   }
 
   function setThermalConfig({ ambientTemp }) {
@@ -236,5 +298,7 @@ export function createToolDispatcher() {
     upsertThermalZone,
     setThermalLinks,
     setRailThermalZone,
+    inspectTarget,
+    getDiagnosisSnapshot,
   };
 }

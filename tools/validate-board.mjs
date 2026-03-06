@@ -16,6 +16,10 @@ function ok(msg) {
   console.log("✅", msg);
 }
 
+function info(msg) {
+  console.log("ℹ️", msg);
+}
+
 function readJson(filePath) {
   if (!fs.existsSync(filePath)) fail(`Missing file: ${filePath}`);
   const raw = fs.readFileSync(filePath, "utf-8");
@@ -467,9 +471,11 @@ function validateRails(railsJson, boardJson, boardId) {
   return ids;
 }
 
-function validateComponents(compJson, boardId) {
+function validateComponents(compJson, boardId, railIds, topology) {
   const comps = compJson?.components;
   if (!Array.isArray(comps)) fail(`${boardId}: components.json must contain { components: [...] }`);
+  const topoNodes = new Set(Array.isArray(topology?.nodes) ? topology.nodes : []);
+
   comps.forEach((c, idx) => {
     const ctx = `${boardId}: components[${idx}]`;
     if (typeof c.id !== "string" || !c.id) fail(`${ctx}: id required`);
@@ -477,6 +483,26 @@ function validateComponents(compJson, boardId) {
       const { x, y, w, h } = c.bbox;
       if (![x, y, w, h].every(isNumber)) fail(`${ctx}: bbox must have numeric x,y,w,h`);
     }
+
+    const pins = Array.isArray(c.pins) ? c.pins : [];
+    const pads = Array.isArray(c.pads) ? c.pads : [];
+    const hintRails = Array.isArray(c?.hints?.rails) ? c.hints.rails : [];
+    if (!pins.length && !pads.length && !hintRails.length) {
+      warn(`${ctx} (${c.id}): no pins/pads/rail hints; diagnosis resolution may be weak`);
+    }
+
+    pins.forEach((pin, pIdx) => {
+      if (pin?.rail && !railIds.has(pin.rail)) fail(`${ctx}: pin[${pIdx}] references missing rail "${pin.rail}"`);
+      if (pin?.node && !topoNodes.has(pin.node)) warn(`${ctx}: pin[${pIdx}] references node "${pin.node}" absent in topology.nodes`);
+    });
+    pads.forEach((pad, pIdx) => {
+      if (pad?.rail && !railIds.has(pad.rail)) fail(`${ctx}: pad[${pIdx}] references missing rail "${pad.rail}"`);
+      if (pad?.node && !topoNodes.has(pad.node)) warn(`${ctx}: pad[${pIdx}] references node "${pad.node}" absent in topology.nodes`);
+    });
+
+    hintRails.forEach((railId) => {
+      if (!railIds.has(railId)) warn(`${ctx}: hints.rails references missing rail "${railId}"`);
+    });
   });
   ok(`${boardId}: components.json OK (${comps.length} components)`);
 }
@@ -534,8 +560,12 @@ function validateTopology(topJson, railIds, boardId) {
   }
   if (hasCycle) warn(`${boardId}: topology has a cycle (check power tree)`);
 
+  const hasRoot = nodes.some((n) => !edges.some((e) => e.to === n));
+  if (!hasRoot) warn(`${boardId}: topology has no clear root node for voltage propagation`);
+
   ok(`${boardId}: topology.json OK (${nodes.length} nodes, ${edges.length} edges)`);
 }
+
 
 function validateThermalIntegrity(railsJson, thermalJson, boardId) {
   if (!thermalJson) fail(`${boardId}: missing thermal.json`);
@@ -561,6 +591,51 @@ function validateThermalIntegrity(railsJson, thermalJson, boardId) {
     });
   }
   ok(`${boardId}: thermal integrity OK`);
+}
+
+
+function validateDiagnosisReadiness({ boardId, railsJson, compJson, topJson, thermalJson }) {
+  const rails = Array.isArray(railsJson?.rails) ? railsJson.rails : [];
+  const comps = Array.isArray(compJson?.components) ? compJson.components : [];
+  const nodes = new Set(Array.isArray(topJson?.nodes) ? topJson.nodes : []);
+
+  const inaccessibleRails = rails.filter((r) => !Array.isArray(r.probe_points) || !r.probe_points.length);
+  inaccessibleRails.forEach((r) => warn(`${boardId}: rail ${r.id} has no probe_points (not directly measurable)`));
+
+  const unresolvedComponents = comps.filter((c) => {
+    const pins = Array.isArray(c.pins) ? c.pins : [];
+    const pads = Array.isArray(c.pads) ? c.pads : [];
+    const hints = Array.isArray(c?.hints?.rails) ? c.hints.rails : [];
+    return pins.length === 0 && pads.length === 0 && hints.length === 0;
+  });
+  if (unresolvedComponents.length) {
+    info(`${boardId}: diagnosis hint - ${unresolvedComponents.length} component(s) cannot be electrically resolved yet`);
+  }
+
+  const edgePairs = new Set((topJson?.edges || []).map((e) => `${e.from}->${e.to}`));
+  const railsWithDeps = rails.filter((r) => Array.isArray(r.depends_on) && r.depends_on.length > 0);
+  for (const r of railsWithDeps) {
+    const depCovered = r.depends_on.some((d) => edgePairs.has(`${d}->${r.id}`));
+    if (!depCovered) {
+      warn(`${boardId}: rail ${r.id} depends_on rails but topology lacks matching propagation edge`);
+    }
+  }
+
+  for (const z of (thermalJson?.zones || [])) {
+    for (const compId of (z.components || [])) {
+      if (!comps.some((c) => c.id === compId)) {
+        warn(`${boardId}: thermal zone ${z.id} references unknown component ${compId}`);
+      }
+    }
+  }
+
+  for (const node of nodes) {
+    if (!rails.some((r) => r.id === node)) {
+      warn(`${boardId}: topology node ${node} has no corresponding rail definition`);
+    }
+  }
+
+  ok(`${boardId}: diagnosis-readiness checks completed`);
 }
 
 function validateSourceAssets(dir, boardId) {
@@ -625,9 +700,10 @@ function validateBoardFolder(boardRoot, boardId) {
 
   validateSourceAssets(dir, boardId);
   const railIds = validateRails(railsJson, boardJson, boardId);
-  validateComponents(compsJson, boardId);
   validateTopology(topJson, railIds, boardId);
+  validateComponents(compsJson, boardId, railIds, topJson);
   validateThermalIntegrity(railsJson, thermalJson, boardId);
+  validateDiagnosisReadiness({ boardId, railsJson, compJson: compsJson, topJson, thermalJson });
 }
 
 function main() {
