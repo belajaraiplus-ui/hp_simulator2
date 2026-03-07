@@ -38,6 +38,7 @@ import { createToolDispatcher } from "./tools/dispatch.js";
 import { injectFault, clearFault, setSystemMode, debugDumpPower } from "./power/runtime.js";
 import { setFault as setDiagnosisFault, clearFaultsForTarget, debugComponent as diagnosisDebugComponent, debugRail as diagnosisDebugRail } from "./power/electrical_diagnosis.js";
 import { measureTarget as measureBoardTarget } from "./pcb_viewer/measurement_runtime.js";
+import { installPcbViewerDevApi } from "./pcb_viewer/api.js";
 
 const Tools = createToolDispatcher();
 
@@ -767,6 +768,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // 2) INIT PCB VIEWER
   let pcbViewerAPI = null;
+  installPcbViewerDevApi({ viewerApiProvider: () => pcbViewerAPI });
+
   try {
     pcbViewerAPI = initPcbViewerPanel({
       mountSelector: "#motherboardMap",
