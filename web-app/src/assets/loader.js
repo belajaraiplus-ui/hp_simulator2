@@ -4,6 +4,7 @@ let boardManifest = null;
 let boardCache = new Map();
 let componentsCache = new Map();
 let railsCache = new Map();
+let railFileCache = new Map();
 let topologyCache = new Map();
 let thermalCache = new Map();
 
@@ -79,23 +80,30 @@ export async function loadComponents(boardId) {
 }
 
 export async function loadRails(boardId) {
-  if (railsCache.has(boardId)) {
-    return railsCache.get(boardId);
+  const railFile = await loadRailsFile(boardId);
+  return Array.isArray(railFile?.rails) ? railFile.rails : [];
+}
+
+export async function loadRailsFile(boardId) {
+  if (railFileCache.has(boardId)) {
+    return railFileCache.get(boardId);
   }
 
   try {
     const board = await loadBoard(boardId);
     const url = board.rails_url;
     if (!url) {
-      return [];
+      return { rails: [] };
     }
     const data = await fetchJson(url);
-    const result = data.rails || [];
-    railsCache.set(boardId, result);
+    const result = data && typeof data === "object" ? data : { rails: [] };
+    const rails = Array.isArray(result.rails) ? result.rails : [];
+    railFileCache.set(boardId, result);
+    railsCache.set(boardId, rails);
     return result;
   } catch (e) {
     console.warn(`Failed to load rails for ${boardId}:`, e);
-    return [];
+    return { rails: [] };
   }
 }
 
@@ -120,6 +128,11 @@ export async function loadTopology(boardId) {
 }
 
 export async function loadThermal(boardId) {
+  const thermalFile = await loadThermalFile(boardId);
+  return thermalFile;
+}
+
+export async function loadThermalFile(boardId) {
   if (thermalCache.has(boardId)) {
     return thermalCache.get(boardId);
   }
@@ -183,12 +196,14 @@ export function clearCache(boardId) {
     boardCache.delete(boardId);
     componentsCache.delete(boardId);
     railsCache.delete(boardId);
+    railFileCache.delete(boardId);
     topologyCache.delete(boardId);
     thermalCache.delete(boardId);
   } else {
     boardCache.clear();
     componentsCache.clear();
     railsCache.clear();
+    railFileCache.clear();
     topologyCache.clear();
     thermalCache.clear();
   }

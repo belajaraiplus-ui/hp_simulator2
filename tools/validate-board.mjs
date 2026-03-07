@@ -471,7 +471,63 @@ function validateRails(railsJson, boardJson, boardId) {
   return ids;
 }
 
-function validateComponents(compJson, boardId, railIds, topology) {
+function validateComponentGeometry(component, ctx, boardJson) {
+  const dataW = boardJson?.data_space?.width_px ?? boardJson?.image?.full_width_px;
+  const dataH = boardJson?.data_space?.height_px ?? boardJson?.image?.full_height_px;
+  const imageW = boardJson?.image?.full_width_px ?? dataW;
+  const imageH = boardJson?.image?.full_height_px ?? dataH;
+
+  if (component.bbox) {
+    const { x, y, w: bw, h: bh } = component.bbox;
+    if (![x, y, bw, bh].every(isNumber)) fail(`${ctx}: bbox must have numeric x,y,w,h`);
+    if (bw <= 0 || bh <= 0) warn(`${ctx}: bbox should have positive width/height`);
+    const outsideData = isNumber(dataW) && isNumber(dataH) && (x < 0 || y < 0 || x + bw > dataW || y + bh > dataH);
+    const fitsImage = isNumber(imageW) && isNumber(imageH) && x >= 0 && y >= 0 && x + bw <= imageW && y + bh <= imageH;
+    if (outsideData && fitsImage) {
+      warn(`${ctx}: bbox appears to be stored in image-space, runtime will normalize it`);
+    } else if (outsideData) {
+      warn(`${ctx}: bbox extends outside board bounds`);
+    }
+  }
+
+  if (component.shape !== undefined) {
+    if (!isPlainObject(component.shape)) fail(`${ctx}: shape must be object`);
+    if (component.shape.type !== "poly") warn(`${ctx}: unsupported shape.type "${component.shape.type}"`);
+    if (!Array.isArray(component.shape.points) || component.shape.points.length < 3) {
+      fail(`${ctx}: shape.points must be polygon with >= 3 points`);
+    }
+    component.shape.points.forEach((pt, ptIdx) => {
+      if (!Array.isArray(pt) || pt.length !== 2 || !pt.every(isNumber)) {
+        fail(`${ctx}: shape.points[${ptIdx}] must be [x, y] numbers`);
+      }
+      const outsideData = isNumber(dataW) && isNumber(dataH) && (pt[0] < 0 || pt[1] < 0 || pt[0] > dataW || pt[1] > dataH);
+      const fitsImage = isNumber(imageW) && isNumber(imageH) && pt[0] >= 0 && pt[1] >= 0 && pt[0] <= imageW && pt[1] <= imageH;
+      if (outsideData && fitsImage) {
+        warn(`${ctx}: shape point ${ptIdx} appears to be stored in image-space, runtime will normalize it`);
+      } else if (outsideData) {
+        warn(`${ctx}: shape point ${ptIdx} lies outside board bounds`);
+      }
+    });
+  }
+}
+
+function validateElectricalProperties(props, ctx) {
+  if (props === undefined) return;
+  if (!isPlainObject(props)) fail(`${ctx}: electricalProperties must be object`);
+
+  const numericFields = ["ohm", "resistance_ohm", "diodeDrop", "diodeDrop_v", "forward_voltage"];
+  numericFields.forEach((key) => {
+    if (props[key] !== undefined && !isNumber(props[key])) {
+      fail(`${ctx}: electricalProperties.${key} must be number`);
+    }
+  });
+
+  if (props.continuity !== undefined && typeof props.continuity !== "boolean") {
+    fail(`${ctx}: electricalProperties.continuity must be boolean`);
+  }
+}
+
+function validateComponents(compJson, boardId, railIds, boardJson, topology) {
   const comps = compJson?.components;
   if (!Array.isArray(comps)) fail(`${boardId}: components.json must contain { components: [...] }`);
   const topoNodes = new Set(Array.isArray(topology?.nodes) ? topology.nodes : []);
@@ -479,30 +535,52 @@ function validateComponents(compJson, boardId, railIds, topology) {
   comps.forEach((c, idx) => {
     const ctx = `${boardId}: components[${idx}]`;
     if (typeof c.id !== "string" || !c.id) fail(`${ctx}: id required`);
-    if (c.bbox) {
-      const { x, y, w, h } = c.bbox;
-      if (![x, y, w, h].every(isNumber)) fail(`${ctx}: bbox must have numeric x,y,w,h`);
+    if (!c.bbox && !c.shape) {
+      warn(`${ctx}: no bbox/shape, component will not be pickable on motherboard`);
     }
+    validateComponentGeometry(c, ctx, boardJson);
+
+    if (c.pins !== undefined && !Array.isArray(c.pins)) fail(`${ctx}: pins must be array when provided`);
+    if (c.pads !== undefined && !Array.isArray(c.pads)) fail(`${ctx}: pads must be array when provided`);
+    if (c.nodes !== undefined && !Array.isArray(c.nodes)) fail(`${ctx}: nodes must be array when provided`);
 
     const pins = Array.isArray(c.pins) ? c.pins : [];
     const pads = Array.isArray(c.pads) ? c.pads : [];
     const hintRails = Array.isArray(c?.hints?.rails) ? c.hints.rails : [];
+    const hintedRails = [
+      ...hintRails,
+      ...(Array.isArray(c?.rails) ? c.rails : []),
+    ];
+    const pinRails = pins.map((pin) => pin?.rail || pin?.railId).filter(Boolean);
+    const padRails = pads.map((pad) => pad?.rail || pad?.railId).filter(Boolean);
+    const allRails = [...new Set([...hintedRails, ...pinRails, ...padRails])];
+
+    if (!allRails.length) {
+      warn(`${ctx}: no measurable rail mapping (hints.rails / rails / pins / pads)`);
+    }
+    allRails.forEach((railId) => {
+      if (!railIds.has(railId)) warn(`${ctx}: references missing rail "${railId}"`);
+    });
+
     if (!pins.length && !pads.length && !hintRails.length) {
       warn(`${ctx} (${c.id}): no pins/pads/rail hints; diagnosis resolution may be weak`);
     }
 
     pins.forEach((pin, pIdx) => {
-      if (pin?.rail && !railIds.has(pin.rail)) fail(`${ctx}: pin[${pIdx}] references missing rail "${pin.rail}"`);
+      const railId = pin?.rail || pin?.railId;
+      if (railId && !railIds.has(railId)) fail(`${ctx}: pin[${pIdx}] references missing rail "${railId}"`);
       if (pin?.node && !topoNodes.has(pin.node)) warn(`${ctx}: pin[${pIdx}] references node "${pin.node}" absent in topology.nodes`);
     });
     pads.forEach((pad, pIdx) => {
-      if (pad?.rail && !railIds.has(pad.rail)) fail(`${ctx}: pad[${pIdx}] references missing rail "${pad.rail}"`);
+      const railId = pad?.rail || pad?.railId;
+      if (railId && !railIds.has(railId)) fail(`${ctx}: pad[${pIdx}] references missing rail "${railId}"`);
       if (pad?.node && !topoNodes.has(pad.node)) warn(`${ctx}: pad[${pIdx}] references node "${pad.node}" absent in topology.nodes`);
     });
 
     hintRails.forEach((railId) => {
       if (!railIds.has(railId)) warn(`${ctx}: hints.rails references missing rail "${railId}"`);
     });
+    validateElectricalProperties(c.electricalProperties || c.electrical, ctx);
   });
   ok(`${boardId}: components.json OK (${comps.length} components)`);
 }
@@ -701,7 +779,7 @@ function validateBoardFolder(boardRoot, boardId) {
   validateSourceAssets(dir, boardId);
   const railIds = validateRails(railsJson, boardJson, boardId);
   validateTopology(topJson, railIds, boardId);
-  validateComponents(compsJson, boardId, railIds, topJson);
+  validateComponents(compsJson, boardId, railIds, boardJson, topJson);
   validateThermalIntegrity(railsJson, thermalJson, boardId);
   validateDiagnosisReadiness({ boardId, railsJson, compJson: compsJson, topJson, thermalJson });
 }

@@ -1,9 +1,11 @@
 import { formatNumber } from "../utils.js";
 
-function normalizeMode(mode) {
-  // HTML kamu pakai value="resistance"
-  if (mode === "resistance") return "ohm";
-  return mode;
+let audioContext = null;
+
+export function normalizeMode(mode) {
+  const value = String(mode || "").trim().toLowerCase();
+  if (value === "resistance") return "ohm";
+  return value || "voltage";
 }
 
 export function buildMultimeterLabel(mode, targetType, rail, component) {
@@ -29,56 +31,93 @@ export function buildMultimeterLabel(mode, targetType, rail, component) {
   return normalizedRail;
 }
 
-export function renderMultimeterResult(multimeterResultEl, mode, value) {
-  if (!multimeterResultEl) return;
-  mode = normalizeMode(mode);
+function defaultDisplay(mode, value) {
+  if (!Number.isFinite(value)) return "--";
 
-  if (!Number.isFinite(value)) {
-    // UI kamu sudah punya label "READING"
-    multimeterResultEl.textContent = "--";
-    return;
-  }
-
-  if (mode === "diode") {
-    multimeterResultEl.textContent = formatNumber(value, 3);
-    return;
-  }
-
+  if (mode === "diode") return `${formatNumber(value, 3)} V`;
   if (mode === "ohm") {
-    if (value >= 1.0e8) multimeterResultEl.textContent = "OL";
-    else multimeterResultEl.textContent = formatNumber(value, 2);
+    if (value >= 1.0e8) return "OL";
+    if (value >= 1.0e6) return `${formatNumber(value / 1.0e6, 2)} MOhm`;
+    if (value >= 1.0e3) return `${formatNumber(value / 1.0e3, 2)} kOhm`;
+    return `${formatNumber(value, 2)} Ohm`;
+  }
+  if (mode === "continuity") return value > 0 ? "Continuity: YES" : "Continuity: NO";
+  if (mode === "current") return `${formatNumber(value, 4)} A`;
+  if (mode === "temperature") return `${formatNumber(value, 1)} C`;
+  return `${formatNumber(value, 3)} V`;
+}
+
+export function renderMultimeterResult(multimeterResultEl, modeOrResult, value) {
+  if (!multimeterResultEl) return;
+
+  if (modeOrResult && typeof modeOrResult === "object") {
+    multimeterResultEl.textContent = modeOrResult.displayValue || "--";
     return;
   }
 
-  if (mode === "continuity") {
-    if (value === 0 || value === 1) {
-      multimeterResultEl.textContent = value > 0 ? "BEEP" : "OL";
-      return;
-    }
-    if (value >= 1.0e8) {
-      multimeterResultEl.textContent = "OL";
-    } else if (value <= 50) {
-      multimeterResultEl.textContent = formatNumber(value, 2) + " Ω BEEP";
-    } else {
-      multimeterResultEl.textContent = formatNumber(value, 2);
-    }
-    return;
-  }
+  const mode = normalizeMode(modeOrResult);
+  multimeterResultEl.textContent = defaultDisplay(mode, value);
+}
 
-  if (mode === "current") {
-    if (!Number.isFinite(value) || value < 0) {
-      multimeterResultEl.textContent = "OL";
-    } else {
-      multimeterResultEl.textContent = formatNumber(value, 4) + " A";
-    }
-    return;
-  }
+export function renderMultimeterPanel(elements, result) {
+  const {
+    resultEl,
+    modeEl,
+    targetEl,
+    statusEl,
+    helpEl,
+  } = elements || {};
 
-  if (mode === "temperature") {
-    multimeterResultEl.textContent = formatNumber(value, 1) + " °C";
-    return;
-  }
+  renderMultimeterResult(resultEl, result);
 
-  // voltage default
-  multimeterResultEl.textContent = formatNumber(value, 3);
+  if (modeEl) {
+    modeEl.textContent = result?.mode ? String(result.mode).toUpperCase() : "--";
+  }
+  if (targetEl) {
+    targetEl.textContent = result?.targetLabel || "None";
+  }
+  if (statusEl) {
+    statusEl.textContent = result?.summary || "Select a measurable point on the board.";
+    statusEl.dataset.status = result?.status || "idle";
+  }
+  if (helpEl) {
+    helpEl.textContent = result?.helpText || "Voltage, ohm, diode, and continuity results will appear here.";
+  }
+}
+
+export function createMultimeterUiState() {
+  return {
+    mode: "voltage",
+    targetLabel: "None",
+    displayValue: "--",
+    status: "idle",
+    helpText: "Select a measurable point on the board.",
+    summary: "Mode: voltage | Target: None | Result: --",
+  };
+}
+
+export async function playContinuityBeep() {
+  if (typeof window === "undefined") return;
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return;
+
+  try {
+    if (!audioContext) audioContext = new AudioCtx();
+    if (audioContext.state === "suspended") await audioContext.resume();
+
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+    oscillator.type = "square";
+    oscillator.frequency.value = 1760;
+    gainNode.gain.value = 0.04;
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    const now = audioContext.currentTime;
+    oscillator.start(now);
+    oscillator.stop(now + 0.08);
+  } catch (error) {
+    console.debug("Continuity beep unavailable", error);
+  }
 }

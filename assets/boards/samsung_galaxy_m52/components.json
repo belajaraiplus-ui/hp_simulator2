@@ -5,14 +5,17 @@
       "id": "U6100",
       "refdes": "U6100",
       "kind": "IC",
-      "bbox": { "x": 6500, "y": 4500, "w": 280, "h": 250 },
+      "bbox": { "x": 104, "y": 122, "w": 54, "h": 46 },
       "shape": {
         "type": "poly",
-        "points": [[6500,4500],[6780,4500],[6780,4750],[6500,4750]]
+        "points": [[104,122],[158,122],[158,168],[104,168]]
       },
       "tags": ["pmic", "rtle78"],
       "hints": {
-        "rails": ["V3P3", "V1P8"]
+        "rails": ["VIO", "VCORE"]
+      },
+      "electricalProperties": {
+        "diodeDrop": 0.57
       }
     }
   ]

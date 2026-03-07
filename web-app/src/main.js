@@ -21,7 +21,12 @@ import {
   drawThermalChart,
   drawDistressChart
 } from "./ui/charts.js";
-import { renderMultimeterResult } from "./ui/multimeter.js";
+import {
+  createMultimeterUiState,
+  normalizeMode as normalizeMultimeterMode,
+  playContinuityBeep,
+  renderMultimeterPanel,
+} from "./ui/multimeter.js";
 import { showAIPanel } from "./ai/panel.js";
 import { initScenarioSelector, setScenario, updateScenarioDisplay } from "./ui/scenario_selector.js";
 import { initExportReport } from "./export/report.js";
@@ -32,6 +37,7 @@ import { showOscilloscope, toggleOscilloscope } from "./ui/oscilloscope.js";
 import { createToolDispatcher } from "./tools/dispatch.js";
 import { injectFault, clearFault, setSystemMode, debugDumpPower } from "./power/runtime.js";
 import { setFault as setDiagnosisFault, clearFaultsForTarget, debugComponent as diagnosisDebugComponent, debugRail as diagnosisDebugRail } from "./power/electrical_diagnosis.js";
+import { measureTarget as measureBoardTarget } from "./pcb_viewer/measurement_runtime.js";
 
 const Tools = createToolDispatcher();
 
@@ -64,6 +70,10 @@ const diagnosticNodesEl = document.getElementById("diagnosticNodes");
 const diagnosticFaultsEl = document.getElementById("diagnosticFaults");
 const diagnosticStateEl = document.getElementById("diagnosticState");
 const diagnosticExplainEl = document.getElementById("diagnosticExplain");
+const multimeterModeLabelEl = document.getElementById("multimeterModeLabel");
+const multimeterTargetLabelEl = document.getElementById("multimeterTargetLabel");
+const multimeterStatusEl = document.getElementById("multimeterStatus");
+const multimeterHelpEl = document.getElementById("multimeterHelp");
 const boardProfileLabelEl = document.getElementById("boardProfileLabel");
 
 const psuEnableEl = document.getElementById("psuEnable");
@@ -83,6 +93,9 @@ const railTogglePanel = document.getElementById("railTogglePanel");
    MEASUREMENT HISTORY
    ========================================================== */
 let measurementHistoryData = [];
+let currentBoardRuntime = null;
+let currentMeasurementSelection = null;
+let latestMultimeterUiState = createMultimeterUiState();
 
 
 function renderDiagnosisInfo(diagnosis) {
@@ -116,6 +129,30 @@ function renderDiagnosisInfo(diagnosis) {
     const text = [...explain, ...warnings].filter(Boolean).join(" ");
     diagnosticExplainEl.textContent = text || "Reading within nominal simulation assumptions.";
   }
+}
+
+function renderDiagnosisForTarget(target) {
+  if (!target) return;
+
+  let targetType = null;
+  let targetId = null;
+
+  if (target.type === "component" && target.componentId) {
+    targetType = "component";
+    targetId = target.componentId;
+  } else if ((target.type === "rail" || target.type === "probe" || target.type === "node") && target.railId) {
+    targetType = "rail";
+    targetId = target.railId;
+  } else if (target.type === "node" && target.componentId) {
+    targetType = "component";
+    targetId = target.componentId;
+  }
+
+  if (!targetType || !targetId) return;
+
+  const selection = Tools.inspectTarget(targetType, targetId);
+  const faults = Tools.getDiagnosisSnapshot()?.faults || selection?.faults || [];
+  renderDiagnosisInfo({ selection, faults, explanation: [] });
 }
 
 function formatTime(t) {
@@ -158,7 +195,7 @@ function renderMeasurementHistory() {
       <div class="measItem">
         <span class="measTime">${formatTime(m.time)}</span>
         <span class="measTarget">${m.target || "?"}</span>
-        <span class="measValue">${formatValue(m.observed_value, m.target)}</span>
+        <span class="measValue">${m.display_value || formatValue(m.observed_value, m.target)}</span>
         ${(m.noise > 0 || m.stress_added > 0) ? `
           <div class="measMeta">
             ${m.noise > 0 ? `<span class="measNoise">±${m.noise.toFixed(3)}</span>` : ""}
@@ -202,6 +239,124 @@ function toNumberFlex(v) {
     return Number.isFinite(p) ? p : null;
   }
   return null;
+}
+
+function renderMultimeterFeedback(result) {
+  latestMultimeterUiState = result || createMultimeterUiState();
+  renderMultimeterPanel({
+    resultEl: multimeterResultEl,
+    modeEl: multimeterModeLabelEl,
+    targetEl: multimeterTargetLabelEl,
+    statusEl: multimeterStatusEl,
+    helpEl: multimeterHelpEl,
+  }, latestMultimeterUiState);
+}
+
+function appendMeasurementHistoryEntry(result) {
+  if (!result?.ok) return;
+  measurementHistoryData.push({
+    time: State.snapshot?.time ?? 0,
+    target: result.historyTarget || result.targetLabel || "?",
+    observed_value: result.historyValue,
+    display_value: result.displayValue,
+    noise: 0,
+    stress_added: 0,
+  });
+  if (measurementHistoryData.length > 200) {
+    measurementHistoryData = measurementHistoryData.slice(-200);
+  }
+  renderMeasurementHistory();
+}
+
+function buildManualMeasurementTarget() {
+  const targetType = multimeterTargetTypeEl?.value || "rail";
+  if (targetType === "component") {
+    const componentId = multimeterComponentEl?.value?.trim();
+    if (!componentId) return null;
+    const component = currentBoardRuntime?.componentsById?.[componentId] || null;
+    return {
+      type: "component",
+      id: `component:${componentId}`,
+      componentId,
+      rails: component?.rails || [],
+      pins: component?.pins || [],
+      label: component?.refdes || component?.label || componentId,
+    };
+  }
+
+  const railId = multimeterRailEl?.value?.trim();
+  if (!railId) return null;
+  const rail = currentBoardRuntime?.railsById?.[railId] || null;
+  return {
+    type: "rail",
+    id: `rail:${railId}`,
+    railId,
+    label: rail?.label || railId,
+  };
+}
+
+function buildReferenceTarget() {
+  const railId = multimeterRailBEl?.value?.trim();
+  if (!railId) return null;
+  const rail = currentBoardRuntime?.railsById?.[railId] || null;
+  return {
+    type: "rail",
+    id: `rail:${railId}`,
+    railId,
+    label: rail?.label || railId,
+  };
+}
+
+function syncMultimeterInputsFromTarget(target) {
+  if (!target) return;
+
+  if (target.type === "component") {
+    if (multimeterTargetTypeEl) {
+      multimeterTargetTypeEl.value = "component";
+      multimeterTargetTypeEl.dispatchEvent(new Event("change"));
+    }
+    if (multimeterComponentEl) {
+      multimeterComponentEl.value = target.componentId || "";
+    }
+    const railHint = Array.isArray(target.rails) ? target.rails[0] : "";
+    if (multimeterRailEl && railHint) multimeterRailEl.value = railHint;
+    return;
+  }
+
+  if (multimeterTargetTypeEl) {
+    multimeterTargetTypeEl.value = "rail";
+    multimeterTargetTypeEl.dispatchEvent(new Event("change"));
+  }
+  if (multimeterRailEl && target.railId) {
+    multimeterRailEl.value = target.railId;
+  }
+}
+
+async function performMultimeterMeasurement(target, { source = "manual" } = {}) {
+  const activeTarget = target || buildManualMeasurementTarget();
+  const mode = normalizeMultimeterMode(multimeterModeEl?.value || "voltage");
+  const reference = buildReferenceTarget();
+
+  currentMeasurementSelection = activeTarget
+    ? { target: activeTarget, source }
+    : currentMeasurementSelection;
+
+  const result = await measureBoardTarget({
+    mode,
+    target: activeTarget,
+    reference,
+    boardRuntime: currentBoardRuntime,
+  });
+
+  renderMultimeterFeedback(result);
+  renderDiagnosisForTarget(activeTarget);
+  if (result?.ok) {
+    appendMeasurementHistoryEntry(result);
+    if (result.beep) {
+      playContinuityBeep();
+    }
+  }
+  return result;
 }
 
 
@@ -570,8 +725,16 @@ document.addEventListener("DOMContentLoaded", () => {
   try {
     pcbViewerAPI = initPcbViewerPanel({
       mountSelector: "#motherboardMap",
-      onBoardReady: async ({ board, components, topology }) => {
+      onBoardReady: async ({ board, components, rails, topology, runtime }) => {
         console.log("📡 Board loaded:", board?.id);
+        currentBoardRuntime = runtime || null;
+        currentMeasurementSelection = null;
+        renderMultimeterFeedback({
+          ...createMultimeterUiState(),
+          mode: normalizeMultimeterMode(multimeterModeEl?.value || "voltage"),
+          summary: `Mode: ${normalizeMultimeterMode(multimeterModeEl?.value || "voltage")} | Target: None | Result: --`,
+          helpText: "Click a probe point, rail, or component on the motherboard to measure it.",
+        });
 
         if (boardProfileLabelEl) {
           boardProfileLabelEl.textContent = board?.name || board?.id || "Board Loaded";
@@ -579,9 +742,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Fill multimeter component dropdown
         if (multimeterComponentEl && Array.isArray(components)) {
-          multimeterComponentEl.innerHTML = components
-            .map(c => `<option value="${c.id}">${c.id} (${c.name || "Component"})</option>`)
+          multimeterComponentEl.innerHTML = ['<option value="">Select Component</option>']
+            .concat(components.map(c => `<option value="${c.id}">${c.refdes || c.id} (${c.name || c.kind || "Component"})</option>`))
             .join("");
+        }
+
+        if (multimeterRailEl && Array.isArray(rails) && rails.length) {
+          multimeterRailEl.value = rails[0]?.id || "";
         }
 
         if (topology) {
@@ -622,6 +789,12 @@ document.addEventListener("DOMContentLoaded", () => {
     console.error("PCB Viewer init failed:", e);
     if (out) out.textContent = `PCB VIEWER ERROR:\n${String(e?.stack || e)}`;
   }
+
+  window.dumpBoard = () => currentBoardRuntime;
+  window.dumpRails = () => currentBoardRuntime?.rails || [];
+  window.dumpComponents = () => currentBoardRuntime?.components || [];
+  window.debugPick = (x, y) => pcbViewerAPI?.debugPick?.(x, y) || null;
+  window.debugMeasureCurrentSelection = () => performMultimeterMeasurement(currentMeasurementSelection?.target || buildManualMeasurementTarget(), { source: "debug" });
 
   // 2.5) INIT BOARD SELECTOR IN TOPBAR
   async function initBoardSelector() {
@@ -713,6 +886,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // Multimeter UI Logic: Enable/Disable inputs based on target type
+  renderMultimeterFeedback(latestMultimeterUiState);
   if (multimeterTargetTypeEl) {
     multimeterTargetTypeEl.addEventListener("change", () => {
       const isComponent = multimeterTargetTypeEl.value === "component";
@@ -723,33 +897,36 @@ document.addEventListener("DOMContentLoaded", () => {
     multimeterTargetTypeEl.dispatchEvent(new Event("change"));
   }
 
-  // Sync probe click result from PCB viewer to multimeter UI
-  window.addEventListener("pcb:probe-measured", async (evt) => {
+  if (multimeterModeEl) {
+    multimeterModeEl.addEventListener("change", () => {
+      const mode = normalizeMultimeterMode(multimeterModeEl.value);
+      renderMultimeterFeedback({
+        ...latestMultimeterUiState,
+        mode,
+        summary: `Mode: ${mode} | Target: ${latestMultimeterUiState?.targetLabel || "None"} | Result: ${latestMultimeterUiState?.displayValue || "--"}`,
+      });
+    });
+  }
+
+  window.addEventListener("pcb:target-picked", async (evt) => {
     const detail = evt?.detail || {};
-    const railId = detail.railId || "";
-    const value = toProbeNumeric(detail.measurement);
-
-    if (multimeterTargetTypeEl) {
-      multimeterTargetTypeEl.value = "rail";
-      multimeterTargetTypeEl.dispatchEvent(new Event("change"));
-    }
-    if (multimeterRailEl && railId) {
-      multimeterRailEl.value = railId;
-    }
-    renderMultimeterResult(multimeterResultEl, multimeterModeEl?.value || "voltage", value);
-    const probeSelection = Tools.inspectTarget("rail", railId);
-    renderDiagnosisInfo({ selection: probeSelection, faults: probeSelection?.faults || [], explanation: [] });
-
-    // Keep history panel in sync with latest engine measurement stream
-    try {
-      const snap = await snapshot();
-      if (snap && snap.measurements) {
-        measurementHistoryData = snap.measurements;
-        renderMeasurementHistory();
-      }
-    } catch (e) {
-      console.warn("Failed to refresh measurement history after probe:", e);
-    }
+    currentBoardRuntime = detail.boardRuntime || currentBoardRuntime;
+    currentMeasurementSelection = detail.target
+      ? { target: detail.target, source: detail.source || "board" }
+      : currentMeasurementSelection;
+    syncMultimeterInputsFromTarget(detail.target);
+    await performMultimeterMeasurement(detail.target, { source: detail.source || "board" });
+  });
+  window.addEventListener("pcb:pick-missed", () => {
+    renderMultimeterFeedback({
+      ok: false,
+      mode: normalizeMultimeterMode(multimeterModeEl?.value || "voltage"),
+      targetLabel: currentMeasurementSelection?.target?.label || currentMeasurementSelection?.target?.id || "None",
+      displayValue: "--",
+      status: "warning",
+      helpText: "No measurable target was found at the clicked position.",
+      summary: "Click landed outside probe, component, and rail geometry.",
+    });
   });
 
   /* =========================
@@ -790,28 +967,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Multimeter Measure
   if (manualMeasureBtn) {
     manualMeasureBtn.onclick = async () => {
-      if (!engineReady) return;
-
-      const railB = multimeterRailBEl?.value?.trim() || null;
-
-      Tools.setMultimeter({
-        mode: multimeterModeEl.value,
-        targetType: multimeterTargetTypeEl.value,
-        rail: multimeterRailEl.value,
-        component: multimeterComponentEl.value,
-      });
-
-      const measurement = await Tools.measureMultimeter(railB);
-      const value = measurement?.value;
-      renderMultimeterResult(multimeterResultEl, multimeterModeEl.value, Number(value));
-      renderDiagnosisInfo(measurement?.diagnosis);
-      
-      // Update measurement history immediately
-      const snap = await snapshot();
-      if (snap?.measurements) {
-        measurementHistoryData = snap.measurements;
-        renderMeasurementHistory();
-      }
+      await performMultimeterMeasurement(currentMeasurementSelection?.target || null, { source: "manual" });
     };
   }
 
@@ -955,3 +1111,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   loadSessionReviewPanel();
 });
+
+
+

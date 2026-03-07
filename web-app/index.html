@@ -175,9 +175,25 @@
         <input type="text" id="multimeterRail" placeholder="Rail (positive probe)" value="vbat" class="input-dark full-width">
         <input type="text" id="multimeterRailB" placeholder="Rail (negative probe, optional)" value="" class="input-dark full-width">
         <button id="manualMeasure" class="btn btn-primary btn-lg full-width">MEASURE</button>
+        <div class="meter-summary">
+          <div class="meter-summary-item">
+            <span class="meter-summary-label">Mode</span>
+            <strong id="multimeterModeLabel">VOLTAGE</strong>
+          </div>
+          <div class="meter-summary-item">
+            <span class="meter-summary-label">Target</span>
+            <strong id="multimeterTargetLabel">None</strong>
+          </div>
+        </div>
         <div class="meter-readout">
           <span class="meter-label">READING</span>
-          <strong id="multimeterResult" class="meter-value">0.00 V</strong>
+          <strong id="multimeterResult" class="meter-value">--</strong>
+        </div>
+        <div id="multimeterStatus" class="meter-status">
+          Select a measurable point on the board.
+        </div>
+        <div id="multimeterHelp" class="meter-help">
+          Voltage, ohm, diode, and continuity results will appear here.
         </div>
       </div>
 

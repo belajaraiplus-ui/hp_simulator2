@@ -40,9 +40,7 @@ export function createToolDispatcher() {
 
   // ---- Board metadata loader (untuk filter PSU injection) ----
   async function loadBoardRails(boardId, { baseUrl = "" } = {}) {
-    // Kamu bisa arahkan baseUrl ke server board API kamu.
-    // Default: asumsi bisa fetch langsung dari assets.
-    const url = `${baseUrl}/assets/boards/${boardId}/rails.json`;
+    const url = `${baseUrl}/api/boards/${encodeURIComponent(boardId)}/rails`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`Failed to load rails.json: HTTP ${r.status} ${url}`);
     const json = await r.json();
@@ -111,7 +109,7 @@ export function createToolDispatcher() {
   }
 
   async function loadBoardThermal(boardId, { baseUrl = "" } = {}) {
-    const url = `${baseUrl}/assets/boards/${boardId}/thermal.json`;
+    const url = `${baseUrl}/api/boards/${encodeURIComponent(boardId)}/thermal`;
     const r = await fetch(url);
     if (!r.ok) throw new Error(`Failed thermal.json: HTTP ${r.status} ${url}`);
     const t = await r.json();

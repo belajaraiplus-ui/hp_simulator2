@@ -5,28 +5,34 @@
       "id": "U2100",
       "refdes": "U2100",
       "kind": "IC",
-      "bbox": { "x": 10000, "y": 7000, "w": 400, "h": 360 },
+      "bbox": { "x": 88, "y": 92, "w": 58, "h": 52 },
       "shape": {
         "type": "poly",
-        "points": [[10000,7000],[10400,7000],[10400,7360],[10000,7360]]
+        "points": [[88,92],[146,92],[146,144],[88,144]]
       },
       "tags": ["pmic", "power"],
       "hints": {
-        "rails": ["VCCSA", "VCCIO"]
+        "rails": ["VCHG", "VSYS"]
+      },
+      "electricalProperties": {
+        "diodeDrop": 0.61
       }
     },
     {
       "id": "U2200",
       "refdes": "U2200",
       "kind": "IC",
-      "bbox": { "x": 11500, "y": 6800, "w": 320, "h": 280 },
+      "bbox": { "x": 266, "y": 168, "w": 52, "h": 44 },
       "shape": {
         "type": "poly",
-        "points": [[11500,6800],[11820,6800],[11820,7080],[11500,7080]]
+        "points": [[266,168],[318,168],[318,212],[266,212]]
       },
       "tags": ["cpu", "vr"],
       "hints": {
-        "rails": ["VCC_CPU"]
+        "rails": ["VCORE", "VDD_CPU"]
+      },
+      "electricalProperties": {
+        "diodeDrop": 0.42
       }
     }
   ]
