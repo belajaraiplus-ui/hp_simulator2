@@ -62,6 +62,8 @@ const multimeterModeEl = document.getElementById("multimeterMode");
 const multimeterTargetTypeEl = document.getElementById("multimeterTargetType");
 const multimeterRailEl = document.getElementById("multimeterRail");
 const multimeterRailBEl = document.getElementById("multimeterRailB");
+const multimeterProbePositiveBtn = document.getElementById("multimeterProbePositive");
+const multimeterProbeNegativeBtn = document.getElementById("multimeterProbeNegative");
 const multimeterComponentEl = document.getElementById("multimeterComponent");
 const multimeterResultEl = document.getElementById("multimeterResult");
 const diagnosticTargetEl = document.getElementById("diagnosticTarget");
@@ -96,6 +98,7 @@ let measurementHistoryData = [];
 let currentBoardRuntime = null;
 let currentMeasurementSelection = null;
 let latestMultimeterUiState = createMultimeterUiState();
+let activeProbePolarity = "positive";
 
 
 function renderDiagnosisInfo(diagnosis) {
@@ -307,6 +310,16 @@ function buildReferenceTarget() {
   };
 }
 
+function resolveTargetRailHint(target) {
+  if (!target) return "";
+  if (typeof target.railId === "string" && target.railId.trim()) return target.railId.trim();
+  if (Array.isArray(target.rails)) {
+    const railId = target.rails.find((value) => typeof value === "string" && value.trim());
+    if (railId) return railId.trim();
+  }
+  return "";
+}
+
 function syncMultimeterInputsFromTarget(target) {
   if (!target) return;
 
@@ -330,6 +343,38 @@ function syncMultimeterInputsFromTarget(target) {
   if (multimeterRailEl && target.railId) {
     multimeterRailEl.value = target.railId;
   }
+}
+
+function syncReferenceInputFromTarget(target) {
+  const railId = resolveTargetRailHint(target);
+  if (multimeterRailBEl && railId) {
+    multimeterRailBEl.value = railId;
+  }
+}
+
+function applyActiveProbePolarity() {
+  const isNegative = activeProbePolarity === "negative";
+  if (multimeterProbePositiveBtn) {
+    multimeterProbePositiveBtn.classList.toggle("is-active", !isNegative);
+    multimeterProbePositiveBtn.setAttribute("aria-pressed", String(!isNegative));
+  }
+  if (multimeterProbeNegativeBtn) {
+    multimeterProbeNegativeBtn.classList.toggle("is-active", isNegative);
+    multimeterProbeNegativeBtn.setAttribute("aria-pressed", String(isNegative));
+  }
+}
+
+function setActiveProbePolarity(polarity = "positive", { focusInput = false } = {}) {
+  activeProbePolarity = polarity === "negative" ? "negative" : "positive";
+  applyActiveProbePolarity();
+  pcbViewerAPI?.setProbePolarity?.(activeProbePolarity);
+
+  if (!focusInput) return;
+  if (activeProbePolarity === "negative") {
+    multimeterRailBEl?.focus();
+    return;
+  }
+  multimeterRailEl?.focus();
 }
 
 async function performMultimeterMeasurement(target, { source = "manual" } = {}) {
@@ -908,9 +953,37 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
+  applyActiveProbePolarity();
+  if (multimeterProbePositiveBtn) {
+    multimeterProbePositiveBtn.addEventListener("click", () => setActiveProbePolarity("positive", { focusInput: true }));
+  }
+  if (multimeterProbeNegativeBtn) {
+    multimeterProbeNegativeBtn.addEventListener("click", () => setActiveProbePolarity("negative", { focusInput: true }));
+  }
+  multimeterRailEl?.addEventListener("focus", () => setActiveProbePolarity("positive"));
+  multimeterRailEl?.addEventListener("pointerdown", () => setActiveProbePolarity("positive"));
+  multimeterRailBEl?.addEventListener("focus", () => setActiveProbePolarity("negative"));
+  multimeterRailBEl?.addEventListener("pointerdown", () => setActiveProbePolarity("negative"));
+
   window.addEventListener("pcb:target-picked", async (evt) => {
     const detail = evt?.detail || {};
     currentBoardRuntime = detail.boardRuntime || currentBoardRuntime;
+    if (activeProbePolarity === "negative") {
+      syncReferenceInputFromTarget(detail.target);
+      const measurementTarget = currentMeasurementSelection?.target || buildManualMeasurementTarget();
+      if (measurementTarget) {
+        await performMultimeterMeasurement(measurementTarget, { source: `${detail.source || "board"}:negative-probe` });
+      } else {
+        renderMultimeterFeedback({
+          ...latestMultimeterUiState,
+          status: "idle",
+          helpText: "Negative probe updated from PCB click. Select or keep a positive target, then measure again.",
+          summary: `Negative probe set to ${resolveTargetRailHint(detail.target) || "None"}.`,
+        });
+      }
+      return;
+    }
+
     currentMeasurementSelection = detail.target
       ? { target: detail.target, source: detail.source || "board" }
       : currentMeasurementSelection;

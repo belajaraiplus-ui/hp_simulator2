@@ -60,4 +60,29 @@ const missPick = pickBoardTarget(runtime, {
 });
 assert.equal(missPick, null, "pick should return null outside measurable geometry");
 
+const boundaryRuntime = buildBoardRuntime({
+  board: {
+    id: "boundary_board",
+    image: { full_width_px: 400, full_height_px: 240 },
+    data_space: { width_px: 200, height_px: 120 },
+  },
+  rails: [
+    {
+      id: "PP_VSYS",
+      label: "PP_VSYS",
+      type: "power",
+      expected: { voltage_v: { min: 3.6, max: 4.4 } },
+      overlay: { type: "multi_poly", polys: [[[12, 20], [52, 20], [52, 60], [12, 60]]] },
+      probe_points: [{ id: "TP_EDGE", x: 23, y: 40, label: "TP_EDGE" }],
+    },
+  ],
+});
+
+const boundaryProbePick = pickBoardTarget(boundaryRuntime, {
+  board: { x: 32, y: 40 },
+  image: { x: 32 * boundaryRuntime.spaces.sx, y: 40 * boundaryRuntime.spaces.sy },
+});
+assert.equal(boundaryProbePick?.type, "probe", "probe picking should search adjacent spatial buckets within hit radius");
+assert.equal(boundaryProbePick?.probeId, "TP_EDGE");
+
 console.log("pcb picking tests: OK");

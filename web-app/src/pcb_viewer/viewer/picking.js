@@ -1,4 +1,4 @@
-import { querySpatialIndex } from "./spatial_index.js";
+import { querySpatialIndex, querySpatialIndexRange } from "./spatial_index.js";
 
 function pointInBox(point, box, padding = 0) {
   if (!box) return false;
@@ -79,9 +79,17 @@ export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
 }
 
 function pickProbe(boardRuntime, boardPoint, imagePoint) {
-  const probeRadiusBoard = Math.max(boardRuntime.metrics.probeRadiusPx / boardRuntime.spaces.sx, 10);
-  const candidates = querySpatialIndex(boardRuntime.indices.probes, boardPoint.x, boardPoint.y)
-    .filter((probe) => pointInBox(boardPoint, probe.bbox, probeRadiusBoard))
+  const probeRadiusBoardX = Math.max(boardRuntime.metrics.probeRadiusPx / boardRuntime.spaces.sx, 10);
+  const probeRadiusBoardY = Math.max(boardRuntime.metrics.probeRadiusPx / boardRuntime.spaces.sy, 10);
+  const searchBox = {
+    minX: boardPoint.x - probeRadiusBoardX,
+    minY: boardPoint.y - probeRadiusBoardY,
+    maxX: boardPoint.x + probeRadiusBoardX,
+    maxY: boardPoint.y + probeRadiusBoardY,
+  };
+  const candidates = querySpatialIndexRange(boardRuntime.indices.probes, searchBox)
+    .filter((probe) => Math.abs(boardPoint.x - probe.x) <= probeRadiusBoardX)
+    .filter((probe) => Math.abs(boardPoint.y - probe.y) <= probeRadiusBoardY)
     .map((probe) => ({
       item: probe,
       distance: distanceSq(boardPoint, { x: probe.x, y: probe.y }),

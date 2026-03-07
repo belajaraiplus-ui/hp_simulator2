@@ -23,6 +23,50 @@ let currentSelection = null;
 let psuTargetRail = null;
 let probeMode = true;
 let probeOverlays = [];
+let activeProbePolarity = "positive";
+
+function buildProbeCursor({
+  cable = "#151515",
+  cableShade = "#2b2b2b",
+  handle = "#c82626",
+  handleHighlight = "#f35a5a",
+  guard = "#8f1717",
+  collar = "#4a4f57",
+  shaft = "#b8bec7",
+  shaftHighlight = "#edf2f7",
+  tip = "#9097a1",
+  tipHighlight = "#dfe5ec",
+  cableCap = "#861010",
+} = {}) {
+  return `url("data:image/svg+xml;utf8,${encodeURIComponent(`
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <g fill="none" fill-rule="evenodd">
+    <path d="M7 56 C11 49, 17 44, 22 39 C25 36, 28 33, 31 31" stroke="${cable}" stroke-width="4" stroke-linecap="round"/>
+    <path d="M11 57 C16 51, 21 45, 28 39" stroke="${cableShade}" stroke-width="1.4" stroke-linecap="round" opacity="0.55"/>
+    <path d="M12 54 L23 43 L29 49 L18 60 Z" fill="${handle}"/>
+    <path d="M14 52 L23 43 L26 46 L17 55 Z" fill="${handleHighlight}" opacity="0.75"/>
+    <path d="M23 43 L29 37 L34 42 L29 49 Z" fill="${guard}"/>
+    <path d="M28.5 37.5 L33.5 32.5 L38.5 37.5 L33.5 42.5 Z" fill="${collar}"/>
+    <path d="M33.5 32.5 L48 18" stroke="${shaft}" stroke-width="5" stroke-linecap="round"/>
+    <path d="M35 31 L48 18" stroke="${shaftHighlight}" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
+    <path d="M47.5 18.5 L57 9" stroke="${tip}" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M57 9 L61 5" stroke="${tipHighlight}" stroke-width="1.3" stroke-linecap="round"/>
+    <circle cx="12" cy="56" r="2.4" fill="${cableCap}"/>
+    <ellipse cx="41" cy="25" rx="10" ry="3.2" fill="#ffffff" opacity="0.12" transform="rotate(-45 41 25)"/>
+  </g>
+</svg>
+`)}") 12 56, crosshair`;
+}
+
+const POSITIVE_PROBE_CURSOR = buildProbeCursor();
+const NEGATIVE_PROBE_CURSOR = buildProbeCursor({
+  handle: "#2c313a",
+  handleHighlight: "#636b78",
+  guard: "#11161d",
+  collar: "#596170",
+  cableCap: "#07090c",
+});
+const NAVIGATE_CURSOR = "zoom-in";
 
 function getSpaces() {
   return currentBoardRuntime?.spaces || {
@@ -66,6 +110,84 @@ function setProbeVisualState(selectedProbeId = null) {
       ? "0 0 8px rgba(255, 224, 102, 0.9)"
       : "0 0 4px rgba(0,0,0,0.5)";
   });
+}
+
+function getViewerCursorTargets(viewer) {
+  if (!viewer) return [];
+  return [viewer.canvas, viewer.container, viewer.element].filter(Boolean);
+}
+
+function currentProbeCursor() {
+  return activeProbePolarity === "negative" ? NEGATIVE_PROBE_CURSOR : POSITIVE_PROBE_CURSOR;
+}
+
+function setViewerNavigationEnabled(viewer, enabled) {
+  if (!viewer) return;
+  const active = Boolean(enabled);
+
+  if (typeof viewer.setMouseNavEnabled === "function") {
+    viewer.setMouseNavEnabled(active);
+  }
+
+  const mouse = viewer.gestureSettingsMouse;
+  if (mouse) {
+    mouse.clickToZoom = active;
+    mouse.dblClickToZoom = active;
+    mouse.dragToPan = active;
+    mouse.scrollToZoom = active;
+    mouse.pinchToZoom = active;
+    mouse.flickEnabled = active;
+  }
+
+  const touch = viewer.gestureSettingsTouch;
+  if (touch) {
+    touch.dragToPan = active;
+    touch.pinchToZoom = active;
+    touch.flickEnabled = active;
+    touch.clickToZoom = active;
+    touch.dblClickToZoom = active;
+  }
+
+  const pen = viewer.gestureSettingsPen;
+  if (pen) {
+    pen.dragToPan = active;
+    pen.scrollToZoom = active;
+    pen.clickToZoom = active;
+    pen.dblClickToZoom = active;
+  }
+}
+
+function applyViewerInteractionMode(viewer, mountPoint = null) {
+  if (!viewer) return;
+
+  setViewerNavigationEnabled(viewer, false);
+  getViewerCursorTargets(viewer).forEach((target) => {
+    target.style.cursor = probeMode ? currentProbeCursor() : NAVIGATE_CURSOR;
+    target.style.touchAction = probeMode ? "auto" : "none";
+  });
+
+  if (mountPoint) {
+    setStatus(
+      mountPoint,
+      probeMode
+        ? `Probe mode active (${activeProbePolarity === "negative" ? "NEG" : "POS"}). Click probe, component, or rail to measure.`
+        : "Navigate mode active. Pan/zoom PCB, then switch back to probe mode to measure."
+    );
+  }
+}
+
+function applyProbeCursorToOverlays() {
+  const cursor = currentProbeCursor();
+  probeOverlays.forEach((probe) => {
+    probe.element.style.cursor = cursor;
+  });
+}
+
+function setProbePolarity(polarity = "positive") {
+  activeProbePolarity = polarity === "negative" ? "negative" : "positive";
+  applyProbeCursorToOverlays();
+  const mountPoint = document.querySelector("#motherboardMap");
+  applyViewerInteractionMode(viewerInstance, mountPoint);
 }
 
 export function clearScene() {
@@ -160,7 +282,7 @@ export function drawProbePoints(viewer, boardRuntime) {
     element.style.background = "#ff4444";
     element.style.border = "2px solid white";
     element.style.borderRadius = "50%";
-    element.style.cursor = "pointer";
+    element.style.cursor = currentProbeCursor();
     element.style.boxShadow = "0 0 4px rgba(0,0,0,0.5)";
     element.style.pointerEvents = "auto";
     element.style.padding = "0";
@@ -202,6 +324,20 @@ export function toggleProbeMode(viewer, boardRuntime) {
   if (currentSelection?.target?.type === "probe") {
     setProbeVisualState(currentSelection.target.probeId);
   }
+  const mountPoint = document.querySelector("#motherboardMap");
+  applyViewerInteractionMode(viewer, mountPoint);
+  return probeMode;
+}
+
+function setProbeModeState(viewer, boardRuntime, nextProbeMode) {
+  probeMode = Boolean(nextProbeMode);
+  if (probeMode) drawProbePoints(viewer, boardRuntime);
+  else clearOverlayList(probeOverlays);
+  if (currentSelection?.target?.type === "probe") {
+    setProbeVisualState(currentSelection.target.probeId);
+  }
+  const mountPoint = document.querySelector("#motherboardMap");
+  applyViewerInteractionMode(viewer, mountPoint);
   return probeMode;
 }
 
@@ -281,7 +417,7 @@ export function setPsuTargetRail(railId) {
 }
 
 function handleCanvasClick(event) {
-  if (!event?.quick || !viewerInstance || !currentBoardRuntime) return;
+  if (!event?.quick || !viewerInstance || !currentBoardRuntime || !probeMode) return;
   const picked = pickAtScreenPoint(viewerInstance, currentBoardRuntime, event.position);
   if (!picked) {
     const mountPoint = document.querySelector("#motherboardMap");
@@ -334,10 +470,30 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         style="background:#333; color:white; border:1px solid #555; padding:5px; pointer-events:auto;">
         <option value="">-- Select Rail --</option>
       </select>
-      <button id="btn-probe"
-        style="background:#1e7e34; color:white; border:none; padding:5px 15px; cursor:pointer; border-radius:4px; pointer-events:auto;">
-        PROBES ON
-      </button>
+      <div style="display:flex; gap:6px; pointer-events:auto;">
+        <button id="btn-probe"
+          style="background:#1e7e34; color:white; border:none; padding:5px 12px; cursor:pointer; border-radius:4px; pointer-events:auto;">
+          PROBE MODE
+        </button>
+        <button id="btn-nav"
+          style="background:#495057; color:white; border:none; padding:5px 12px; cursor:pointer; border-radius:4px; pointer-events:auto;">
+          NAV MODE
+        </button>
+      </div>
+      <div style="display:flex; gap:6px; pointer-events:auto;">
+        <button id="btn-zoom-in"
+          style="background:#343a40; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px; pointer-events:auto; font-weight:700;">
+          +
+        </button>
+        <button id="btn-zoom-out"
+          style="background:#343a40; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px; pointer-events:auto; font-weight:700;">
+          -
+        </button>
+        <button id="btn-home"
+          style="background:#343a40; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px; pointer-events:auto;">
+          HOME
+        </button>
+      </div>
       <span id="pcb-status" style="color:#bbb; font-size:12px; margin-left:6px;">
         Loading boards...
       </span>
@@ -350,6 +506,10 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   const railSelect = mountPoint.querySelector("#rail-select");
   const loadBtn = mountPoint.querySelector("#btn-load-pcb");
   const probeBtn = mountPoint.querySelector("#btn-probe");
+  const navBtn = mountPoint.querySelector("#btn-nav");
+  const zoomInBtn = mountPoint.querySelector("#btn-zoom-in");
+  const zoomOutBtn = mountPoint.querySelector("#btn-zoom-out");
+  const homeBtn = mountPoint.querySelector("#btn-home");
   const canvasTarget = mountPoint.querySelector("#pcb-canvas-target");
 
   if (uiLayer) {
@@ -365,7 +525,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       "touchstart",
       "touchmove",
       "touchend",
-    ].forEach((name) => uiLayer.addEventListener(name, stopViewerInput, { capture: true }));
+    ].forEach((name) => uiLayer.addEventListener(name, stopViewerInput));
   }
 
   railSelect.addEventListener("change", () => {
@@ -376,6 +536,80 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   canvasTarget.style.height = "100%";
 
   let boards = [];
+  let manualNavDrag = null;
+
+  canvasTarget.addEventListener("wheel", (event) => {
+    if (probeMode || !viewerInstance?.viewport) return;
+    event.preventDefault();
+    const rect = canvasTarget.getBoundingClientRect();
+    const pixelPoint = new OpenSeadragon.Point(
+      event.clientX - rect.left,
+      event.clientY - rect.top
+    );
+    const refPoint = viewerInstance.viewport.pointFromPixel(pixelPoint, true);
+    const factor = event.deltaY < 0 ? 1.2 : (1 / 1.2);
+    viewerInstance.viewport.zoomBy(factor, refPoint);
+    viewerInstance.viewport.applyConstraints();
+  }, { passive: false });
+
+  canvasTarget.addEventListener("pointerdown", (event) => {
+    if (probeMode || !viewerInstance?.viewport) return;
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    manualNavDrag = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    canvasTarget.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  });
+
+  canvasTarget.addEventListener("pointermove", (event) => {
+    if (probeMode || !viewerInstance?.viewport || !manualNavDrag) return;
+    if (event.pointerId !== manualNavDrag.pointerId) return;
+
+    const dx = event.clientX - manualNavDrag.x;
+    const dy = event.clientY - manualNavDrag.y;
+    manualNavDrag.x = event.clientX;
+    manualNavDrag.y = event.clientY;
+    if (dx === 0 && dy === 0) return;
+
+    const delta = viewerInstance.viewport.deltaPointsFromPixels(
+      new OpenSeadragon.Point(-dx, -dy),
+      true
+    );
+    viewerInstance.viewport.panBy(delta, true);
+    viewerInstance.viewport.applyConstraints();
+    event.preventDefault();
+  });
+
+  const endManualNavDrag = (event) => {
+    if (!manualNavDrag) return;
+    if (event?.pointerId != null && event.pointerId !== manualNavDrag.pointerId) return;
+    canvasTarget.releasePointerCapture?.(manualNavDrag.pointerId);
+    manualNavDrag = null;
+  };
+
+  canvasTarget.addEventListener("pointerup", endManualNavDrag);
+  canvasTarget.addEventListener("pointercancel", endManualNavDrag);
+  canvasTarget.addEventListener("lostpointercapture", endManualNavDrag);
+
+  function syncModeButtons() {
+    if (probeBtn) {
+      probeBtn.style.background = probeMode ? "#1e7e34" : "#495057";
+      probeBtn.style.boxShadow = probeMode ? "0 0 0 1px rgba(30,126,52,0.35)" : "none";
+    }
+    if (navBtn) {
+      navBtn.style.background = probeMode ? "#495057" : "#0d6efd";
+      navBtn.style.boxShadow = probeMode ? "none" : "0 0 0 1px rgba(13,110,253,0.35)";
+    }
+    [zoomInBtn, zoomOutBtn, homeBtn].forEach((button) => {
+      if (!button) return;
+      button.disabled = probeMode;
+      button.style.opacity = probeMode ? "0.45" : "1";
+      button.style.cursor = probeMode ? "not-allowed" : "pointer";
+    });
+  }
 
   async function loadBoardsList() {
     setStatus(mountPoint, "Loading boards...");
@@ -441,17 +675,31 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       railSelect.innerHTML = '<option value="">-- Select Rail --</option>'
         + currentBoardRuntime.rails.map((rail) => `<option value="${rail.id}">${rail.label || rail.id}</option>`).join("");
 
-      probeMode = true;
-      drawProbePoints(viewerInstance, currentBoardRuntime);
-      probeBtn.textContent = "PROBES ON";
-      probeBtn.style.background = "#1e7e34";
+      setProbeModeState(viewerInstance, currentBoardRuntime, true);
+      syncModeButtons();
       probeBtn.onclick = () => {
-        const active = toggleProbeMode(viewerInstance, currentBoardRuntime);
-        probeBtn.textContent = active ? "PROBES ON" : "PROBES OFF";
-        probeBtn.style.background = active ? "#1e7e34" : "#6c757d";
+        setProbeModeState(viewerInstance, currentBoardRuntime, true);
+        syncModeButtons();
       };
-
-      setStatus(mountPoint, `Loaded: ${boardData?.name || boardId}. Click probe, component, or rail to measure.`);
+      navBtn.onclick = () => {
+        setProbeModeState(viewerInstance, currentBoardRuntime, false);
+        syncModeButtons();
+      };
+      zoomInBtn.onclick = () => {
+        if (probeMode || !viewerInstance?.viewport) return;
+        viewerInstance.viewport.zoomBy(1.2);
+        viewerInstance.viewport.applyConstraints();
+      };
+      zoomOutBtn.onclick = () => {
+        if (probeMode || !viewerInstance?.viewport) return;
+        viewerInstance.viewport.zoomBy(1 / 1.2);
+        viewerInstance.viewport.applyConstraints();
+      };
+      homeBtn.onclick = () => {
+        if (probeMode || !viewerInstance?.viewport) return;
+        viewerInstance.viewport.goHome();
+      };
+      setStatus(mountPoint, `Loaded: ${boardData?.name || boardId}. Probe mode active. Click probe, component, or rail to measure.`);
 
       const detail = {
         board: boardData,
@@ -507,6 +755,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     getBoardList,
     getCurrentRuntime: () => currentBoardRuntime,
     getCurrentSelection: () => currentSelection,
+    setProbePolarity,
     debugPick,
   };
 }

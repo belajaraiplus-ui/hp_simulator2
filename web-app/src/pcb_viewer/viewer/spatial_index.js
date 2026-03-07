@@ -283,6 +283,39 @@ export function querySpatialIndex(index, x, y) {
   return Array.isArray(items) ? items : [];
 }
 
+export function querySpatialIndexRange(index, box) {
+  if (!index || !box) return [];
+
+  const minX = Number(box.minX);
+  const minY = Number(box.minY);
+  const maxX = Number(box.maxX);
+  const maxY = Number(box.maxY);
+  if (![minX, minY, maxX, maxY].every(Number.isFinite)) return [];
+
+  const minCellX = Math.floor(minX / index.cellSize);
+  const maxCellX = Math.floor(maxX / index.cellSize);
+  const minCellY = Math.floor(minY / index.cellSize);
+  const maxCellY = Math.floor(maxY / index.cellSize);
+  const seen = new Set();
+  const results = [];
+
+  for (let cx = minCellX; cx <= maxCellX; cx += 1) {
+    for (let cy = minCellY; cy <= maxCellY; cy += 1) {
+      const key = `${cx}:${cy}`;
+      const items = index.buckets.get(key);
+      if (!Array.isArray(items)) continue;
+
+      for (const item of items) {
+        if (seen.has(item)) continue;
+        seen.add(item);
+        results.push(item);
+      }
+    }
+  }
+
+  return results;
+}
+
 export function buildBoardRuntime({ board, rails = [], components = [], topology = null, thermal = null, railFile = null } = {}) {
   const spaces = computeBoardSpaces(board);
   const defaults = railFile?.defaults || {};
