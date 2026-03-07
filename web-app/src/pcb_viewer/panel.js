@@ -11,7 +11,13 @@ import {
   clearCache,
 } from "../assets/loader.js";
 import { buildBoardRuntime } from "./viewer/spatial_index.js";
-import { pickAtScreenPoint, pickBoardTarget, resolveMeasurementTarget, describePick } from "./viewer/picking.js";
+import {
+  pickAtScreenPoint,
+  pickBoardTarget,
+  resolveMeasurementTarget,
+  describePick,
+  screenToBoardPoint,
+} from "./viewer/picking.js";
 
 let viewerInstance = null;
 let railOverlays = [];
@@ -24,6 +30,13 @@ let psuTargetRail = null;
 let probeMode = true;
 let probeOverlays = [];
 let activeProbePolarity = "positive";
+let padPickerEnabled = false;
+let pickedPads = [];
+let pickedPadOverlays = [];
+let pickedPadCounter = 0;
+let latestPadPoint = null;
+let latestPickedPadId = null;
+const PAD_MARKER_DIAMETER_IMAGE_PX = 12;
 
 function buildProbeCursor({
   cable = "#151515",
@@ -195,6 +208,7 @@ export function clearScene() {
   clearOverlayList(railOverlays);
   clearOverlayList(componentOverlays);
   clearOverlayList(psuTargetOverlays);
+  clearOverlayList(pickedPadOverlays);
   safeDestroyViewer();
 
   currentBoard = null;
@@ -202,11 +216,163 @@ export function clearScene() {
   currentSelection = null;
   psuTargetRail = null;
   probeMode = true;
+  padPickerEnabled = false;
+  pickedPads = [];
+  pickedPadCounter = 0;
+  latestPadPoint = null;
+  latestPickedPadId = null;
 
   clearCache();
 
   const railSelect = document.querySelector("#rail-select");
   if (railSelect) railSelect.innerHTML = '<option value="">-- Select Rail --</option>';
+}
+
+function formatPadId(counter) {
+  return `PAD_${String(counter).padStart(3, "0")}`;
+}
+
+function createPickedPadOverlayElement(pad, isLatest) {
+  const element = document.createElement("div");
+  element.style.width = `${PAD_MARKER_DIAMETER_IMAGE_PX}px`;
+  element.style.height = `${PAD_MARKER_DIAMETER_IMAGE_PX}px`;
+  element.style.borderRadius = "50%";
+  element.style.border = isLatest ? "2px solid #ffffff" : "1px solid #ffffff";
+  element.style.background = isLatest ? "rgba(0, 224, 255, 0.95)" : "rgba(255, 99, 132, 0.95)";
+  element.style.boxShadow = isLatest
+    ? "0 0 10px rgba(0, 224, 255, 0.9)"
+    : "0 0 6px rgba(255, 99, 132, 0.75)";
+  element.style.pointerEvents = "none";
+  element.title = `${pad.id} @ (${pad.x}, ${pad.y})`;
+  return element;
+}
+
+function redrawPickedPadOverlays() {
+  clearOverlayList(pickedPadOverlays);
+  if (!viewerInstance || !currentBoardRuntime || !pickedPads.length) return;
+
+  const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
+
+  pickedPads.forEach((pad) => {
+    const xi = pad.x * sx;
+    const yi = pad.y * sy;
+    const markerRadiusX = Math.max(1, pad.radius * sx);
+    const markerRadiusY = Math.max(1, pad.radius * sy);
+
+    const rect = new OpenSeadragon.Rect(
+      (xi - markerRadiusX) / imgW,
+      (yi - markerRadiusY) / imgH,
+      (markerRadiusX * 2) / imgW,
+      (markerRadiusY * 2) / imgH
+    );
+
+    const element = createPickedPadOverlayElement(pad, pad.id === latestPickedPadId);
+    viewerInstance.addOverlay({ element, location: rect });
+    pickedPadOverlays.push({ element, padId: pad.id });
+  });
+}
+
+function createPadAtPoint(point, { radius = 6 } = {}) {
+  pickedPadCounter += 1;
+  const pad = {
+    id: formatPadId(pickedPadCounter),
+    x: Math.round(point.board.x),
+    y: Math.round(point.board.y),
+    radius,
+    label: null,
+    railId: null,
+    node: null,
+    componentId: null,
+    pinId: null,
+  };
+  pickedPads.push(pad);
+  latestPickedPadId = pad.id;
+  latestPadPoint = {
+    board: { ...point.board },
+    image: { ...point.image },
+    screen: { ...point.screen },
+  };
+  redrawPickedPadOverlays();
+  return pad;
+}
+
+function ensurePadPickerRuntime(actionName) {
+  if (!viewerInstance || !currentBoardRuntime) {
+    console.warn(`[pcb] ${actionName} requires a loaded board/runtime.`);
+    return false;
+  }
+  return true;
+}
+
+export function enablePadPicker() {
+  if (!ensurePadPickerRuntime("enablePadPicker")) return false;
+  padPickerEnabled = true;
+  const mountPoint = document.querySelector("#motherboardMap");
+  if (mountPoint) setStatus(mountPoint, "Pad picker enabled. Click motherboard to add pads.");
+  redrawPickedPadOverlays();
+  console.info("[pcb] Pad picker enabled");
+  return true;
+}
+
+export function disablePadPicker() {
+  padPickerEnabled = false;
+  const mountPoint = document.querySelector("#motherboardMap");
+  if (mountPoint) {
+    setStatus(
+      mountPoint,
+      probeMode
+        ? "Pad picker disabled. Probe mode active."
+        : "Pad picker disabled. Navigate mode active."
+    );
+  }
+  console.info("[pcb] Pad picker disabled");
+  return true;
+}
+
+export function listPickedPads() {
+  return pickedPads.map((pad) => ({ ...pad }));
+}
+
+export function clearPickedPads() {
+  pickedPads = [];
+  pickedPadCounter = 0;
+  latestPickedPadId = null;
+  latestPadPoint = null;
+  redrawPickedPadOverlays();
+  console.info("[pcb] Cleared picked pads");
+  return [];
+}
+
+export function removeLastPickedPad() {
+  if (!pickedPads.length) return null;
+  const removed = pickedPads.pop() || null;
+  latestPickedPadId = pickedPads.length ? pickedPads[pickedPads.length - 1].id : null;
+  redrawPickedPadOverlays();
+  console.info("[pcb] Removed picked pad", removed?.id || "");
+  return removed ? { ...removed } : null;
+}
+
+export function exportPickedPads() {
+  const payload = {
+    boardId: currentBoard?.id || currentBoardRuntime?.board?.id || null,
+    pads: listPickedPads(),
+  };
+  return payload;
+}
+
+export function exportPickedPadsJson() {
+  return JSON.stringify(exportPickedPads(), null, 2);
+}
+
+export function dumpViewerRuntime() {
+  return {
+    boardId: currentBoard?.id || null,
+    padPickerEnabled,
+    pickedPadCount: pickedPads.length,
+    latestPadPoint,
+    probeMode,
+    selection: currentSelection,
+  };
 }
 
 function createRectOverlay({ border, background, boxShadow = "none" }) {
@@ -417,7 +583,26 @@ export function setPsuTargetRail(railId) {
 }
 
 function handleCanvasClick(event) {
-  if (!event?.quick || !viewerInstance || !currentBoardRuntime || !probeMode) return;
+  if (!event?.quick || !viewerInstance || !currentBoardRuntime) return;
+
+  if (padPickerEnabled) {
+    const point = screenToBoardPoint(viewerInstance, currentBoardRuntime, event.position);
+    if (!point) {
+      console.warn("[pcb] Could not resolve click point for pad picker.");
+      return;
+    }
+
+    const pad = createPadAtPoint(point, { radius: 6 });
+    const mountPoint = document.querySelector("#motherboardMap");
+    if (mountPoint) {
+      setStatus(mountPoint, `Picked ${pad.id} @ (${pad.x}, ${pad.y})`);
+    }
+    console.info("[pcb] Pad picked", pad);
+    event.preventDefaultAction = true;
+    return;
+  }
+
+  if (!probeMode) return;
   const picked = pickAtScreenPoint(viewerInstance, currentBoardRuntime, event.position);
   if (!picked) {
     const mountPoint = document.querySelector("#motherboardMap");
@@ -669,6 +854,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         railFile,
       });
       currentSelection = null;
+      redrawPickedPadOverlays();
 
       viewerInstance.addHandler("canvas-click", handleCanvasClick);
 
@@ -755,6 +941,15 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     getBoardList,
     getCurrentRuntime: () => currentBoardRuntime,
     getCurrentSelection: () => currentSelection,
+    isPadPickerEnabled: () => padPickerEnabled,
+    enablePadPicker,
+    disablePadPicker,
+    listPickedPads,
+    clearPickedPads,
+    removeLastPickedPad,
+    exportPickedPads,
+    exportPickedPadsJson,
+    dumpViewerRuntime,
     setProbePolarity,
     debugPick,
   };
