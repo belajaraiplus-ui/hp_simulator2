@@ -527,6 +527,21 @@ function validateElectricalProperties(props, ctx) {
   }
 }
 
+
+function isLikelyKind(component, checks = []) {
+  const kind = String(component?.kind || "").toLowerCase();
+  const ref = String(component?.refdes || component?.id || "").toLowerCase();
+  return checks.some((token) => kind.includes(token) || ref.startsWith(token[0] || ""));
+}
+
+function hasTwoPinMapping(component) {
+  const pins = Array.isArray(component?.pins) ? component.pins : [];
+  const pads = Array.isArray(component?.pads) ? component.pads : [];
+  const contacts = [...pins, ...pads];
+  const distinct = new Set(contacts.map((entry) => entry?.node || entry?.rail || entry?.railId).filter(Boolean));
+  return contacts.length >= 2 && distinct.size >= 1;
+}
+
 function validateComponents(compJson, boardId, railIds, boardJson, topology) {
   const comps = compJson?.components;
   if (!Array.isArray(comps)) fail(`${boardId}: components.json must contain { components: [...] }`);
@@ -564,6 +579,28 @@ function validateComponents(compJson, boardId, railIds, boardJson, topology) {
 
     if (!pins.length && !pads.length && !hintRails.length) {
       warn(`${ctx} (${c.id}): no pins/pads/rail hints; diagnosis resolution may be weak`);
+    }
+
+    const clickable = Boolean(c.bbox || c.shape);
+    const props = c.electricalProperties || c.electrical || {};
+    const twoPin = hasTwoPinMapping(c);
+    if (clickable && !pins.length && !pads.length && !allRails.length && !Object.keys(props || {}).length) {
+      warn(`${ctx}: component has clickable geometry but no measurable mapping`);
+    }
+    if ((isLikelyKind(c, ["res", "resistor"]) || String(c?.refdes || "").toUpperCase().startsWith("R"))
+      && !Number.isFinite(Number(props?.ohm ?? props?.resistance_ohm))
+      && !twoPin) {
+      warn(`${ctx}: resistor-like component missing ohms and no two-pin mapping`);
+    }
+    if ((isLikelyKind(c, ["diode"]) || String(c?.refdes || "").toUpperCase().startsWith("D"))
+      && !Number.isFinite(Number(props?.diodeDrop ?? props?.diodeDrop_v ?? props?.forward_voltage))
+      && !twoPin) {
+      warn(`${ctx}: diode-like component missing diodeDrop and no pin mapping`);
+    }
+    if ((isLikelyKind(c, ["fuse", "jumper"]) || String(c?.refdes || "").toUpperCase().startsWith("F"))
+      && props?.continuity === undefined
+      && !twoPin) {
+      warn(`${ctx}: continuity-capable component missing continuity logic hints`);
     }
 
     pins.forEach((pin, pIdx) => {

@@ -524,7 +524,7 @@ function applySelectionVisuals(pick) {
     if (rail) drawRailOverlay(rail);
     return;
   }
-  if (pick.type === "component") {
+  if (pick.type === "component" || pick.type === "component-pin") {
     const component = currentBoardRuntime?.componentsById?.[pick.componentId];
     if (component) drawComponentOverlay(component);
     return;
@@ -559,6 +559,7 @@ function dispatchSelection(pick, { source = "board" } = {}) {
   };
 
   window.dispatchEvent(new CustomEvent("pcb:target-picked", { detail }));
+  window.dispatchEvent(new CustomEvent("pcb:measurement-target-selected", { detail }));
   return detail;
 }
 

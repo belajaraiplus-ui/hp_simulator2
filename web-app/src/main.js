@@ -285,6 +285,7 @@ function buildManualMeasurementTarget() {
       rails: component?.rails || [],
       pins: component?.pins || [],
       label: component?.refdes || component?.label || componentId,
+      source: "multimeter-ui",
     };
   }
 
@@ -296,6 +297,7 @@ function buildManualMeasurementTarget() {
     id: `rail:${railId}`,
     railId,
     label: rail?.label || railId,
+    source: "multimeter-ui",
   };
 }
 
@@ -308,6 +310,7 @@ function buildReferenceTarget() {
     id: `rail:${railId}`,
     railId,
     label: rail?.label || railId,
+    source: "multimeter-ui",
   };
 }
 
@@ -324,7 +327,7 @@ function resolveTargetRailHint(target) {
 function syncMultimeterInputsFromTarget(target) {
   if (!target) return;
 
-  if (target.type === "component") {
+  if (target.type === "component" || target.type === "component-pin") {
     if (multimeterTargetTypeEl) {
       multimeterTargetTypeEl.value = "component";
       multimeterTargetTypeEl.dispatchEvent(new Event("change"));
@@ -332,7 +335,7 @@ function syncMultimeterInputsFromTarget(target) {
     if (multimeterComponentEl) {
       multimeterComponentEl.value = target.componentId || "";
     }
-    const railHint = Array.isArray(target.rails) ? target.rails[0] : "";
+    const railHint = target.railId || (Array.isArray(target.rails) ? target.rails[0] : "");
     if (multimeterRailEl && railHint) multimeterRailEl.value = railHint;
     return;
   }
@@ -843,6 +846,19 @@ document.addEventListener("DOMContentLoaded", () => {
   window.dumpComponents = () => currentBoardRuntime?.components || [];
   window.debugPick = (x, y) => pcbViewerAPI?.debugPick?.(x, y) || null;
   window.debugMeasureCurrentSelection = () => performMultimeterMeasurement(currentMeasurementSelection?.target || buildManualMeasurementTarget(), { source: "debug" });
+  window.dumpSelectedMeasurementTarget = () => currentMeasurementSelection?.target || null;
+  window.dumpLastMeasurementResult = () => latestMultimeterUiState || null;
+  window.debugComponentMeasurement = (componentId, mode = null) => {
+    if (!componentId) return null;
+    const target = {
+      type: "component",
+      id: `component:${componentId}`,
+      componentId,
+      source: "debug",
+    };
+    if (mode && multimeterModeEl) multimeterModeEl.value = mode;
+    return performMultimeterMeasurement(target, { source: "debug-component" });
+  };
 
   // 2.5) INIT BOARD SELECTOR IN TOPBAR
   async function initBoardSelector() {
@@ -968,30 +984,37 @@ document.addEventListener("DOMContentLoaded", () => {
   multimeterRailBEl?.addEventListener("focus", () => setActiveProbePolarity("negative"));
   multimeterRailBEl?.addEventListener("pointerdown", () => setActiveProbePolarity("negative"));
 
-  window.addEventListener("pcb:target-picked", async (evt) => {
+  window.addEventListener("pcb:measurement-target-selected", (evt) => {
     const detail = evt?.detail || {};
+    const target = detail.target || null;
     currentBoardRuntime = detail.boardRuntime || currentBoardRuntime;
+
     if (activeProbePolarity === "negative") {
-      syncReferenceInputFromTarget(detail.target);
-      const measurementTarget = currentMeasurementSelection?.target || buildManualMeasurementTarget();
-      if (measurementTarget) {
-        await performMultimeterMeasurement(measurementTarget, { source: `${detail.source || "board"}:negative-probe` });
-      } else {
-        renderMultimeterFeedback({
-          ...latestMultimeterUiState,
-          status: "idle",
-          helpText: "Negative probe updated from PCB click. Select or keep a positive target, then measure again.",
-          summary: `Negative probe set to ${resolveTargetRailHint(detail.target) || "None"}.`,
-        });
-      }
+      syncReferenceInputFromTarget(target);
+      renderMultimeterFeedback({
+        ...latestMultimeterUiState,
+        targetLabel: latestMultimeterUiState?.targetLabel || "None",
+        status: "idle",
+        helpText: "Negative probe reference updated from PCB click. Press MEASURE to re-read.",
+        summary: `Mode: ${normalizeMultimeterMode(multimeterModeEl?.value || "voltage")} | Target: ${latestMultimeterUiState?.targetLabel || "None"} | Result: ${latestMultimeterUiState?.displayValue || "--"}`,
+      });
       return;
     }
 
-    currentMeasurementSelection = detail.target
-      ? { target: detail.target, source: detail.source || "board" }
-      : currentMeasurementSelection;
-    syncMultimeterInputsFromTarget(detail.target);
-    await performMultimeterMeasurement(detail.target, { source: detail.source || "board" });
+    if (!target) return;
+    currentMeasurementSelection = { target, source: detail.source || "board" };
+    syncMultimeterInputsFromTarget(target);
+
+    const mode = normalizeMultimeterMode(multimeterModeEl?.value || "voltage");
+    const selectedLabel = target.label || target.componentId || target.railId || target.id || "Unknown";
+    renderMultimeterFeedback({
+      ...latestMultimeterUiState,
+      mode,
+      targetLabel: selectedLabel,
+      status: "idle",
+      helpText: "Target selected from PCB viewer. Press MEASURE to read value.",
+      summary: `Mode: ${mode} | Target: ${selectedLabel} | Result: ${latestMultimeterUiState?.displayValue || "--"}`,
+    });
   });
   window.addEventListener("pcb:pick-missed", () => {
     renderMultimeterFeedback({

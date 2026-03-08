@@ -114,6 +114,92 @@ function pickComponent(boardRuntime, boardPoint) {
   return winner?.item || null;
 }
 
+function extractContactPoint(contact) {
+  if (!contact || typeof contact !== "object") return null;
+  const x = Number(contact.x ?? contact.cx ?? contact.px);
+  const y = Number(contact.y ?? contact.cy ?? contact.py);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function inferComponentModeHints(component) {
+  if (!component) return [];
+  const hints = new Set();
+  const props = component.electricalProperties || {};
+  const kind = String(component.kind || "").toLowerCase();
+  const ref = String(component.refdes || component.id || "").toLowerCase();
+
+  if (Number.isFinite(Number(props.ohm ?? props.resistance_ohm))) hints.add("ohm");
+  if (Number.isFinite(Number(props.diodeDrop ?? props.diodeDrop_v ?? props.forward_voltage))) hints.add("diode");
+  if (props.continuity !== undefined) hints.add("continuity");
+  if (component.rails?.length || component.hints?.rails?.length) hints.add("voltage");
+
+  if (kind.includes("res") || ref.startsWith("r")) hints.add("ohm");
+  if (kind.includes("diode") || ref.startsWith("d")) hints.add("diode");
+  if (kind.includes("fuse") || ref.startsWith("f") || kind.includes("jumper")) hints.add("continuity");
+
+  return [...hints];
+}
+
+function pickComponentPin(component, boardPoint, boardRuntime) {
+  if (!component || !boardPoint || !boardRuntime) return null;
+
+  const contacts = [
+    ...(Array.isArray(component.pins) ? component.pins : []).map((pin, index) => ({ kind: "pin", index, data: pin })),
+    ...(Array.isArray(component.pads) ? component.pads : []).map((pad, index) => ({ kind: "pad", index, data: pad })),
+  ].map((entry) => {
+    const point = extractContactPoint(entry.data);
+    if (!point) return null;
+    return {
+      ...entry,
+      point,
+      distance: distanceSq(boardPoint, point),
+    };
+  }).filter(Boolean);
+
+  if (!contacts.length) return null;
+
+  const hitRadius = Math.max(6 / (boardRuntime?.spaces?.sx || 1), 6 / (boardRuntime?.spaces?.sy || 1), 4);
+  const [winner] = contacts
+    .filter((entry) => entry.distance <= hitRadius * hitRadius)
+    .sort((a, b) => a.distance - b.distance);
+
+  if (!winner) return null;
+  const pinId = String(winner.data?.id || `${winner.kind.toUpperCase()}_${winner.index + 1}`);
+  const railId = winner.data?.railId || winner.data?.rail || null;
+  const node = winner.data?.node || null;
+
+  return {
+    type: "component-pin",
+    id: `${component.id}:${pinId}`,
+    componentId: component.id,
+    componentKind: component.kind,
+    pinId,
+    node,
+    railId,
+    label: `${component.refdes || component.id} (${pinId})`,
+    modeHints: inferComponentModeHints(component),
+    raw: winner.data,
+  };
+}
+
+function resolveComponentMeasurementCandidate(component) {
+  if (!component) return null;
+  return {
+    type: "component",
+    id: component.id,
+    componentId: component.id,
+    componentKind: component.kind,
+    pinId: null,
+    rails: component.rails,
+    node: component.node || null,
+    railId: component.rails?.[0] || component.hints?.rails?.[0] || null,
+    label: component.label,
+    modeHints: inferComponentModeHints(component),
+    raw: component,
+  };
+}
+
 function pickRail(boardRuntime, boardPoint) {
   const candidates = querySpatialIndex(boardRuntime.indices.rails, boardPoint.x, boardPoint.y)
     .filter((rail) => pointInBox(boardPoint, rail.overlayBox))
@@ -137,6 +223,7 @@ export function resolveMeasurementTarget(pick) {
       railId: pick.railId,
       probeId: pick.probeId,
       label: pick.label || pick.probeId,
+      source: "pcb-viewer",
     };
   }
 
@@ -145,9 +232,29 @@ export function resolveMeasurementTarget(pick) {
       type: "component",
       id: `component:${pick.componentId}`,
       componentId: pick.componentId,
+      componentKind: pick.componentKind || null,
+      pinId: null,
+      node: pick.node || null,
+      railId: pick.railId || null,
       rails: Array.isArray(pick.rails) ? pick.rails : [],
-      pins: Array.isArray(pick.pins) ? pick.pins : [],
+      modeHints: Array.isArray(pick.modeHints) ? pick.modeHints : [],
       label: pick.label || pick.componentId,
+      source: "pcb-viewer",
+    };
+  }
+
+  if (pick.type === "component-pin") {
+    return {
+      type: "component-pin",
+      id: `component-pin:${pick.componentId}:${pick.pinId}`,
+      componentId: pick.componentId,
+      componentKind: pick.componentKind || null,
+      pinId: pick.pinId,
+      node: pick.node || null,
+      railId: pick.railId || null,
+      modeHints: Array.isArray(pick.modeHints) ? pick.modeHints : [],
+      label: pick.label || `${pick.componentId}:${pick.pinId}`,
+      source: "pcb-viewer",
     };
   }
 
@@ -157,6 +264,7 @@ export function resolveMeasurementTarget(pick) {
       id: `rail:${pick.railId}`,
       railId: pick.railId,
       label: pick.label || pick.railId,
+      source: "pcb-viewer",
     };
   }
 
@@ -164,11 +272,12 @@ export function resolveMeasurementTarget(pick) {
     return {
       type: "node",
       id: `node:${pick.nodeId}`,
-      nodeId: pick.nodeId,
+      node: pick.nodeId,
       railId: pick.railId || null,
       componentId: pick.componentId || null,
       pinId: pick.pinId || null,
       label: pick.label || pick.nodeId,
+      source: "pcb-viewer",
     };
   }
 
@@ -198,16 +307,20 @@ export function pickBoardTarget(boardRuntime, boardPointLike) {
 
   const component = pickComponent(boardRuntime, boardPoint);
   if (component) {
+    const componentPin = pickComponentPin(component, boardPoint, boardRuntime);
+    if (componentPin) {
+      return {
+        ...componentPin,
+        boardPoint,
+        imagePoint,
+      };
+    }
+
+    const candidate = resolveComponentMeasurementCandidate(component);
     return {
-      type: "component",
-      id: component.id,
-      componentId: component.id,
-      label: component.label,
-      rails: component.rails,
-      pins: component.pins,
+      ...candidate,
       boardPoint,
       imagePoint,
-      raw: component,
     };
   }
 
@@ -241,6 +354,7 @@ export function pickAtScreenPoint(viewer, boardRuntime, screenPoint) {
 export function describePick(pick) {
   if (!pick) return "No measurable target";
   if (pick.type === "probe") return `Probe ${pick.probeId} on ${pick.railId}`;
+  if (pick.type === "component-pin") return `Component ${pick.componentId} pin ${pick.pinId}`;
   if (pick.type === "component") return `Component ${pick.componentId}`;
   if (pick.type === "rail") return `Rail ${pick.railId}`;
   if (pick.type === "node") return `Node ${pick.nodeId}`;

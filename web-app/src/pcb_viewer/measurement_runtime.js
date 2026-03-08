@@ -2,44 +2,9 @@ import { measureRailVoltage, measureRailResistance, measureContinuity } from "..
 
 const DEFAULT_CONTINUITY = {
   beep_below_ohms: 50,
-  open_above_ohms: 200,
 };
 
-function logDiagnostic(level, message, details = null) {
-  const prefix = `[multimeter:${level}] ${message}`;
-  if (level === "error") console.error(prefix, details || "");
-  else if (level === "warn") console.warn(prefix, details || "");
-  else console.log(prefix, details || "");
-}
-
-export function normalizeMode(mode) {
-  const value = String(mode || "").trim().toLowerCase();
-  if (value === "resistance") return "ohm";
-  if (value === "voltage" || value === "ohm" || value === "diode" || value === "continuity") return value;
-  return "voltage";
-}
-
-function formatVoltage(value) {
-  return `${Number(value).toFixed(Math.abs(value) >= 10 ? 2 : 3)} V`;
-}
-
-function formatOhms(value) {
-  if (!Number.isFinite(value)) return "OL";
-  if (value >= 1.0e8) return "OL";
-  if (value >= 1.0e6) return `${(value / 1.0e6).toFixed(2)} MOhm`;
-  if (value >= 1.0e3) return `${(value / 1.0e3).toFixed(2)} kOhm`;
-  return `${value.toFixed(value >= 100 ? 1 : 2)} Ohm`;
-}
-
-function midpoint(range) {
-  if (!range || typeof range !== "object") return null;
-  const min = Number(range.min);
-  const max = Number(range.max);
-  if (Number.isFinite(min) && Number.isFinite(max)) return (min + max) / 2;
-  return null;
-}
-
-function resolveRuntimeRailId(boardRuntime, railId) {
+function normalizeRail(boardRuntime, railId) {
   const raw = String(railId || "").trim();
   if (!raw) return null;
   if (boardRuntime?.railsById?.[raw]) return raw;
@@ -47,319 +12,302 @@ function resolveRuntimeRailId(boardRuntime, railId) {
   return Object.keys(boardRuntime?.railsById || {}).find((candidate) => candidate.toLowerCase() === wanted) || null;
 }
 
+function normalizeMode(mode) {
+  const value = String(mode || "").trim().toLowerCase();
+  if (value === "resistance") return "ohm";
+  if (["voltage", "ohm", "diode", "continuity"].includes(value)) return value;
+  return "voltage";
+}
+
+function componentByTarget(boardRuntime, target) {
+  if (!target) return null;
+  if (target.type !== "component" && target.type !== "component-pin") return null;
+  return boardRuntime?.componentsById?.[target.componentId] || null;
+}
+
+function collectComponentContacts(component) {
+  const pins = Array.isArray(component?.pins) ? component.pins : [];
+  const pads = Array.isArray(component?.pads) ? component.pads : [];
+  return [...pins, ...pads].map((entry, idx) => ({
+    id: String(entry?.id || `PIN_${idx + 1}`),
+    node: entry?.node || null,
+    railId: entry?.railId || entry?.rail || null,
+    raw: entry,
+  }));
+}
+
+function firstUsableContact(component, boardRuntime) {
+  return collectComponentContacts(component).find((entry) => normalizeRail(boardRuntime, entry.railId) || entry.node) || null;
+}
+
 function firstRailId(target, boardRuntime) {
   if (!target) return null;
-  if (target.railId) return resolveRuntimeRailId(boardRuntime, target.railId);
-  if (target.type === "component") {
-    const component = boardRuntime?.componentsById?.[target.componentId];
-    const refs = component?.rails || target.rails || [];
-    return refs.map((railId) => resolveRuntimeRailId(boardRuntime, railId)).find(Boolean) || null;
+  if (target.type === "probe" || target.type === "rail") return normalizeRail(boardRuntime, target.railId);
+  if (target.type === "node") return normalizeRail(boardRuntime, target.railId);
+
+  const component = componentByTarget(boardRuntime, target);
+  if (!component) return null;
+
+  if (target.type === "component-pin") {
+    const railFromPin = normalizeRail(boardRuntime, target.railId);
+    if (railFromPin) return railFromPin;
+    const found = collectComponentContacts(component).find((pin) => pin.id === target.pinId);
+    const pinRail = normalizeRail(boardRuntime, found?.railId);
+    if (pinRail) return pinRail;
   }
-  if (target.type === "node" && target.railId) {
-    return resolveRuntimeRailId(boardRuntime, target.railId);
+
+  const declared = [
+    target.railId,
+    ...(Array.isArray(component?.rails) ? component.rails : []),
+    ...(Array.isArray(component?.hints?.rails) ? component.hints.rails : []),
+  ];
+  for (const candidate of declared) {
+    const railId = normalizeRail(boardRuntime, candidate);
+    if (railId) return railId;
   }
-  return null;
+
+  const contact = firstUsableContact(component, boardRuntime);
+  return normalizeRail(boardRuntime, contact?.railId);
 }
 
 function secondRailId(target, boardRuntime, reference = null) {
-  if (reference?.railId) return resolveRuntimeRailId(boardRuntime, reference.railId);
-  if (target?.type === "component") {
-    const component = boardRuntime?.componentsById?.[target.componentId];
-    const rails = component?.rails || target.rails || [];
-    const primary = firstRailId(target, boardRuntime);
-    return rails
-      .map((railId) => resolveRuntimeRailId(boardRuntime, railId))
-      .find((railId) => railId && railId !== primary) || null;
+  const refRail = normalizeRail(boardRuntime, reference?.railId);
+  if (refRail) return refRail;
+
+  const component = componentByTarget(boardRuntime, target);
+  if (!component) return null;
+  const primary = firstRailId(target, boardRuntime);
+
+  const candidates = [
+    ...(Array.isArray(component?.rails) ? component.rails : []),
+    ...(Array.isArray(component?.hints?.rails) ? component.hints.rails : []),
+    ...collectComponentContacts(component).map((pin) => pin.railId),
+  ];
+
+  for (const candidate of candidates) {
+    const railId = normalizeRail(boardRuntime, candidate);
+    if (railId && railId !== primary) return railId;
   }
+
   return null;
-}
-
-function continuityConfig(target, boardRuntime) {
-  const railId = firstRailId(target, boardRuntime);
-  const rail = railId ? boardRuntime?.railsById?.[railId] : null;
-  return rail?.continuity || boardRuntime?.defaults?.continuity || DEFAULT_CONTINUITY;
-}
-
-function resolveComponent(boardRuntime, target) {
-  if (target?.type !== "component") return null;
-  return boardRuntime?.componentsById?.[target.componentId] || null;
 }
 
 function targetLabel(target, boardRuntime) {
   if (!target) return "None";
+  if (target.type === "component-pin") {
+    const component = componentByTarget(boardRuntime, target);
+    const base = component?.refdes || component?.id || target.componentId;
+    return `${base} (pin ${target.pinId})`;
+  }
   if (target.type === "component") {
-    const component = resolveComponent(boardRuntime, target);
-    return component?.refdes || component?.label || target.componentId;
+    const component = componentByTarget(boardRuntime, target);
+    return component?.refdes || component?.id || target.componentId;
   }
-  if (target.type === "probe") {
-    return target.probeId || target.label || target.id;
-  }
-  if (target.type === "rail") {
-    const rail = boardRuntime?.railsById?.[target.railId];
-    return rail?.label || target.railId;
-  }
-  if (target.type === "node") {
-    return target.nodeId || target.label || target.id;
-  }
+  if (target.type === "rail") return target.railId || target.id;
+  if (target.type === "probe") return target.label || target.probeId || target.id;
+  if (target.type === "node") return target.node || target.id;
   return target.label || target.id || "Unknown";
 }
 
-function makeResult({ ok, mode, target, boardRuntime, value = null, units = "", displayValue = "--", status = "ok", helpText = "", diagnostic = "", beep = false }) {
+function formatOhms(value) {
+  if (!Number.isFinite(value)) return "OL";
+  if (value >= 1.0e8) return "OL";
+  if (value >= 1.0e6) return `${(value / 1.0e6).toFixed(2)} MΩ`;
+  if (value >= 1.0e3) return `${(value / 1.0e3).toFixed(1)} kΩ`;
+  return `${value.toFixed(value >= 100 ? 1 : 2)} Ω`;
+}
+
+function createResult({ ok, mode, target, boardRuntime, value = null, unit = "", display = "--", message = "", code = "", beep = false }) {
   const label = targetLabel(target, boardRuntime);
-  const result = {
+  return {
     ok,
     mode,
+    code: ok ? undefined : code || "MEASUREMENT_FAILED",
+    message: ok ? undefined : message,
     target,
     targetLabel: label,
-    targetType: target?.type || "unknown",
     value,
-    units,
-    displayValue,
-    status,
-    helpText,
-    diagnostic,
-    beep,
-    summary: `Mode: ${mode} | Target: ${label} | Result: ${displayValue}`,
+    unit,
+    display,
+    displayValue: display,
+    status: ok ? "ok" : "warning",
+    helpText: message || (ok ? "Measurement complete." : "Measurement failed."),
+    summary: `Mode: ${mode} | Target: ${label} | Result: ${display}`,
     historyTarget: `${mode.toUpperCase()} ${label}`,
     historyValue: Number.isFinite(value) ? value : null,
+    beep,
   };
-
-  if (!ok) {
-    logDiagnostic(status === "error" ? "error" : "warn", diagnostic || helpText || "Measurement failed", { mode, target });
-  }
-  return result;
 }
 
-function resolveDiodeValue(target, boardRuntime) {
-  const railId = firstRailId(target, boardRuntime);
-  const rail = railId ? boardRuntime?.railsById?.[railId] : null;
-  const component = resolveComponent(boardRuntime, target);
-
-  const explicitDrop = Number(component?.electricalProperties?.diodeDrop ?? component?.electricalProperties?.forward_voltage);
-  if (Number.isFinite(explicitDrop)) return explicitDrop;
-
-  const expected = midpoint(rail?.expected?.diode_drop_v);
-  if (Number.isFinite(expected)) return expected;
-
-  const kind = String(component?.kind || "").toLowerCase();
-  const tags = (component?.tags || []).map((tag) => String(tag).toLowerCase());
-  const semiconductor = kind.includes("ic") || kind.includes("diode") || kind.includes("mos") || tags.includes("pmic") || tags.includes("power");
-  if (semiconductor && railId) {
-    const railVoltage = measureRailVoltage(railId);
-    if (railVoltage <= 0.05) return 0.08;
-    return Math.min(0.85, Math.max(0.18, railVoltage * 0.08));
-  }
-
-  return null;
-}
-
-function resolveComponentResistance(target, boardRuntime, reference = null) {
-  const component = resolveComponent(boardRuntime, target);
-  const explicit = Number(component?.electricalProperties?.ohm ?? component?.electricalProperties?.resistance_ohm);
-  if (Number.isFinite(explicit)) return explicit;
-
-  const railA = firstRailId(target, boardRuntime);
-  const railB = secondRailId(target, boardRuntime, reference);
-  if (railA) return measureRailResistance(railA, railB);
-  return Number.NaN;
-}
-
-function componentSupportsDiode(component) {
-  const kind = String(component?.kind || "").toLowerCase();
-  const ref = String(component?.refdes || component?.id || "").toLowerCase();
-  const tags = (component?.tags || []).map((tag) => String(tag).toLowerCase());
-  if (kind.includes("diode") || ref.startsWith("d")) return true;
-  if (kind.includes("ic") || kind.includes("mos") || kind.includes("transistor")) return true;
-  if (tags.includes("pmic") || tags.includes("power")) return true;
-  return false;
+function componentNotMeasurable(mode, target, boardRuntime, reason) {
+  return createResult({
+    ok: false,
+    mode,
+    target,
+    boardRuntime,
+    code: "COMPONENT_NOT_MEASURABLE",
+    message: reason,
+    display: reason,
+  });
 }
 
 function measureVoltage(target, boardRuntime) {
   const railId = firstRailId(target, boardRuntime);
   if (!railId) {
-    return makeResult({
-      ok: false,
-      mode: "voltage",
+    return componentNotMeasurable(
+      "voltage",
       target,
       boardRuntime,
-      status: "warning",
-      helpText: "Selected target has no rail mapping for voltage measurement.",
-      diagnostic: "missing rail mapping for voltage",
-    });
+      "Selected component is visible but does not yet have pins/pads/electrical mapping for voltage mode."
+    );
   }
 
   const value = measureRailVoltage(railId);
-  return makeResult({
+  return createResult({
     ok: true,
     mode: "voltage",
     target,
     boardRuntime,
     value,
-    units: "V",
-    displayValue: formatVoltage(value),
-    helpText: `Resolved through rail ${railId}.`,
-    diagnostic: `voltage measured on ${railId}`,
+    unit: "V",
+    display: `${Number(value).toFixed(Math.abs(value) >= 10 ? 2 : 3)} V`,
   });
 }
 
-function measureOhm(target, boardRuntime, reference = null) {
+function measureOhm(target, boardRuntime, reference) {
+  const component = componentByTarget(boardRuntime, target);
   let value = Number.NaN;
-  if (target?.type === "component") {
-    value = resolveComponentResistance(target, boardRuntime, reference);
+
+  if (component) {
+    const explicit = Number(component?.electricalProperties?.ohm ?? component?.electricalProperties?.resistance_ohm);
+    if (Number.isFinite(explicit)) value = explicit;
+    else {
+      const railA = firstRailId(target, boardRuntime);
+      const railB = secondRailId(target, boardRuntime, reference);
+      if (railA && railB) value = measureRailResistance(railA, railB);
+    }
   } else {
     const railA = firstRailId(target, boardRuntime);
-    const railB = secondRailId(target, boardRuntime, reference) || reference?.railId || null;
+    const railB = secondRailId(target, boardRuntime, reference);
     if (railA) value = measureRailResistance(railA, railB);
   }
 
   if (!Number.isFinite(value)) {
-    return makeResult({
-      ok: false,
-      mode: "ohm",
+    return componentNotMeasurable(
+      "ohm",
       target,
       boardRuntime,
-      status: "warning",
-      helpText: "Selected target is not measurable in ohm mode with current board data.",
-      diagnostic: "missing resistance mapping",
-    });
+      "Selected component has no pins, pads, node mapping, or electrical properties for ohm mode."
+    );
   }
 
-  return makeResult({
-    ok: true,
-    mode: "ohm",
-    target,
-    boardRuntime,
-    value,
-    units: "Ohm",
-    displayValue: formatOhms(value),
-    helpText: reference?.railId ? `Measured between ${targetLabel(target, boardRuntime)} and ${reference.railId}.` : "Measured against ground/reference path.",
-    diagnostic: "resistance measurement resolved",
-  });
+  return createResult({ ok: true, mode: "ohm", target, boardRuntime, value, unit: "ohm", display: formatOhms(value) });
 }
 
 function measureDiode(target, boardRuntime) {
-  const component = resolveComponent(boardRuntime, target);
-  if (component && !componentSupportsDiode(component)) {
-    return makeResult({
-      ok: false,
-      mode: "diode",
+  const component = componentByTarget(boardRuntime, target);
+  const diode = Number(component?.electricalProperties?.diodeDrop ?? component?.electricalProperties?.forward_voltage);
+
+  if (!Number.isFinite(diode)) {
+    return componentNotMeasurable(
+      "diode",
       target,
       boardRuntime,
-      status: "warning",
-      helpText: `${component.refdes || component.id} is not a suitable diode-mode target yet.`,
-      diagnostic: "component not suitable for diode mode",
-    });
+      "Selected component is visible but does not yet have pins/pads/electrical mapping for diode mode."
+    );
   }
 
-  const value = resolveDiodeValue(target, boardRuntime);
-  if (!Number.isFinite(value)) {
-    return makeResult({
-      ok: false,
-      mode: "diode",
-      target,
-      boardRuntime,
-      status: "warning",
-      helpText: "No diode path could be derived from the selected target.",
-      diagnostic: "missing diode mapping",
-    });
-  }
-
-  return makeResult({
-    ok: true,
-    mode: "diode",
-    target,
-    boardRuntime,
-    value,
-    units: "V",
-    displayValue: `${value.toFixed(2)} V`,
-    helpText: "Forward drop estimated from board rail/component metadata.",
-    diagnostic: "diode measurement resolved",
-  });
+  return createResult({ ok: true, mode: "diode", target, boardRuntime, value: diode, unit: "V", display: `${diode.toFixed(2)} V` });
 }
 
-function measureContinuityMode(target, boardRuntime, reference = null) {
-  const ohmResult = measureOhm(target, boardRuntime, reference);
-  if (!ohmResult.ok || !Number.isFinite(ohmResult.value)) {
-    return makeResult({
-      ok: false,
-      mode: "continuity",
-      target,
-      boardRuntime,
-      status: "warning",
-      helpText: ohmResult.helpText || "Continuity could not be resolved.",
-      diagnostic: ohmResult.diagnostic || "continuity missing resistance mapping",
-    });
+function measureContinuityMode(target, boardRuntime, reference) {
+  const component = componentByTarget(boardRuntime, target);
+  const explicit = component?.electricalProperties?.continuity;
+  let yes = null;
+  let ohm = Number.NaN;
+
+  if (typeof explicit === "boolean") {
+    yes = explicit;
+    ohm = explicit ? 0.2 : 1.0e9;
+  } else {
+    const ohmResult = measureOhm(target, boardRuntime, reference);
+    if (ohmResult.ok && Number.isFinite(ohmResult.value)) {
+      ohm = ohmResult.value;
+      const threshold = Number(boardRuntime?.defaults?.continuity?.beep_below_ohms ?? DEFAULT_CONTINUITY.beep_below_ohms);
+      yes = ohm <= threshold;
+    } else {
+      const railA = firstRailId(target, boardRuntime);
+      const railB = secondRailId(target, boardRuntime, reference);
+      if (railA) {
+        const c = measureContinuity(railA, railB);
+        if (c === 0 || c === 1) {
+          yes = c === 1;
+          ohm = yes ? 0.2 : 1.0e9;
+        }
+      }
+    }
   }
 
-  const cfg = continuityConfig(target, boardRuntime);
-  const threshold = Number(cfg?.beep_below_ohms);
-  const beep = Number.isFinite(threshold) ? ohmResult.value <= threshold : measureContinuity(firstRailId(target, boardRuntime), reference?.railId || null) === 1;
-  const displayValue = beep ? `Continuity: YES (${formatOhms(ohmResult.value)})` : `Continuity: NO (${formatOhms(ohmResult.value)})`;
+  if (yes === null) {
+    return componentNotMeasurable(
+      "continuity",
+      target,
+      boardRuntime,
+      "Selected component has no continuity property and no two-point mapping for continuity mode."
+    );
+  }
 
-  return makeResult({
+  return createResult({
     ok: true,
     mode: "continuity",
     target,
     boardRuntime,
-    value: ohmResult.value,
-    units: "Ohm",
-    displayValue,
-    helpText: beep ? "Path is below continuity threshold." : "Path is above continuity threshold.",
-    diagnostic: "continuity measurement resolved",
-    beep,
+    value: ohm,
+    unit: "ohm",
+    display: `Continuity: ${yes ? "YES" : "NO"}`,
+    beep: Boolean(yes),
   });
 }
 
 export async function measureTarget({ mode, target, reference = null, boardRuntime }) {
   const normalizedMode = normalizeMode(mode);
   if (!boardRuntime) {
-    return makeResult({
+    return createResult({
       ok: false,
       mode: normalizedMode,
       target,
       boardRuntime,
-      status: "error",
-      helpText: "Board runtime is not ready yet.",
-      diagnostic: "board runtime missing",
+      code: "BOARD_RUNTIME_MISSING",
+      message: "Board runtime is not ready yet.",
+      display: "Board runtime is not ready yet.",
     });
   }
-
   if (!target || typeof target !== "object") {
-    return makeResult({
+    return createResult({
       ok: false,
       mode: normalizedMode,
       target,
       boardRuntime,
-      status: "error",
-      helpText: "No measurement target selected.",
-      diagnostic: "measurement target missing",
+      code: "TARGET_MISSING",
+      message: "No measurement target selected.",
+      display: "No measurement target selected.",
     });
   }
 
-  try {
-    if (normalizedMode === "voltage") return measureVoltage(target, boardRuntime);
-    if (normalizedMode === "ohm") return measureOhm(target, boardRuntime, reference);
-    if (normalizedMode === "diode") return measureDiode(target, boardRuntime);
-    if (normalizedMode === "continuity") return measureContinuityMode(target, boardRuntime, reference);
+  if (normalizedMode === "voltage") return measureVoltage(target, boardRuntime);
+  if (normalizedMode === "ohm") return measureOhm(target, boardRuntime, reference);
+  if (normalizedMode === "diode") return measureDiode(target, boardRuntime);
+  if (normalizedMode === "continuity") return measureContinuityMode(target, boardRuntime, reference);
 
-    return makeResult({
-      ok: false,
-      mode: normalizedMode,
-      target,
-      boardRuntime,
-      status: "warning",
-      helpText: `Mode ${normalizedMode} is not supported by the motherboard multimeter runtime.`,
-      diagnostic: "unsupported mode",
-    });
-  } catch (error) {
-    return makeResult({
-      ok: false,
-      mode: normalizedMode,
-      target,
-      boardRuntime,
-      status: "error",
-      helpText: error?.message || "Unexpected multimeter failure.",
-      diagnostic: "measurement runtime exception",
-    });
-  }
+  return createResult({
+    ok: false,
+    mode: normalizedMode,
+    target,
+    boardRuntime,
+    code: "MODE_UNSUPPORTED",
+    message: `Mode ${normalizedMode} is not supported by the motherboard multimeter runtime.`,
+    display: `Mode ${normalizedMode} not supported.`,
+  });
 }
+
+export { normalizeMode };
