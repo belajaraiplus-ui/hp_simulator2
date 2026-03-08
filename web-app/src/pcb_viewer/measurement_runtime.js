@@ -117,6 +117,15 @@ function formatOhms(value) {
   return `${value.toFixed(value >= 100 ? 1 : 2)} Ω`;
 }
 
+function midpoint(range) {
+  const min = Number(range?.min);
+  const max = Number(range?.max);
+  if (Number.isFinite(min) && Number.isFinite(max)) return (min + max) / 2;
+  if (Number.isFinite(min)) return min;
+  if (Number.isFinite(max)) return max;
+  return Number.NaN;
+}
+
 function createResult({ ok, mode, target, boardRuntime, value = null, unit = "", display = "--", message = "", code = "", beep = false }) {
   const label = targetLabel(target, boardRuntime);
   return {
@@ -184,7 +193,7 @@ function measureOhm(target, boardRuntime, reference) {
     else {
       const railA = firstRailId(target, boardRuntime);
       const railB = secondRailId(target, boardRuntime, reference);
-      if (railA && railB) value = measureRailResistance(railA, railB);
+      if (railA) value = measureRailResistance(railA, railB);
     }
   } else {
     const railA = firstRailId(target, boardRuntime);
@@ -205,8 +214,11 @@ function measureOhm(target, boardRuntime, reference) {
 }
 
 function measureDiode(target, boardRuntime) {
+  const railId = firstRailId(target, boardRuntime);
+  const rail = railId ? boardRuntime?.railsById?.[railId] : null;
   const component = componentByTarget(boardRuntime, target);
-  const diode = Number(component?.electricalProperties?.diodeDrop ?? component?.electricalProperties?.forward_voltage);
+  let diode = Number(component?.electricalProperties?.diodeDrop ?? component?.electricalProperties?.forward_voltage);
+  if (!Number.isFinite(diode)) diode = midpoint(rail?.expected?.diode_drop_v);
 
   if (!Number.isFinite(diode)) {
     return componentNotMeasurable(
