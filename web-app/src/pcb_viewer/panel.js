@@ -37,6 +37,17 @@ let pickedPadCounter = 0;
 let latestPadPoint = null;
 let latestPickedPadId = null;
 const PAD_MARKER_DIAMETER_IMAGE_PX = 12;
+const PIN_EDITOR_DEFAULT_RADIUS = 6;
+const PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX = 14;
+
+let pinEditorState = {
+  componentId: null,
+  pins: [],
+  selectedPinId: null,
+  isEditing: false,
+  relocateOnNextClick: false,
+};
+let pinEditorOverlays = [];
 
 function buildProbeCursor({
   cable = "#151515",
@@ -209,6 +220,7 @@ export function clearScene() {
   clearOverlayList(componentOverlays);
   clearOverlayList(psuTargetOverlays);
   clearOverlayList(pickedPadOverlays);
+  clearOverlayList(pinEditorOverlays);
   safeDestroyViewer();
 
   currentBoard = null;
@@ -221,6 +233,13 @@ export function clearScene() {
   pickedPadCounter = 0;
   latestPadPoint = null;
   latestPickedPadId = null;
+  pinEditorState = {
+    componentId: null,
+    pins: [],
+    selectedPinId: null,
+    isEditing: false,
+    relocateOnNextClick: false,
+  };
 
   clearCache();
 
@@ -364,6 +383,354 @@ export function exportPickedPadsJson() {
   return JSON.stringify(exportPickedPads(), null, 2);
 }
 
+
+function normalizePinContact(pin = {}, fallbackId = "") {
+  const x = Number(pin?.x ?? pin?.cx ?? pin?.px);
+  const y = Number(pin?.y ?? pin?.cy ?? pin?.py);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  const id = String(pin?.id || fallbackId || "").trim();
+  return {
+    id: id || fallbackId,
+    name: pin?.name ?? pin?.label ?? null,
+    x: Math.round(x),
+    y: Math.round(y),
+    radius: Number.isFinite(Number(pin?.radius)) && Number(pin.radius) > 0 ? Number(pin.radius) : PIN_EDITOR_DEFAULT_RADIUS,
+    node: pin?.node ?? null,
+    railId: pin?.railId ?? pin?.rail ?? null,
+    kind: pin?.kind ?? null,
+  };
+}
+
+function inferPinRailId(pin) {
+  if (!pin || !currentBoardRuntime?.rails || !currentBoardRuntime.rails.length) return null;
+  const candidates = currentBoardRuntime.rails.filter((rail) => rail?.overlayBox
+    && pin.x >= rail.overlayBox.minX && pin.x <= rail.overlayBox.maxX
+    && pin.y >= rail.overlayBox.minY && pin.y <= rail.overlayBox.maxY);
+  if (candidates.length) return candidates[0].id;
+
+  const nearest = currentBoardRuntime.rails
+    .filter((rail) => rail?.overlayBox)
+    .map((rail) => {
+      const cx = (rail.overlayBox.minX + rail.overlayBox.maxX) / 2;
+      const cy = (rail.overlayBox.minY + rail.overlayBox.maxY) / 2;
+      const dx = pin.x - cx;
+      const dy = pin.y - cy;
+      return { id: rail.id, distance: dx * dx + dy * dy };
+    })
+    .sort((a, b) => a.distance - b.distance)[0];
+  return nearest?.id || null;
+}
+
+function nextGeneratedPinId() {
+  const used = new Set(pinEditorState.pins.map((pin) => String(pin.id || "").trim()));
+  for (let i = 1; i <= 9999; i += 1) {
+    const candidate = String(i);
+    if (!used.has(candidate)) return candidate;
+  }
+  return `PIN_${Date.now()}`;
+}
+
+function syncRuntimeComponentPins() {
+  if (!currentBoardRuntime || !pinEditorState.componentId) return;
+  const runtimeComponent = currentBoardRuntime.componentsById?.[pinEditorState.componentId];
+  if (!runtimeComponent) return;
+  runtimeComponent.pins = pinEditorState.pins.map((pin) => ({
+    id: pin.id,
+    name: pin.name ?? null,
+    x: pin.x,
+    y: pin.y,
+    radius: pin.radius,
+    node: pin.node ?? null,
+    railId: pin.railId ?? null,
+    kind: pin.kind ?? null,
+  }));
+  runtimeComponent.raw = runtimeComponent.raw || {};
+  runtimeComponent.raw.pins = runtimeComponent.pins.map((pin) => ({ ...pin }));
+}
+
+function createPinEditorOverlayElement(pin, selected = false) {
+  const element = document.createElement("button");
+  element.type = "button";
+  element.style.width = `${PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX}px`;
+  element.style.height = `${PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX}px`;
+  element.style.borderRadius = "50%";
+  element.style.border = selected ? "2px solid #fff7d6" : "1px solid #ffffff";
+  element.style.background = selected ? "rgba(255, 184, 0, 0.96)" : "rgba(26, 174, 255, 0.9)";
+  element.style.boxShadow = selected
+    ? "0 0 12px rgba(255, 184, 0, 0.95)"
+    : "0 0 7px rgba(26, 174, 255, 0.8)";
+  element.style.pointerEvents = "none";
+  element.style.padding = "0";
+  element.title = `${pin.id}${pin.name ? ` (${pin.name})` : ""} @ (${pin.x}, ${pin.y})`;
+  return element;
+}
+
+function redrawPinEditorOverlays() {
+  clearOverlayList(pinEditorOverlays);
+  if (!viewerInstance || !currentBoardRuntime || !pinEditorState.isEditing || !pinEditorState.componentId) return;
+
+  const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
+  pinEditorState.pins.forEach((pin) => {
+    const xi = pin.x * sx;
+    const yi = pin.y * sy;
+    const markerRadiusX = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sx);
+    const markerRadiusY = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sy);
+    const rect = new OpenSeadragon.Rect(
+      (xi - markerRadiusX) / imgW,
+      (yi - markerRadiusY) / imgH,
+      (markerRadiusX * 2) / imgW,
+      (markerRadiusY * 2) / imgH
+    );
+    const selected = pin.id === pinEditorState.selectedPinId;
+    const element = createPinEditorOverlayElement(pin, selected);
+    viewerInstance.addOverlay({ element, location: rect });
+    pinEditorOverlays.push({ element, pinId: pin.id });
+  });
+}
+
+function clonePinEditorState() {
+  return {
+    componentId: pinEditorState.componentId,
+    selectedPinId: pinEditorState.selectedPinId,
+    isEditing: pinEditorState.isEditing,
+    relocateOnNextClick: pinEditorState.relocateOnNextClick,
+    pins: pinEditorState.pins.map((pin) => ({ ...pin })),
+  };
+}
+
+function setPinEditorComponent(componentId) {
+  const runtimeComponent = currentBoardRuntime?.componentsById?.[componentId];
+  if (!runtimeComponent) {
+    console.warn(`[pcb] Component not found for pin editor: ${componentId}`);
+    return null;
+  }
+
+  const sourcePins = Array.isArray(runtimeComponent?.pins) && runtimeComponent.pins.length
+    ? runtimeComponent.pins
+    : (Array.isArray(runtimeComponent?.pads) ? runtimeComponent.pads : []);
+
+  const pins = sourcePins
+    .map((pin, index) => normalizePinContact(pin, String(index + 1)))
+    .filter(Boolean);
+
+  pinEditorState.componentId = runtimeComponent.id;
+  pinEditorState.pins = pins;
+  pinEditorState.selectedPinId = pins[0]?.id || null;
+  pinEditorState.relocateOnNextClick = false;
+  redrawPinEditorOverlays();
+  return clonePinEditorState();
+}
+
+function pickEditorPinAtPoint(boardPoint) {
+  const hitRadius = Math.max(8 / (currentBoardRuntime?.spaces?.sx || 1), 8 / (currentBoardRuntime?.spaces?.sy || 1), 6);
+  const hitSq = hitRadius * hitRadius;
+  const winner = pinEditorState.pins
+    .map((pin) => {
+      const dx = boardPoint.x - pin.x;
+      const dy = boardPoint.y - pin.y;
+      return { pin, distance: dx * dx + dy * dy };
+    })
+    .filter((entry) => entry.distance <= hitSq)
+    .sort((a, b) => a.distance - b.distance)[0];
+  return winner?.pin || null;
+}
+
+function addEditorPinAtPoint(boardPoint) {
+  const id = nextGeneratedPinId();
+  const pin = {
+    id,
+    name: id,
+    x: Math.round(boardPoint.x),
+    y: Math.round(boardPoint.y),
+    radius: PIN_EDITOR_DEFAULT_RADIUS,
+    node: null,
+    railId: null,
+    kind: null,
+  };
+  pin.railId = inferPinRailId(pin);
+  pinEditorState.pins.push(pin);
+  pinEditorState.selectedPinId = pin.id;
+  syncRuntimeComponentPins();
+  redrawPinEditorOverlays();
+  return { ...pin };
+}
+
+function getSelectedRuntimeComponent() {
+  if (!pinEditorState.componentId) return null;
+  return currentBoardRuntime?.componentsById?.[pinEditorState.componentId] || null;
+}
+
+export function editComponentPins(componentId = null) {
+  if (!currentBoardRuntime) {
+    console.warn("[pcb] editComponentPins requires a loaded board.");
+    return null;
+  }
+
+  const targetId = componentId
+    || currentSelection?.pick?.componentId
+    || currentSelection?.target?.componentId
+    || null;
+
+  if (!targetId) {
+    console.warn("[pcb] No component selected. Pick a component first or pass componentId.");
+    return null;
+  }
+
+  if (!setPinEditorComponent(targetId)) return null;
+  pinEditorState.isEditing = true;
+  redrawPinEditorOverlays();
+  console.info(`[pcb] Pin editor enabled for component ${targetId}`);
+  return clonePinEditorState();
+}
+
+export function enableComponentPinEditor() {
+  if (!currentBoardRuntime) {
+    console.warn("[pcb] enableComponentPinEditor requires a loaded board.");
+    return false;
+  }
+  if (!pinEditorState.componentId) {
+    const selectedComponentId = currentSelection?.pick?.componentId || currentSelection?.target?.componentId || null;
+    if (selectedComponentId) {
+      setPinEditorComponent(selectedComponentId);
+    }
+  }
+  if (!pinEditorState.componentId) {
+    console.warn("[pcb] No component selected for pin editor.");
+    return false;
+  }
+  pinEditorState.isEditing = true;
+  redrawPinEditorOverlays();
+  return true;
+}
+
+export function disableComponentPinEditor() {
+  pinEditorState.isEditing = false;
+  pinEditorState.relocateOnNextClick = false;
+  redrawPinEditorOverlays();
+  return true;
+}
+
+export function listComponentPins() {
+  return pinEditorState.pins.map((pin) => ({ ...pin }));
+}
+
+export function selectPin(pinId) {
+  const wanted = String(pinId || "");
+  const pin = pinEditorState.pins.find((entry) => String(entry.id) === wanted);
+  if (!pin) return null;
+  pinEditorState.selectedPinId = pin.id;
+  redrawPinEditorOverlays();
+  return { ...pin };
+}
+
+function updatePin(pinId, patch = {}) {
+  const wanted = String(pinId || pinEditorState.selectedPinId || "");
+  if (!wanted) return null;
+  const idx = pinEditorState.pins.findIndex((entry) => String(entry.id) === wanted);
+  if (idx < 0) return null;
+  const current = pinEditorState.pins[idx];
+  const next = { ...current, ...patch };
+  if (patch.id !== undefined) next.id = String(patch.id || "").trim();
+  if (!next.id) return null;
+  if (patch.radius !== undefined) {
+    const radius = Number(patch.radius);
+    if (!Number.isFinite(radius) || radius <= 0) return null;
+    next.radius = radius;
+  }
+  if (patch.x !== undefined || patch.y !== undefined) {
+    const x = Number(patch.x ?? next.x);
+    const y = Number(patch.y ?? next.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+    next.x = Math.round(x);
+    next.y = Math.round(y);
+  }
+  pinEditorState.pins[idx] = next;
+  if (pinEditorState.selectedPinId === wanted) pinEditorState.selectedPinId = next.id;
+  syncRuntimeComponentPins();
+  redrawPinEditorOverlays();
+  return { ...next };
+}
+
+export function renamePin(pinId, newId) {
+  return updatePin(pinId, { id: newId });
+}
+
+export function setPinName(pinId, name) {
+  return updatePin(pinId, { name: name == null ? null : String(name) });
+}
+
+export function setPinNode(pinId, node) {
+  return updatePin(pinId, { node: node == null ? null : String(node) });
+}
+
+export function setPinRail(pinId, railId) {
+  return updatePin(pinId, { railId: railId == null ? null : String(railId) });
+}
+
+export function setPinRadius(pinId, radius) {
+  return updatePin(pinId, { radius });
+}
+
+export function moveSelectedPinTo(x, y) {
+  return updatePin(pinEditorState.selectedPinId, { x, y });
+}
+
+export function moveSelectedPinOnNextClick() {
+  if (!pinEditorState.selectedPinId) return false;
+  pinEditorState.relocateOnNextClick = true;
+  return true;
+}
+
+export function deleteSelectedPin() {
+  if (!pinEditorState.selectedPinId) return null;
+  const idx = pinEditorState.pins.findIndex((pin) => pin.id === pinEditorState.selectedPinId);
+  if (idx < 0) return null;
+  const [removed] = pinEditorState.pins.splice(idx, 1);
+  pinEditorState.selectedPinId = pinEditorState.pins[idx]?.id || pinEditorState.pins[idx - 1]?.id || null;
+  syncRuntimeComponentPins();
+  redrawPinEditorOverlays();
+  return removed ? { ...removed } : null;
+}
+
+export function exportEditedComponentPins() {
+  const component = getSelectedRuntimeComponent();
+  if (!component) return null;
+  const payload = {
+    id: component.id,
+    refdes: component.refdes,
+    kind: component.kind,
+    bbox: component.raw?.bbox || null,
+    pins: listComponentPins(),
+  };
+  return payload;
+}
+
+export function exportEditedComponentPinsJson() {
+  const payload = exportEditedComponentPins();
+  return payload ? JSON.stringify(payload, null, 2) : "";
+}
+
+export function dumpEditedComponent() {
+  const component = getSelectedRuntimeComponent();
+  if (!component) return null;
+  return {
+    id: component.id,
+    refdes: component.refdes,
+    kind: component.kind,
+    rails: component.rails,
+    pins: listComponentPins(),
+  };
+}
+
+export function dumpSelectedPin() {
+  if (!pinEditorState.selectedPinId) return null;
+  return pinEditorState.pins.find((pin) => pin.id === pinEditorState.selectedPinId) || null;
+}
+
+export function debugPinEditorState() {
+  return clonePinEditorState();
+}
+
 export function dumpViewerRuntime() {
   return {
     boardId: currentBoard?.id || null,
@@ -372,6 +739,7 @@ export function dumpViewerRuntime() {
     latestPadPoint,
     probeMode,
     selection: currentSelection,
+    pinEditor: clonePinEditorState(),
   };
 }
 
@@ -517,22 +885,30 @@ function applySelectionVisuals(pick) {
   clearOverlayList(componentOverlays);
   setProbeVisualState(null);
 
-  if (!pick) return;
+  if (!pick) {
+    redrawPinEditorOverlays();
+    return;
+  }
   if (pick.type === "probe") {
     setProbeVisualState(pick.probeId);
     const rail = currentBoardRuntime?.railsById?.[pick.railId];
     if (rail) drawRailOverlay(rail);
+    redrawPinEditorOverlays();
     return;
   }
   if (pick.type === "component" || pick.type === "component-pin") {
     const component = currentBoardRuntime?.componentsById?.[pick.componentId];
     if (component) drawComponentOverlay(component);
+    if (pinEditorState.isEditing && pinEditorState.componentId === pick.componentId) {
+      redrawPinEditorOverlays();
+    }
     return;
   }
   if (pick.type === "rail") {
     const rail = currentBoardRuntime?.railsById?.[pick.railId];
     if (rail) drawRailOverlay(rail);
   }
+  redrawPinEditorOverlays();
 }
 
 function dispatchSelection(pick, { source = "board" } = {}) {
@@ -586,8 +962,45 @@ export function setPsuTargetRail(railId) {
 function handleCanvasClick(event) {
   if (!event?.quick || !viewerInstance || !currentBoardRuntime) return;
 
+  const point = screenToBoardPoint(viewerInstance, currentBoardRuntime, event.position);
+
+  if (pinEditorState.isEditing && pinEditorState.componentId) {
+    if (!point) {
+      console.warn("[pcb] Could not resolve click point for pin editor.");
+      return;
+    }
+
+    const mountPoint = document.querySelector("#motherboardMap");
+    const hitPin = pickEditorPinAtPoint(point.board);
+
+    if (pinEditorState.relocateOnNextClick && pinEditorState.selectedPinId) {
+      const moved = moveSelectedPinTo(point.board.x, point.board.y);
+      pinEditorState.relocateOnNextClick = false;
+      if (mountPoint && moved) {
+        setStatus(mountPoint, `Moved pin ${moved.id} to (${moved.x}, ${moved.y})`);
+      }
+      event.preventDefaultAction = true;
+      return;
+    }
+
+    if (hitPin) {
+      pinEditorState.selectedPinId = hitPin.id;
+      redrawPinEditorOverlays();
+      if (mountPoint) setStatus(mountPoint, `Selected pin ${hitPin.id} on ${pinEditorState.componentId}`);
+      event.preventDefaultAction = true;
+      return;
+    }
+
+    const created = addEditorPinAtPoint(point.board);
+    if (mountPoint && created) {
+      const railHint = created.railId ? ` rail=${created.railId}` : "";
+      setStatus(mountPoint, `Added pin ${created.id} @ (${created.x}, ${created.y})${railHint}`);
+    }
+    event.preventDefaultAction = true;
+    return;
+  }
+
   if (padPickerEnabled) {
-    const point = screenToBoardPoint(viewerInstance, currentBoardRuntime, event.position);
     if (!point) {
       console.warn("[pcb] Could not resolve click point for pad picker.");
       return;
@@ -855,6 +1268,14 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         railFile,
       });
       currentSelection = null;
+      pinEditorState = {
+        componentId: null,
+        pins: [],
+        selectedPinId: null,
+        isEditing: false,
+        relocateOnNextClick: false,
+      };
+      clearOverlayList(pinEditorOverlays);
       redrawPickedPadOverlays();
 
       viewerInstance.addHandler("canvas-click", handleCanvasClick);
@@ -950,6 +1371,24 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     removeLastPickedPad,
     exportPickedPads,
     exportPickedPadsJson,
+    enableComponentPinEditor,
+    disableComponentPinEditor,
+    editComponentPins,
+    listComponentPins,
+    selectPin,
+    renamePin,
+    setPinName,
+    setPinNode,
+    setPinRail,
+    setPinRadius,
+    deleteSelectedPin,
+    moveSelectedPinTo,
+    moveSelectedPinOnNextClick,
+    exportEditedComponentPins,
+    exportEditedComponentPinsJson,
+    dumpEditedComponent,
+    dumpSelectedPin,
+    debugPinEditorState,
     dumpViewerRuntime,
     setProbePolarity,
     debugPick,

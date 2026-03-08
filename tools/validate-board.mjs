@@ -542,6 +542,38 @@ function hasTwoPinMapping(component) {
   return contacts.length >= 2 && distinct.size >= 1;
 }
 
+
+function validateComponentContacts(contacts, ctx, kind, topoNodes) {
+  const ids = new Set();
+  contacts.forEach((entry, idx) => {
+    const ectx = `${ctx}: ${kind}[${idx}]`;
+    if (!isPlainObject(entry)) fail(`${ectx} must be object`);
+    if (entry.id === undefined || entry.id === null || String(entry.id).trim() === "") {
+      fail(`${ectx}.id required`);
+    }
+    const id = String(entry.id).trim();
+    if (ids.has(id)) fail(`${ctx}: duplicate ${kind} id "${id}"`);
+    ids.add(id);
+
+    if (!isNumber(entry.x) || !isNumber(entry.y)) fail(`${ectx}.x/.y must be numbers`);
+
+    if (entry.radius !== undefined) {
+      if (!isNumber(entry.radius) || entry.radius <= 0) fail(`${ectx}.radius must be number > 0`);
+    }
+
+    if (entry.node !== undefined && entry.node !== null && typeof entry.node !== "string") {
+      fail(`${ectx}.node must be string|null`);
+    }
+    if (entry.railId !== undefined && entry.railId !== null && typeof entry.railId !== "string") {
+      fail(`${ectx}.railId must be string|null`);
+    }
+
+    if (typeof entry.node === "string" && entry.node && topoNodes && !topoNodes.has(entry.node)) {
+      warn(`${ectx} references node "${entry.node}" absent in topology.nodes`);
+    }
+  });
+}
+
 function validateComponents(compJson, boardId, railIds, boardJson, topology) {
   const comps = compJson?.components;
   if (!Array.isArray(comps)) fail(`${boardId}: components.json must contain { components: [...] }`);
@@ -561,6 +593,8 @@ function validateComponents(compJson, boardId, railIds, boardJson, topology) {
 
     const pins = Array.isArray(c.pins) ? c.pins : [];
     const pads = Array.isArray(c.pads) ? c.pads : [];
+    validateComponentContacts(pins, ctx, "pin", topoNodes);
+    validateComponentContacts(pads, ctx, "pad", topoNodes);
     const hintRails = Array.isArray(c?.hints?.rails) ? c.hints.rails : [];
     const hintedRails = [
       ...hintRails,
@@ -580,6 +614,15 @@ function validateComponents(compJson, boardId, railIds, boardJson, topology) {
     if (!pins.length && !pads.length && !hintRails.length) {
       warn(`${ctx} (${c.id}): no pins/pads/rail hints; diagnosis resolution may be weak`);
     }
+    const mappedContacts = [...pins, ...pads].filter((entry) => {
+      const rail = entry?.rail || entry?.railId;
+      const node = entry?.node;
+      return (typeof rail === "string" && rail.trim()) || (typeof node === "string" && node.trim());
+    });
+    if ((pins.length || pads.length) && mappedContacts.length === 0) {
+      warn(`${ctx}: has pins/pads but none map to measurable node/railId`);
+    }
+
 
     const clickable = Boolean(c.bbox || c.shape);
     const props = c.electricalProperties || c.electrical || {};
