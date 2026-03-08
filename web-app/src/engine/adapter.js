@@ -235,13 +235,18 @@ export async function multimeterMeasure({ mode, a, b = null }) {
  * - If engine doesn't support payload/target yet, this will likely return ok:false.
  * - In that case, you can optionally fallback to legacy mapping via options.fallbackToolLabel.
  */
-export async function measureTarget(target, mode = "voltage", options = {}) {
+export async function measureTarget(targetOrRequest, mode = "voltage", options = {}) {
+  const request = (targetOrRequest && typeof targetOrRequest === "object" && targetOrRequest.target)
+    ? targetOrRequest
+    : { mode, target: targetOrRequest, reference: null };
+
   const req = {
     version: API_VERSION,
     kind: "measure",
     payload: {
-      mode,
-      target,
+      mode: request.mode || mode || "voltage",
+      target: request.target || null,
+      reference: request.reference || null,
     },
   };
 
@@ -249,13 +254,18 @@ export async function measureTarget(target, mode = "voltage", options = {}) {
     const data = await safeDispatch(req);
     return data.measurement;
   } catch (e) {
-    // Optional fallback to legacy tool labels while engine is being upgraded
     if (options.fallbackToolLabel) {
       console.warn("measureTarget failed, falling back to legacy:", e.message);
       return measureTool(options.fallbackToolLabel);
     }
     console.error("measurement (target) failed:", e);
-    return null;
+    return {
+      ok: false,
+      code: "MEASURE_TARGET_DISPATCH_FAILED",
+      message: e?.message || "Failed to dispatch structured measurement request.",
+      mode: req.payload.mode,
+      target: req.payload.target,
+    };
   }
 }
 
