@@ -34,6 +34,7 @@
             <span id="simTime" class="time-badge">Frame: 0</span>
           </div>
         </div>
+        <div id="pcbViewerToolbar" class="pcb-toolbar-host"></div>
         <div id="motherboardMap" class="motherboardMap"></div>
       </div>
 
@@ -165,11 +166,11 @@
         </div>
         <div class="mm-probe-row">
           <button id="multimeterProbePositive" type="button" class="mm-probe-btn is-active" aria-pressed="true">+ POS</button>
-          <input type="text" id="multimeterRail" placeholder="Rail (positive probe)" value="vbat" class="input-dark flex-1">
+          <input type="text" id="multimeterRail" placeholder="Touch red probe on PCB" value="" class="input-dark flex-1" readonly>
         </div>
         <div class="mm-probe-row">
           <button id="multimeterProbeNegative" type="button" class="mm-probe-btn mm-probe-btn-negative" aria-pressed="false">- NEG</button>
-          <input type="text" id="multimeterRailB" placeholder="Rail (negative probe, optional)" value="" class="input-dark flex-1">
+          <input type="text" id="multimeterRailB" placeholder="Touch black probe on PCB" value="" class="input-dark flex-1" readonly>
         </div>
         <button id="manualMeasure" class="btn btn-primary btn-lg full-width">MEASURE</button>
         <div class="meter-summary">

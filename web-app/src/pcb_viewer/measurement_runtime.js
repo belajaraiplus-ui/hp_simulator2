@@ -71,7 +71,7 @@ function firstRailId(target, boardRuntime) {
 }
 
 function secondRailId(target, boardRuntime, reference = null) {
-  const refRail = normalizeRail(boardRuntime, reference?.railId);
+  const refRail = reference ? firstRailId(reference, boardRuntime) : null;
   if (refRail) return refRail;
 
   const component = componentByTarget(boardRuntime, target);
@@ -126,33 +126,38 @@ function midpoint(range) {
   return Number.NaN;
 }
 
-function createResult({ ok, mode, target, boardRuntime, value = null, unit = "", display = "--", message = "", code = "", beep = false }) {
+function createResult({ ok, mode, target, reference = null, boardRuntime, value = null, unit = "", display = "--", message = "", code = "", beep = false }) {
   const label = targetLabel(target, boardRuntime);
+  const referenceLabel = reference ? targetLabel(reference, boardRuntime) : null;
+  const composedLabel = referenceLabel ? `${label} -> ${referenceLabel}` : label;
   return {
     ok,
     mode,
     code: ok ? undefined : code || "MEASUREMENT_FAILED",
     message: ok ? undefined : message,
     target,
-    targetLabel: label,
+    targetLabel: composedLabel,
+    positiveLabel: label,
+    negativeLabel: referenceLabel || "Unset",
     value,
     unit,
     display,
     displayValue: display,
     status: ok ? "ok" : "warning",
     helpText: message || (ok ? "Measurement complete." : "Measurement failed."),
-    summary: `Mode: ${mode} | Target: ${label} | Result: ${display}`,
-    historyTarget: `${mode.toUpperCase()} ${label}`,
+    summary: `Mode: ${mode} | Target: ${composedLabel} | Result: ${display}`,
+    historyTarget: `${mode.toUpperCase()} ${composedLabel}`,
     historyValue: Number.isFinite(value) ? value : null,
     beep,
   };
 }
 
-function componentNotMeasurable(mode, target, boardRuntime, reason) {
+function componentNotMeasurable(mode, target, boardRuntime, reason, reference = null) {
   return createResult({
     ok: false,
     mode,
     target,
+    reference,
     boardRuntime,
     code: "COMPONENT_NOT_MEASURABLE",
     message: reason,
@@ -160,30 +165,50 @@ function componentNotMeasurable(mode, target, boardRuntime, reason) {
   });
 }
 
-function measureVoltage(target, boardRuntime) {
+function missingReference(mode, target, boardRuntime) {
+  return createResult({
+    ok: false,
+    mode,
+    target,
+    boardRuntime,
+    code: "REFERENCE_MISSING",
+    message: "Place the black probe on a reference point on the PCB first.",
+    display: "BLACK probe not set",
+  });
+}
+
+function measureVoltage(target, boardRuntime, reference) {
   const railId = firstRailId(target, boardRuntime);
   if (!railId) {
     return componentNotMeasurable(
       "voltage",
       target,
       boardRuntime,
-      "Selected component is visible but does not yet have pins/pads/electrical mapping for voltage mode."
+      "Selected component is visible but does not yet have pins/pads/electrical mapping for voltage mode.",
+      reference
     );
   }
 
+  const referenceRailId = firstRailId(reference, boardRuntime);
+  if (!referenceRailId) return missingReference("voltage", target, boardRuntime);
+
   const value = measureRailVoltage(railId);
+  const referenceValue = measureRailVoltage(referenceRailId);
+  const differential = Number(value) - Number(referenceValue);
   return createResult({
     ok: true,
     mode: "voltage",
     target,
+    reference,
     boardRuntime,
-    value,
+    value: differential,
     unit: "V",
-    display: `${Number(value).toFixed(Math.abs(value) >= 10 ? 2 : 3)} V`,
+    display: `${Number(differential).toFixed(Math.abs(differential) >= 10 ? 2 : 3)} V`,
   });
 }
 
 function measureOhm(target, boardRuntime, reference) {
+  if (!reference) return missingReference("ohm", target, boardRuntime);
   const component = componentByTarget(boardRuntime, target);
   let value = Number.NaN;
 
@@ -206,14 +231,16 @@ function measureOhm(target, boardRuntime, reference) {
       "ohm",
       target,
       boardRuntime,
-      "Selected component has no pins, pads, node mapping, or electrical properties for ohm mode."
+      "Selected component has no pins, pads, node mapping, or electrical properties for ohm mode.",
+      reference
     );
   }
 
-  return createResult({ ok: true, mode: "ohm", target, boardRuntime, value, unit: "ohm", display: formatOhms(value) });
+  return createResult({ ok: true, mode: "ohm", target, reference, boardRuntime, value, unit: "ohm", display: formatOhms(value) });
 }
 
-function measureDiode(target, boardRuntime) {
+function measureDiode(target, boardRuntime, reference) {
+  if (!reference) return missingReference("diode", target, boardRuntime);
   const railId = firstRailId(target, boardRuntime);
   const rail = railId ? boardRuntime?.railsById?.[railId] : null;
   const component = componentByTarget(boardRuntime, target);
@@ -225,14 +252,16 @@ function measureDiode(target, boardRuntime) {
       "diode",
       target,
       boardRuntime,
-      "Selected component is visible but does not yet have pins/pads/electrical mapping for diode mode."
+      "Selected component is visible but does not yet have pins/pads/electrical mapping for diode mode.",
+      reference
     );
   }
 
-  return createResult({ ok: true, mode: "diode", target, boardRuntime, value: diode, unit: "V", display: `${diode.toFixed(2)} V` });
+  return createResult({ ok: true, mode: "diode", target, reference, boardRuntime, value: diode, unit: "V", display: `${diode.toFixed(2)} V` });
 }
 
 function measureContinuityMode(target, boardRuntime, reference) {
+  if (!reference) return missingReference("continuity", target, boardRuntime);
   const component = componentByTarget(boardRuntime, target);
   const explicit = component?.electricalProperties?.continuity;
   let yes = null;
@@ -265,7 +294,8 @@ function measureContinuityMode(target, boardRuntime, reference) {
       "continuity",
       target,
       boardRuntime,
-      "Selected component has no continuity property and no two-point mapping for continuity mode."
+      "Selected component has no continuity property and no two-point mapping for continuity mode.",
+      reference
     );
   }
 
@@ -273,6 +303,7 @@ function measureContinuityMode(target, boardRuntime, reference) {
     ok: true,
     mode: "continuity",
     target,
+    reference,
     boardRuntime,
     value: ohm,
     unit: "ohm",
@@ -306,9 +337,9 @@ export async function measureTarget({ mode, target, reference = null, boardRunti
     });
   }
 
-  if (normalizedMode === "voltage") return measureVoltage(target, boardRuntime);
+  if (normalizedMode === "voltage") return measureVoltage(target, boardRuntime, reference);
   if (normalizedMode === "ohm") return measureOhm(target, boardRuntime, reference);
-  if (normalizedMode === "diode") return measureDiode(target, boardRuntime);
+  if (normalizedMode === "diode") return measureDiode(target, boardRuntime, reference);
   if (normalizedMode === "continuity") return measureContinuityMode(target, boardRuntime, reference);
 
   return createResult({

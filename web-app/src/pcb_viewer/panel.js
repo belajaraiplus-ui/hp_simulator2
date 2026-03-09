@@ -29,6 +29,7 @@ let currentSelection = null;
 let psuTargetRail = null;
 let probeMode = true;
 let probeOverlays = [];
+let placedProbeOverlays = [];
 let activeProbePolarity = "positive";
 let padPickerEnabled = false;
 let pickedPads = [];
@@ -48,6 +49,10 @@ let pinEditorState = {
   relocateOnNextClick: false,
 };
 let pinEditorOverlays = [];
+let placedProbeTargets = {
+  positive: null,
+  negative: null,
+};
 
 function buildProbeCursor({
   cable = "#151515",
@@ -128,11 +133,17 @@ function clearOverlayList(list) {
 function setProbeVisualState(selectedProbeId = null) {
   probeOverlays.forEach((probe) => {
     const active = selectedProbeId && probe.probeId === selectedProbeId;
-    probe.element.style.background = active ? "#ffe066" : "#ff4444";
+    const idleBackground = probe.isGround ? "#05070a" : "#ff4444";
+    const idleBorder = probe.isGround ? "2px solid #f8fafc" : "2px solid white";
+    probe.element.style.background = active ? "#ffe066" : idleBackground;
+    probe.element.style.border = active ? "2px solid #fff4bf" : idleBorder;
+    probe.element.style.color = probe.isGround ? "#f8fafc" : "transparent";
     probe.element.style.transform = active ? "scale(1.25)" : "scale(1)";
     probe.element.style.boxShadow = active
       ? "0 0 8px rgba(255, 224, 102, 0.9)"
-      : "0 0 4px rgba(0,0,0,0.5)";
+      : (probe.isGround
+        ? "0 0 0 1px rgba(248, 250, 252, 0.35), 0 0 8px rgba(15, 23, 42, 0.75)"
+        : "0 0 4px rgba(0,0,0,0.5)");
   });
 }
 
@@ -216,6 +227,7 @@ function setProbePolarity(polarity = "positive") {
 
 export function clearScene() {
   clearOverlayList(probeOverlays);
+  clearOverlayList(placedProbeOverlays);
   clearOverlayList(railOverlays);
   clearOverlayList(componentOverlays);
   clearOverlayList(psuTargetOverlays);
@@ -239,6 +251,10 @@ export function clearScene() {
     selectedPinId: null,
     isEditing: false,
     relocateOnNextClick: false,
+  };
+  placedProbeTargets = {
+    positive: null,
+    negative: null,
   };
 
   clearCache();
@@ -801,6 +817,95 @@ function drawPsuTargetOverlay(rail) {
   });
 }
 
+function pointForMeasurementTarget(target, boardRuntime) {
+  if (!target || !boardRuntime) return null;
+
+  if (target.type === "probe") {
+    const probe = boardRuntime.probesById?.[target.probeId || target.id] || null;
+    if (probe && Number.isFinite(probe.x) && Number.isFinite(probe.y)) return { x: probe.x, y: probe.y };
+  }
+
+  if (target.type === "component-pin") {
+    const component = boardRuntime.componentsById?.[target.componentId] || null;
+    const contacts = [
+      ...(Array.isArray(component?.pins) ? component.pins : []),
+      ...(Array.isArray(component?.pads) ? component.pads : []),
+    ];
+    const contact = contacts.find((entry) => String(entry?.id || "") === String(target.pinId || ""));
+    const x = Number(contact?.x ?? contact?.cx ?? contact?.px);
+    const y = Number(contact?.y ?? contact?.cy ?? contact?.py);
+    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
+  }
+
+  if (target.type === "component") {
+    const component = boardRuntime.componentsById?.[target.componentId] || null;
+    const box = component?.bbox || null;
+    if (box) return { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+  }
+
+  if (target.type === "rail") {
+    const rail = boardRuntime.railsById?.[target.railId] || null;
+    const probe = Array.isArray(rail?.probePoints) ? rail.probePoints[0] : null;
+    if (probe && Number.isFinite(probe.x) && Number.isFinite(probe.y)) return { x: probe.x, y: probe.y };
+    const box = rail?.overlayBox || null;
+    if (box) return { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
+  }
+
+  if (target.type === "node" && target.railId) {
+    return pointForMeasurementTarget({ type: "rail", railId: target.railId }, boardRuntime);
+  }
+
+  return null;
+}
+
+function drawPlacedProbeTargets() {
+  clearOverlayList(placedProbeOverlays);
+  if (!viewerInstance || !currentBoardRuntime) return;
+
+  const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
+  const entries = [
+    { key: "positive", label: "RED", fill: "#ff4d4f", glow: "rgba(255, 77, 79, 0.42)" },
+    { key: "negative", label: "BLACK", fill: "#0f172a", glow: "rgba(148, 163, 184, 0.34)" },
+  ];
+
+  entries.forEach((entry) => {
+    const target = placedProbeTargets[entry.key];
+    const point = pointForMeasurementTarget(target, currentBoardRuntime);
+    if (!point) return;
+
+    const element = document.createElement("div");
+    element.style.width = "46px";
+    element.style.height = "46px";
+    element.style.borderRadius = "50%";
+    element.style.border = "2px solid rgba(255,255,255,0.94)";
+    element.style.background = entry.fill;
+    element.style.color = "#f8fafc";
+    element.style.fontSize = "9px";
+    element.style.fontWeight = "800";
+    element.style.letterSpacing = "0.08em";
+    element.style.display = "flex";
+    element.style.alignItems = "center";
+    element.style.justifyContent = "center";
+    element.style.boxShadow = `0 0 0 3px ${entry.glow}, 0 0 14px ${entry.glow}`;
+    element.style.pointerEvents = "none";
+    element.textContent = entry.label;
+    element.title = target?.label || entry.label;
+
+    const markerImgPx = 46;
+    const xi = point.x * sx;
+    const yi = point.y * sy;
+    const rect = new OpenSeadragon.Rect(
+      (xi - markerImgPx / 2) / imgW,
+      (yi - markerImgPx / 2) / imgH,
+      markerImgPx / imgW,
+      markerImgPx / imgH
+    );
+
+    viewerInstance.addOverlay({ element, location: rect });
+    placedProbeOverlays.push({ element });
+  });
+}
+
 export function drawProbePoints(viewer, boardRuntime) {
   clearOverlayList(probeOverlays);
   if (!viewer || !boardRuntime) return;
@@ -809,17 +914,27 @@ export function drawProbePoints(viewer, boardRuntime) {
   const markerImgPx = 14;
 
   boardRuntime.probes.forEach((probe) => {
+    const isGround = String(probe.railId || "").toUpperCase().includes("GND")
+      || String(probe.label || "").toUpperCase().includes("GND");
+    const overlaySize = isGround ? 22 : markerImgPx;
     const element = document.createElement("button");
     element.type = "button";
-    element.style.width = `${markerImgPx}px`;
-    element.style.height = `${markerImgPx}px`;
-    element.style.background = "#ff4444";
-    element.style.border = "2px solid white";
+    element.style.width = `${overlaySize}px`;
+    element.style.height = `${overlaySize}px`;
+    element.style.background = isGround ? "#05070a" : "#ff4444";
+    element.style.border = isGround ? "2px solid #f8fafc" : "2px solid white";
     element.style.borderRadius = "50%";
     element.style.cursor = currentProbeCursor();
-    element.style.boxShadow = "0 0 4px rgba(0,0,0,0.5)";
+    element.style.boxShadow = isGround
+      ? "0 0 0 1px rgba(248, 250, 252, 0.35), 0 0 8px rgba(15, 23, 42, 0.75)"
+      : "0 0 4px rgba(0,0,0,0.5)";
     element.style.pointerEvents = "auto";
     element.style.padding = "0";
+    element.style.color = isGround ? "#f8fafc" : "yellow";
+    element.style.fontSize = "9px";
+    element.style.fontWeight = "800";
+    element.style.lineHeight = "1";
+    if (isGround) element.textContent = "G";
     element.title = probe.label || probe.id;
     element.dataset.probeId = probe.id;
 
@@ -840,21 +955,23 @@ export function drawProbePoints(viewer, boardRuntime) {
     const xi = probe.x * sx;
     const yi = probe.y * sy;
     const rect = new OpenSeadragon.Rect(
-      (xi - markerImgPx / 2) / imgW,
-      (yi - markerImgPx / 2) / imgH,
-      markerImgPx / imgW,
-      markerImgPx / imgH
+      (xi - overlaySize / 2) / imgW,
+      (yi - overlaySize / 2) / imgH,
+      overlaySize / imgW,
+      overlaySize / imgH
     );
 
     viewer.addOverlay({ element, location: rect });
-    probeOverlays.push({ element, probeId: probe.id, railId: probe.railId });
+    probeOverlays.push({ element, probeId: probe.id, railId: probe.railId, isGround });
   });
+  drawPlacedProbeTargets();
 }
 
 export function toggleProbeMode(viewer, boardRuntime) {
   probeMode = !probeMode;
   if (probeMode) drawProbePoints(viewer, boardRuntime);
   else clearOverlayList(probeOverlays);
+  drawPlacedProbeTargets();
   if (currentSelection?.target?.type === "probe") {
     setProbeVisualState(currentSelection.target.probeId);
   }
@@ -867,6 +984,7 @@ function setProbeModeState(viewer, boardRuntime, nextProbeMode) {
   probeMode = Boolean(nextProbeMode);
   if (probeMode) drawProbePoints(viewer, boardRuntime);
   else clearOverlayList(probeOverlays);
+  drawPlacedProbeTargets();
   if (currentSelection?.target?.type === "probe") {
     setProbeVisualState(currentSelection.target.probeId);
   }
@@ -875,8 +993,17 @@ function setProbeModeState(viewer, boardRuntime, nextProbeMode) {
   return probeMode;
 }
 
+export function setPlacedProbeTargets(targets = {}) {
+  placedProbeTargets = {
+    positive: targets?.positive || null,
+    negative: targets?.negative || null,
+  };
+  drawPlacedProbeTargets();
+}
+
 function setStatus(mountPoint, message) {
-  const element = mountPoint?.querySelector("#pcb-status");
+  const element = document.querySelector("#pcb-status")
+    || mountPoint?.querySelector("#pcb-status");
   if (element) element.textContent = message;
 }
 
@@ -1043,72 +1170,85 @@ function safeDestroyViewer() {
 export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   const mountPoint = document.querySelector(mountSelector);
   if (!mountPoint) return null;
+  const toolbarHost = document.querySelector("#pcbViewerToolbar");
 
   const mountStyle = window.getComputedStyle(mountPoint);
   if (mountStyle.position === "static") mountPoint.style.position = "relative";
   mountPoint.style.overflow = "hidden";
   if (!mountPoint.style.minHeight) mountPoint.style.minHeight = "400px";
 
-  mountPoint.innerHTML = `
-    <div id="pcb-viewer-ui"
-      style="
-        position:absolute; top:15px; left:15px; z-index:20000;
-        background:rgba(30,30,30,0.9);
-        padding:10px; border-radius:6px;
-        display:flex; gap:10px; border:1px solid #444;
-        align-items:center;
-        pointer-events:auto;
-      ">
-      <select id="board-select"
-        style="background:#333; color:white; border:1px solid #555; padding:5px; pointer-events:auto;"></select>
-      <button id="btn-load-pcb"
-        style="background:#007acc; color:white; border:none; padding:5px 15px; cursor:pointer; border-radius:4px; pointer-events:auto;">
-        LOAD
-      </button>
-      <select id="rail-select"
-        style="background:#333; color:white; border:1px solid #555; padding:5px; pointer-events:auto;">
-        <option value="">-- Select Rail --</option>
-      </select>
-      <div style="display:flex; gap:6px; pointer-events:auto;">
-        <button id="btn-probe"
-          style="background:#1e7e34; color:white; border:none; padding:5px 12px; cursor:pointer; border-radius:4px; pointer-events:auto;">
-          PROBE MODE
-        </button>
-        <button id="btn-nav"
-          style="background:#495057; color:white; border:none; padding:5px 12px; cursor:pointer; border-radius:4px; pointer-events:auto;">
-          NAV MODE
+  const toolbarMarkup = `
+    <div id="pcb-viewer-ui" class="pcb-viewer-ui">
+      <div class="pcb-toolbar-cluster">
+        <label class="pcb-toolbar-field pcb-toolbar-field-wide">
+          <span class="pcb-toolbar-label">Board</span>
+          <select id="board-select" class="pcb-toolbar-select"></select>
+        </label>
+        <button id="btn-load-pcb" class="pcb-toolbar-btn pcb-toolbar-btn-primary">
+          Load
         </button>
       </div>
-      <div style="display:flex; gap:6px; pointer-events:auto;">
-        <button id="btn-zoom-in"
-          style="background:#343a40; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px; pointer-events:auto; font-weight:700;">
-          +
-        </button>
-        <button id="btn-zoom-out"
-          style="background:#343a40; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px; pointer-events:auto; font-weight:700;">
-          -
-        </button>
-        <button id="btn-home"
-          style="background:#343a40; color:white; border:none; padding:5px 10px; cursor:pointer; border-radius:4px; pointer-events:auto;">
-          HOME
-        </button>
+      <div class="pcb-toolbar-cluster">
+        <label class="pcb-toolbar-field pcb-toolbar-field-wide">
+          <span class="pcb-toolbar-label">Rail Focus</span>
+          <select id="rail-select" class="pcb-toolbar-select">
+            <option value="">-- Select Rail --</option>
+          </select>
+        </label>
       </div>
-      <span id="pcb-status" style="color:#bbb; font-size:12px; margin-left:6px;">
-        Loading boards...
-      </span>
+      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack">
+        <span class="pcb-toolbar-label">Interaction</span>
+        <div class="pcb-toolbar-group">
+          <button id="btn-probe" class="pcb-toolbar-btn pcb-toolbar-btn-mode">
+            Probe
+          </button>
+          <button id="btn-nav" class="pcb-toolbar-btn pcb-toolbar-btn-mode">
+            Navigate
+          </button>
+        </div>
+      </div>
+      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack">
+        <span class="pcb-toolbar-label">Viewport</span>
+        <div class="pcb-toolbar-group">
+          <button id="btn-zoom-in" class="pcb-toolbar-btn pcb-toolbar-btn-ghost pcb-toolbar-btn-icon">
+            +
+          </button>
+          <button id="btn-zoom-out" class="pcb-toolbar-btn pcb-toolbar-btn-ghost pcb-toolbar-btn-icon">
+            -
+          </button>
+          <button id="btn-home" class="pcb-toolbar-btn pcb-toolbar-btn-ghost">
+            Home
+          </button>
+        </div>
+      </div>
+      <span class="pcb-toolbar-spacer"></span>
+      <div class="pcb-toolbar-readout">
+        <span class="pcb-toolbar-label">Status</span>
+        <span id="pcb-status" class="pcb-toolbar-status">
+          Loading boards...
+        </span>
+      </div>
     </div>
-    <div id="pcb-canvas-target" style="width:100%; height:100%; position:relative; z-index:1;"></div>
   `;
+  const canvasMarkup = '<div id="pcb-canvas-target" class="pcb-canvas-target"></div>';
 
-  const uiLayer = mountPoint.querySelector("#pcb-viewer-ui");
-  const select = mountPoint.querySelector("#board-select");
-  const railSelect = mountPoint.querySelector("#rail-select");
-  const loadBtn = mountPoint.querySelector("#btn-load-pcb");
-  const probeBtn = mountPoint.querySelector("#btn-probe");
-  const navBtn = mountPoint.querySelector("#btn-nav");
-  const zoomInBtn = mountPoint.querySelector("#btn-zoom-in");
-  const zoomOutBtn = mountPoint.querySelector("#btn-zoom-out");
-  const homeBtn = mountPoint.querySelector("#btn-home");
+  if (toolbarHost) {
+    toolbarHost.innerHTML = toolbarMarkup;
+    mountPoint.innerHTML = canvasMarkup;
+  } else {
+    mountPoint.innerHTML = `${toolbarMarkup}${canvasMarkup}`;
+  }
+
+  const toolbarRoot = toolbarHost || mountPoint;
+  const uiLayer = toolbarRoot.querySelector("#pcb-viewer-ui");
+  const select = toolbarRoot.querySelector("#board-select");
+  const railSelect = toolbarRoot.querySelector("#rail-select");
+  const loadBtn = toolbarRoot.querySelector("#btn-load-pcb");
+  const probeBtn = toolbarRoot.querySelector("#btn-probe");
+  const navBtn = toolbarRoot.querySelector("#btn-nav");
+  const zoomInBtn = toolbarRoot.querySelector("#btn-zoom-in");
+  const zoomOutBtn = toolbarRoot.querySelector("#btn-zoom-out");
+  const homeBtn = toolbarRoot.querySelector("#btn-home");
   const canvasTarget = mountPoint.querySelector("#pcb-canvas-target");
 
   if (uiLayer) {
@@ -1130,9 +1270,6 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   railSelect.addEventListener("change", () => {
     if (railSelect.value) onRailSelected(railSelect.value);
   });
-
-  canvasTarget.style.width = "100%";
-  canvasTarget.style.height = "100%";
 
   let boards = [];
   let manualNavDrag = null;
@@ -1391,6 +1528,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     debugPinEditorState,
     dumpViewerRuntime,
     setProbePolarity,
+    setPlacedProbeTargets,
     debugPick,
   };
 }

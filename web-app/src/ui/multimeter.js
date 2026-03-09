@@ -91,7 +91,7 @@ export function createMultimeterUiState() {
     targetLabel: "None",
     displayValue: "--",
     status: "idle",
-    helpText: "Select a measurable point on the board.",
+    helpText: "Place the red and black probes on measurable points on the board.",
     summary: "Mode: voltage | Target: None | Result: --",
   };
 }

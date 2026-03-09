@@ -27,6 +27,9 @@
       "equiv_resistance_ohm": 1.2
     }
   },
+  "validation_exceptions": {
+    "orphan_rails": ["GND"]
+  },
   "rails": [
     {
       "id": "VBUS_5V",
@@ -853,6 +856,46 @@
         "polys": []
       },
       "probe_points": []
+    },
+    {
+      "id": "GND",
+      "label": "Ground Reference",
+      "type": "logic",
+      "expected": {
+        "voltage_v": {
+          "min": 0,
+          "max": 0.01
+        },
+        "continuity": {
+          "beep_below_ohms": 2,
+          "open_above_ohms": 20
+        }
+      },
+      "state": {
+        "default": "ALW"
+      },
+      "depends_on": [],
+      "overlay": {
+        "type": "multi_poly",
+        "polys": [
+          [[456,286],[486,286],[486,316],[456,316]],
+          [[514,286],[544,286],[544,316],[514,316]]
+        ]
+      },
+      "probe_points": [
+        {
+          "id": "TP_GND_A",
+          "x": 471,
+          "y": 301,
+          "label": "GND PAD A"
+        },
+        {
+          "id": "TP_GND_B",
+          "x": 529,
+          "y": 301,
+          "label": "GND PAD B"
+        }
+      ]
     }
   ]
 }

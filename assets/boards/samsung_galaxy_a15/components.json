@@ -113,6 +113,24 @@
           "VPA"
         ]
       },
+      "pins": [
+        {
+          "id": "1",
+          "name": "VPA_IN",
+          "x": 282,
+          "y": 188,
+          "railId": "VPA",
+          "node": "VPA"
+        },
+        {
+          "id": "2",
+          "name": "VCORE_OUT",
+          "x": 326,
+          "y": 188,
+          "railId": "VCORE",
+          "node": "VCORE"
+        }
+      ],
       "electricalProperties": {
         "diodeDrop": 0.44
       }
