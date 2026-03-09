@@ -40,6 +40,8 @@ let latestPickedPadId = null;
 const PAD_MARKER_DIAMETER_IMAGE_PX = 12;
 const PIN_EDITOR_DEFAULT_RADIUS = 6;
 const PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX = 14;
+const PIN_TYPE_VALUES = new Set(["resistor", "capacitor", "diode", "mosfet", "ic", "fuse", "inductor", "jumper", "test_point", "passive", "signal", "power", "ground"]);
+const PIN_ROLE_VALUES = new Set(["ground", "signal", "power", "passive", "test_point", "anode", "cathode", "gate", "drain", "source", "input", "output", "pin1", "pin2"]);
 
 let pinEditorState = {
   componentId: null,
@@ -413,8 +415,36 @@ function normalizePinContact(pin = {}, fallbackId = "") {
     radius: Number.isFinite(Number(pin?.radius)) && Number(pin.radius) > 0 ? Number(pin.radius) : PIN_EDITOR_DEFAULT_RADIUS,
     node: pin?.node ?? null,
     railId: pin?.railId ?? pin?.rail ?? null,
-    kind: pin?.kind ?? null,
+    pinType: pin?.pinType ?? pin?.kind ?? null,
+    pinRole: pin?.pinRole ?? null,
+    isGround: Boolean(pin?.isGround),
+    isTestPoint: Boolean(pin?.isTestPoint),
+    componentId: pin?.componentId ?? null,
+    authoringSource: pin?.authoringSource || "asset-import",
   };
+}
+
+function inferPinDefaultsFromComponent(component, sequence = 1) {
+  const kind = String(component?.kind || "").toLowerCase();
+  const oneBased = Math.max(1, sequence);
+  if (kind.includes("res") || kind === "resistor") return { id: String(oneBased), name: String(oneBased), pinType: "resistor", pinRole: "passive" };
+  if (kind.includes("cap") || kind === "capacitor") return { id: String(oneBased), name: String(oneBased), pinType: "capacitor", pinRole: "passive" };
+  if (kind.includes("diode") || kind === "di") {
+    return oneBased === 1
+      ? { id: "A", name: "A", pinType: "diode", pinRole: "anode" }
+      : { id: "K", name: "K", pinType: "diode", pinRole: "cathode" };
+  }
+  if (kind.includes("mosfet") || kind === "fet") {
+    const map = [
+      { id: "G", name: "G", pinRole: "gate" },
+      { id: "D", name: "D", pinRole: "drain" },
+      { id: "S", name: "S", pinRole: "source" },
+    ];
+    const selected = map[(oneBased - 1) % map.length];
+    return { ...selected, pinType: "mosfet" };
+  }
+  if (kind.includes("ic")) return { id: String(oneBased), name: String(oneBased), pinType: "ic", pinRole: "signal" };
+  return { id: `PIN_${String(oneBased).padStart(3, "0")}`, name: `PIN_${String(oneBased).padStart(3, "0")}`, pinType: null, pinRole: null };
 }
 
 function inferPinRailId(pin) {
@@ -440,7 +470,7 @@ function inferPinRailId(pin) {
 function nextGeneratedPinId() {
   const used = new Set(pinEditorState.pins.map((pin) => String(pin.id || "").trim()));
   for (let i = 1; i <= 9999; i += 1) {
-    const candidate = String(i);
+    const candidate = `PIN_${String(i).padStart(3, "0")}`;
     if (!used.has(candidate)) return candidate;
   }
   return `PIN_${Date.now()}`;
@@ -458,7 +488,12 @@ function syncRuntimeComponentPins() {
     radius: pin.radius,
     node: pin.node ?? null,
     railId: pin.railId ?? null,
-    kind: pin.kind ?? null,
+    pinType: pin.pinType ?? null,
+    pinRole: pin.pinRole ?? null,
+    isGround: Boolean(pin.isGround),
+    isTestPoint: Boolean(pin.isTestPoint),
+    componentId: pin.componentId ?? pinEditorState.componentId ?? null,
+    authoringSource: pin.authoringSource || "manual-click",
   }));
   runtimeComponent.raw = runtimeComponent.raw || {};
   runtimeComponent.raw.pins = runtimeComponent.pins.map((pin) => ({ ...pin }));
@@ -471,19 +506,22 @@ function createPinEditorOverlayElement(pin, selected = false) {
   element.style.height = `${PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX}px`;
   element.style.borderRadius = "50%";
   element.style.border = selected ? "2px solid #fff7d6" : "1px solid #ffffff";
-  element.style.background = selected ? "rgba(255, 184, 0, 0.96)" : "rgba(26, 174, 255, 0.9)";
+  const isManual = pin.authoringSource === "manual-click";
+  element.style.background = selected
+    ? "rgba(255, 184, 0, 0.96)"
+    : (isManual ? "rgba(26, 174, 255, 0.9)" : "rgba(111, 255, 163, 0.85)");
   element.style.boxShadow = selected
     ? "0 0 12px rgba(255, 184, 0, 0.95)"
     : "0 0 7px rgba(26, 174, 255, 0.8)";
   element.style.pointerEvents = "none";
   element.style.padding = "0";
-  element.title = `${pin.id}${pin.name ? ` (${pin.name})` : ""} @ (${pin.x}, ${pin.y})`;
+  element.title = `${pin.id}${pin.name ? ` (${pin.name})` : ""} @ (${pin.x}, ${pin.y}) [${pin.authoringSource || "unknown"}]`;
   return element;
 }
 
 function redrawPinEditorOverlays() {
   clearOverlayList(pinEditorOverlays);
-  if (!viewerInstance || !currentBoardRuntime || !pinEditorState.isEditing || !pinEditorState.componentId) return;
+  if (!viewerInstance || !currentBoardRuntime || !pinEditorState.isEditing) return;
 
   const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
   pinEditorState.pins.forEach((pin) => {
@@ -552,18 +590,35 @@ function pickEditorPinAtPoint(boardPoint) {
 }
 
 function addEditorPinAtPoint(boardPoint) {
-  const id = nextGeneratedPinId();
+  const selectedComponent = getSelectedRuntimeComponent() || currentBoardRuntime?.componentsById?.[currentSelection?.pick?.componentId] || null;
+  const sequence = pinEditorState.pins.filter((pin) => pin.authoringSource === "manual-click").length + 1;
+  const defaults = inferPinDefaultsFromComponent(selectedComponent, sequence);
+  const id = defaults.id || nextGeneratedPinId();
   const pin = {
     id,
-    name: id,
+    name: defaults.name || id,
     x: Math.round(boardPoint.x),
     y: Math.round(boardPoint.y),
     radius: PIN_EDITOR_DEFAULT_RADIUS,
     node: null,
     railId: null,
-    kind: null,
+    pinType: defaults.pinType,
+    pinRole: defaults.pinRole,
+    isGround: false,
+    isTestPoint: false,
+    componentId: pinEditorState.componentId || selectedComponent?.id || null,
+    authoringSource: "manual-click",
   };
   pin.railId = inferPinRailId(pin);
+  if (String(pin.railId || "").toUpperCase().includes("GND")) {
+    pin.pinRole = "ground";
+    pin.isGround = true;
+  }
+  if (String(pin.componentId || "").toUpperCase().startsWith("TP")) {
+    pin.pinType = pin.pinType || "test_point";
+    pin.pinRole = pin.pinRole || "test_point";
+    pin.isTestPoint = true;
+  }
   pinEditorState.pins.push(pin);
   pinEditorState.selectedPinId = pin.id;
   syncRuntimeComponentPins();
@@ -610,10 +665,7 @@ export function enableComponentPinEditor() {
       setPinEditorComponent(selectedComponentId);
     }
   }
-  if (!pinEditorState.componentId) {
-    console.warn("[pcb] No component selected for pin editor.");
-    return false;
-  }
+  if (!pinEditorState.componentId) console.warn("[pcb] No component selected for pin editor. Manual loose pin authoring enabled.");
   pinEditorState.isEditing = true;
   redrawPinEditorOverlays();
   return true;
@@ -628,6 +680,10 @@ export function disableComponentPinEditor() {
 
 export function listComponentPins() {
   return pinEditorState.pins.map((pin) => ({ ...pin }));
+}
+
+export function listCreatedPins() {
+  return listComponentPins().filter((pin) => pin.authoringSource === "manual-click");
 }
 
 export function selectPin(pinId) {
@@ -679,6 +735,33 @@ export function setPinNode(pinId, node) {
   return updatePin(pinId, { node: node == null ? null : String(node) });
 }
 
+export function setPinType(pinId, type) {
+  if (type != null && !PIN_TYPE_VALUES.has(String(type))) console.warn(`[pcb] Unknown pinType: ${type}`);
+  return updatePin(pinId, { pinType: type == null ? null : String(type) });
+}
+
+export function setPinRole(pinId, role) {
+  if (role != null && !PIN_ROLE_VALUES.has(String(role))) console.warn(`[pcb] Unknown pinRole: ${role}`);
+  return updatePin(pinId, { pinRole: role == null ? null : String(role) });
+}
+
+export function setPinGround(pinId, value) {
+  const isGround = Boolean(value);
+  const patch = { isGround };
+  if (isGround) patch.pinRole = "ground";
+  return updatePin(pinId, patch);
+}
+
+export function setPinTestPoint(pinId, value) {
+  const isTestPoint = Boolean(value);
+  const patch = { isTestPoint };
+  if (isTestPoint) {
+    patch.pinRole = "test_point";
+    patch.pinType = "test_point";
+  }
+  return updatePin(pinId, patch);
+}
+
 export function setPinRail(pinId, railId) {
   return updatePin(pinId, { railId: railId == null ? null : String(railId) });
 }
@@ -721,6 +804,25 @@ export function exportEditedComponentPins() {
   return payload;
 }
 
+export function exportCreatedPins() {
+  return {
+    boardId: currentBoard?.id || currentBoardRuntime?.board?.id || null,
+    componentId: pinEditorState.componentId || null,
+    pins: listCreatedPins(),
+  };
+}
+
+export function exportCreatedPinsJson() {
+  return JSON.stringify(exportCreatedPins(), null, 2);
+}
+
+export function exportSelectedComponentPatch() {
+  const componentId = pinEditorState.componentId || currentSelection?.pick?.componentId || null;
+  if (!componentId) return null;
+  const pins = listCreatedPins().filter((pin) => (pin.componentId || componentId) === componentId);
+  return { id: componentId, pins };
+}
+
 export function exportEditedComponentPinsJson() {
   const payload = exportEditedComponentPins();
   return payload ? JSON.stringify(payload, null, 2) : "";
@@ -738,6 +840,22 @@ export function dumpEditedComponent() {
   };
 }
 
+export function getSelectedComponentId() {
+  return currentSelection?.pick?.componentId || pinEditorState.componentId || null;
+}
+
+export function getSelectedComponent() {
+  const id = getSelectedComponentId();
+  if (!id) return null;
+  return currentBoardRuntime?.componentsById?.[id] || null;
+}
+
+export function dumpSelectedComponentPins() {
+  const id = getSelectedComponentId();
+  if (!id) return [];
+  return pinEditorState.pins.filter((pin) => (pin.componentId || id) === id).map((pin) => ({ ...pin }));
+}
+
 export function dumpSelectedPin() {
   if (!pinEditorState.selectedPinId) return null;
   return pinEditorState.pins.find((pin) => pin.id === pinEditorState.selectedPinId) || null;
@@ -745,6 +863,27 @@ export function dumpSelectedPin() {
 
 export function debugPinEditorState() {
   return clonePinEditorState();
+}
+
+export function debugPinPlacementState() {
+  return {
+    enabled: pinEditorState.isEditing,
+    selectedPinId: pinEditorState.selectedPinId,
+    targetComponentId: pinEditorState.componentId,
+    createdPins: listCreatedPins().length,
+  };
+}
+
+export function enablePinPlacementMode() {
+  return enableComponentPinEditor();
+}
+
+export function disablePinPlacementMode() {
+  return disableComponentPinEditor();
+}
+
+export function selectCreatedPin(pinId) {
+  return selectPin(pinId);
 }
 
 export function dumpViewerRuntime() {
@@ -1091,7 +1230,7 @@ function handleCanvasClick(event) {
 
   const point = screenToBoardPoint(viewerInstance, currentBoardRuntime, event.position);
 
-  if (pinEditorState.isEditing && pinEditorState.componentId) {
+  if (pinEditorState.isEditing) {
     if (!point) {
       console.warn("[pcb] Could not resolve click point for pin editor.");
       return;
@@ -1113,7 +1252,7 @@ function handleCanvasClick(event) {
     if (hitPin) {
       pinEditorState.selectedPinId = hitPin.id;
       redrawPinEditorOverlays();
-      if (mountPoint) setStatus(mountPoint, `Selected pin ${hitPin.id} on ${pinEditorState.componentId}`);
+      if (mountPoint) setStatus(mountPoint, `Selected pin ${hitPin.id}${pinEditorState.componentId ? ` on ${pinEditorState.componentId}` : ""}`);
       event.preventDefaultAction = true;
       return;
     }
@@ -1123,6 +1262,7 @@ function handleCanvasClick(event) {
       const railHint = created.railId ? ` rail=${created.railId}` : "";
       setStatus(mountPoint, `Added pin ${created.id} @ (${created.x}, ${created.y})${railHint}`);
     }
+    console.info("[pcb] Created authoring pin", created);
     event.preventDefaultAction = true;
     return;
   }
@@ -1512,20 +1652,35 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     disableComponentPinEditor,
     editComponentPins,
     listComponentPins,
+    listCreatedPins,
     selectPin,
+    selectCreatedPin,
     renamePin,
     setPinName,
+    setPinType,
+    setPinRole,
     setPinNode,
     setPinRail,
+    setPinGround,
+    setPinTestPoint,
     setPinRadius,
     deleteSelectedPin,
     moveSelectedPinTo,
     moveSelectedPinOnNextClick,
     exportEditedComponentPins,
     exportEditedComponentPinsJson,
+    exportCreatedPins,
+    exportCreatedPinsJson,
+    exportSelectedComponentPatch,
     dumpEditedComponent,
+    getSelectedComponentId,
+    getSelectedComponent,
+    dumpSelectedComponentPins,
     dumpSelectedPin,
     debugPinEditorState,
+    debugPinPlacementState,
+    enablePinPlacementMode,
+    disablePinPlacementMode,
     dumpViewerRuntime,
     setProbePolarity,
     setPlacedProbeTargets,
