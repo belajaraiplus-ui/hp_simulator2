@@ -1043,6 +1043,65 @@ body {
   font-size: 15px;
 }
 
+.pcb-toolbar-btn-dev {
+  background: linear-gradient(180deg, #3b424d 0%, #2b3138 100%);
+}
+
+.pcb-toolbar-group-wrap {
+  flex-wrap: wrap;
+}
+
+.pcb-authoring-panel {
+  min-width: 260px;
+  max-width: 360px;
+  border-color: rgba(145, 112, 228, 0.55);
+}
+
+.pcb-authoring-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pcb-authoring-badge {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #d8c9ff;
+  border: 1px solid rgba(185, 157, 255, 0.55);
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+.pcb-authoring-active-tool {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pcb-authoring-active-tool-value {
+  font-family: var(--font-mono);
+  color: #efe7ff;
+  font-size: 12px;
+}
+
+.pcb-authoring-tool-btn.is-active {
+  background: linear-gradient(180deg, #6f3cff 0%, #4b25ae 100%);
+}
+
+.pcb-authoring-tool-btn.is-placeholder {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pcb-authoring-panel.is-authoring-active {
+  box-shadow: 0 0 0 1px rgba(146, 107, 255, 0.4), 0 0 18px rgba(112, 65, 248, 0.25);
+}
+
+.pcb-viewer-ui.is-authoring-active {
+  border-color: rgba(131, 96, 230, 0.95);
+}
+
 .pcb-toolbar-spacer {
   flex: 1 1 auto;
 }

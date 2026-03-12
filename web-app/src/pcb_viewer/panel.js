@@ -18,6 +18,13 @@ import {
   describePick,
   screenToBoardPoint,
 } from "./viewer/picking.js";
+import {
+  AUTHORING_TOOLS,
+  getAuthoringState,
+  resetAuthoringState,
+  setAuthoringMode,
+  setAuthoringTool,
+} from "./authoring_state.js";
 
 let viewerInstance = null;
 let railOverlays = [];
@@ -55,6 +62,15 @@ let placedProbeTargets = {
   positive: null,
   negative: null,
 };
+
+const AUTHORING_TOOL_BUTTONS = [
+  { id: AUTHORING_TOOLS.SELECT, label: "Select", enabled: true },
+  { id: AUTHORING_TOOLS.ADD_PIN, label: "Add Pin", enabled: false },
+  { id: AUTHORING_TOOLS.EDIT_PIN, label: "Edit Pin", enabled: false },
+  { id: AUTHORING_TOOLS.COMPONENT, label: "Component", enabled: false },
+  { id: AUTHORING_TOOLS.VALIDATE, label: "Validate", enabled: false },
+  { id: AUTHORING_TOOLS.EXPORT, label: "Export", enabled: false },
+];
 
 function buildProbeCursor({
   cable = "#151515",
@@ -258,6 +274,7 @@ export function clearScene() {
     positive: null,
     negative: null,
   };
+  resetAuthoringState();
 
   clearCache();
 
@@ -1319,6 +1336,20 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
 
   const toolbarMarkup = `
     <div id="pcb-viewer-ui" class="pcb-viewer-ui">
+      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack pcb-authoring-panel" id="pcb-authoring-panel">
+        <div class="pcb-authoring-header">
+          <span class="pcb-toolbar-label">Developer Studio</span>
+          <span class="pcb-authoring-badge">Authoring</span>
+        </div>
+        <button id="btn-authoring-toggle" class="pcb-toolbar-btn pcb-toolbar-btn-dev">Authoring Mode: OFF</button>
+        <div class="pcb-authoring-active-tool">
+          <span class="pcb-toolbar-label">Active Tool</span>
+          <span id="authoring-active-tool" class="pcb-authoring-active-tool-value">Select</span>
+        </div>
+        <div id="authoring-tool-buttons" class="pcb-toolbar-group pcb-toolbar-group-wrap">
+          ${AUTHORING_TOOL_BUTTONS.map((tool) => `<button class="pcb-toolbar-btn pcb-toolbar-btn-ghost pcb-authoring-tool-btn${tool.enabled ? "" : " is-placeholder"}" data-authoring-tool="${tool.id}" ${tool.enabled ? "" : "disabled"}>${tool.label}</button>`).join("")}
+        </div>
+      </div>
       <div class="pcb-toolbar-cluster">
         <label class="pcb-toolbar-field pcb-toolbar-field-wide">
           <span class="pcb-toolbar-label">Board</span>
@@ -1390,6 +1421,10 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   const zoomOutBtn = toolbarRoot.querySelector("#btn-zoom-out");
   const homeBtn = toolbarRoot.querySelector("#btn-home");
   const canvasTarget = mountPoint.querySelector("#pcb-canvas-target");
+  const authoringPanel = toolbarRoot.querySelector("#pcb-authoring-panel");
+  const authoringToggleBtn = toolbarRoot.querySelector("#btn-authoring-toggle");
+  const authoringActiveTool = toolbarRoot.querySelector("#authoring-active-tool");
+  const authoringToolButtons = Array.from(toolbarRoot.querySelectorAll("[data-authoring-tool]"));
 
   if (uiLayer) {
     const stopViewerInput = (event) => event.stopPropagation();
@@ -1413,6 +1448,59 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
 
   let boards = [];
   let manualNavDrag = null;
+
+  function syncAuthoringUi() {
+    const state = getAuthoringState();
+    const activeTool = AUTHORING_TOOL_BUTTONS.find((tool) => tool.id === state.activeTool);
+    const activeToolName = activeTool?.label || state.activeTool;
+
+    authoringToggleBtn.textContent = `Authoring Mode: ${state.enabled ? "ON" : "OFF"}`;
+    authoringToggleBtn.style.background = state.enabled
+      ? "linear-gradient(180deg, #7a42ff 0%, #4a22aa 100%)"
+      : "linear-gradient(180deg, #3b424d 0%, #2b3138 100%)";
+    authoringPanel?.classList.toggle("is-authoring-active", state.enabled);
+    uiLayer?.classList.toggle("is-authoring-active", state.enabled);
+
+    if (authoringActiveTool) {
+      authoringActiveTool.textContent = activeToolName;
+    }
+
+    authoringToolButtons.forEach((button) => {
+      const isActive = button.dataset.authoringTool === state.activeTool;
+      button.classList.toggle("is-active", isActive);
+      if (!button.disabled) {
+        button.style.borderColor = isActive ? "rgba(177, 139, 255, 0.92)" : "rgba(95, 109, 123, 0.42)";
+        button.style.boxShadow = isActive ? "0 0 0 1px rgba(135, 89, 255, 0.4)" : "none";
+      }
+    });
+  }
+
+  function setAuthoringModeState(enabled) {
+    setAuthoringMode(enabled);
+    syncAuthoringUi();
+    return getAuthoringState();
+  }
+
+  function setAuthoringToolState(toolName) {
+    const nextState = setAuthoringTool(toolName);
+    syncAuthoringUi();
+    return nextState;
+  }
+
+  authoringToggleBtn?.addEventListener("click", () => {
+    const state = getAuthoringState();
+    setAuthoringModeState(!state.enabled);
+  });
+
+  authoringToolButtons.forEach((button) => {
+    if (button.disabled) return;
+    button.addEventListener("click", () => {
+      const toolName = button.dataset.authoringTool;
+      setAuthoringToolState(toolName);
+    });
+  });
+
+  syncAuthoringUi();
 
   canvasTarget.addEventListener("wheel", (event) => {
     if (probeMode || !viewerInstance?.viewport) return;
@@ -1684,6 +1772,10 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     dumpViewerRuntime,
     setProbePolarity,
     setPlacedProbeTargets,
+    enableAuthoringMode: () => setAuthoringModeState(true),
+    disableAuthoringMode: () => setAuthoringModeState(false),
+    setAuthoringTool: (toolName) => setAuthoringToolState(toolName),
+    debugAuthoringState: () => getAuthoringState(),
     debugPick,
   };
 }
