@@ -1085,6 +1085,23 @@ body {
   font-size: 12px;
 }
 
+
+.pcb-authoring-readout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(126, 108, 176, 0.55);
+  background: rgba(23, 20, 32, 0.45);
+}
+
+.pcb-authoring-readout-value {
+  font-family: var(--font-mono);
+  color: #efe7ff;
+  font-size: 12px;
+}
+
 .pcb-authoring-tool-btn.is-active {
   background: linear-gradient(180deg, #6f3cff 0%, #4b25ae 100%);
 }

@@ -23,6 +23,7 @@ import {
   getAuthoringState,
   resetAuthoringState,
   setAuthoringMode,
+  setAuthoringSelection,
   setAuthoringTool,
 } from "./authoring_state.js";
 
@@ -65,7 +66,7 @@ let placedProbeTargets = {
 
 const AUTHORING_TOOL_BUTTONS = [
   { id: AUTHORING_TOOLS.SELECT, label: "Select", enabled: true },
-  { id: AUTHORING_TOOLS.ADD_PIN, label: "Add Pin", enabled: false },
+  { id: AUTHORING_TOOLS.ADD_PIN, label: "Add Pin", enabled: true },
   { id: AUTHORING_TOOLS.EDIT_PIN, label: "Edit Pin", enabled: false },
   { id: AUTHORING_TOOLS.COMPONENT, label: "Component", enabled: false },
   { id: AUTHORING_TOOLS.VALIDATE, label: "Validate", enabled: false },
@@ -275,6 +276,7 @@ export function clearScene() {
     negative: null,
   };
   resetAuthoringState();
+  refreshAuthoringReadoutUi();
 
   clearCache();
 
@@ -648,6 +650,20 @@ function getSelectedRuntimeComponent() {
   return currentBoardRuntime?.componentsById?.[pinEditorState.componentId] || null;
 }
 
+
+function refreshAuthoringReadoutUi() {
+  const state = getAuthoringState();
+  const selectedComponentEl = document.querySelector("#authoring-selected-component");
+  const createdPinCountEl = document.querySelector("#authoring-created-pin-count");
+  if (selectedComponentEl) selectedComponentEl.textContent = state.selectedComponentId || "(none)";
+  if (createdPinCountEl) createdPinCountEl.textContent = String(listCreatedPins().length);
+}
+
+function isAuthoringAddPinActive() {
+  const state = getAuthoringState();
+  return Boolean(state.enabled && state.activeTool === AUTHORING_TOOLS.ADD_PIN);
+}
+
 export function editComponentPins(componentId = null) {
   if (!currentBoardRuntime) {
     console.warn("[pcb] editComponentPins requires a loaded board.");
@@ -701,6 +717,30 @@ export function listComponentPins() {
 
 export function listCreatedPins() {
   return listComponentPins().filter((pin) => pin.authoringSource === "manual-click");
+}
+
+export function removeLastCreatedPin() {
+  const createdPins = listCreatedPins();
+  const lastCreated = createdPins[createdPins.length - 1];
+  if (!lastCreated) return null;
+  const previousSelected = pinEditorState.selectedPinId;
+  pinEditorState.selectedPinId = lastCreated.id;
+  const removed = deleteSelectedPin();
+  if (!removed) pinEditorState.selectedPinId = previousSelected;
+  refreshAuthoringReadoutUi();
+  return removed;
+}
+
+export function clearCreatedPins() {
+  const removed = [];
+  let current = removeLastCreatedPin();
+  while (current) {
+    removed.push(current);
+    current = removeLastCreatedPin();
+  }
+  redrawPinEditorOverlays();
+  refreshAuthoringReadoutUi();
+  return removed;
 }
 
 export function selectPin(pinId) {
@@ -883,8 +923,12 @@ export function debugPinEditorState() {
 }
 
 export function debugPinPlacementState() {
+  const authoringState = getAuthoringState();
   return {
     enabled: pinEditorState.isEditing,
+    authoringEnabled: authoringState.enabled,
+    activeTool: authoringState.activeTool,
+    selectedAuthoringComponentId: authoringState.selectedComponentId,
     selectedPinId: pinEditorState.selectedPinId,
     targetComponentId: pinEditorState.componentId,
     createdPins: listCreatedPins().length,
@@ -892,11 +936,15 @@ export function debugPinPlacementState() {
 }
 
 export function enablePinPlacementMode() {
-  return enableComponentPinEditor();
+  setAuthoringMode(true);
+  setAuthoringTool(AUTHORING_TOOLS.ADD_PIN);
+  return getAuthoringState();
 }
 
 export function disablePinPlacementMode() {
-  return disableComponentPinEditor();
+  const nextState = setAuthoringTool(AUTHORING_TOOLS.SELECT);
+  disableComponentPinEditor();
+  return nextState;
 }
 
 export function selectCreatedPin(pinId) {
@@ -1206,6 +1254,16 @@ function dispatchSelection(pick, { source = "board" } = {}) {
 
   applySelectionVisuals(pick);
 
+  if (pick.type === "component" || pick.type === "component-pin") {
+    setAuthoringSelection({ componentId: pick.componentId, pinId: pick.type === "component-pin" ? pick.pinId : null });
+    refreshAuthoringReadoutUi();
+    if (isAuthoringAddPinActive()) {
+      setPinEditorComponent(pick.componentId);
+      pinEditorState.isEditing = true;
+      redrawPinEditorOverlays();
+    }
+  }
+
   const mountPoint = document.querySelector("#motherboardMap");
   if (mountPoint) setStatus(mountPoint, `Selected: ${describePick(pick)}`);
 
@@ -1246,6 +1304,41 @@ function handleCanvasClick(event) {
   if (!event?.quick || !viewerInstance || !currentBoardRuntime) return;
 
   const point = screenToBoardPoint(viewerInstance, currentBoardRuntime, event.position);
+  const mountPoint = document.querySelector("#motherboardMap");
+
+  if (isAuthoringAddPinActive()) {
+    if (!point) {
+      console.warn("[pcb] Could not resolve click point for Add Pin tool.");
+      return;
+    }
+
+    const authoringState = getAuthoringState();
+    const targetComponentId = authoringState.selectedComponentId
+      || currentSelection?.pick?.componentId
+      || pinEditorState.componentId
+      || null;
+
+    if (!targetComponentId) {
+      if (mountPoint) setStatus(mountPoint, "Add Pin: select a component first, then click the board to place pins.");
+      event.preventDefaultAction = true;
+      return;
+    }
+
+    if (pinEditorState.componentId !== targetComponentId || !pinEditorState.isEditing) {
+      setPinEditorComponent(targetComponentId);
+      pinEditorState.isEditing = true;
+    }
+
+    const created = addEditorPinAtPoint(point.board);
+    if (mountPoint && created) {
+      const railHint = created.railId ? ` rail=${created.railId}` : "";
+      setStatus(mountPoint, `Added pin ${created.id} @ (${created.x}, ${created.y})${railHint}`);
+    }
+    console.info("[pcb] Created authoring pin", created);
+    refreshAuthoringReadoutUi();
+    event.preventDefaultAction = true;
+    return;
+  }
 
   if (pinEditorState.isEditing) {
     if (!point) {
@@ -1253,7 +1346,6 @@ function handleCanvasClick(event) {
       return;
     }
 
-    const mountPoint = document.querySelector("#motherboardMap");
     const hitPin = pickEditorPinAtPoint(point.board);
 
     if (pinEditorState.relocateOnNextClick && pinEditorState.selectedPinId) {
@@ -1280,6 +1372,7 @@ function handleCanvasClick(event) {
       setStatus(mountPoint, `Added pin ${created.id} @ (${created.x}, ${created.y})${railHint}`);
     }
     console.info("[pcb] Created authoring pin", created);
+    refreshAuthoringReadoutUi();
     event.preventDefaultAction = true;
     return;
   }
@@ -1345,6 +1438,12 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         <div class="pcb-authoring-active-tool">
           <span class="pcb-toolbar-label">Active Tool</span>
           <span id="authoring-active-tool" class="pcb-authoring-active-tool-value">Select</span>
+        </div>
+        <div class="pcb-authoring-readout">
+          <span class="pcb-toolbar-label">Selected Component</span>
+          <span id="authoring-selected-component" class="pcb-authoring-readout-value">(none)</span>
+          <span class="pcb-toolbar-label">Created Pins</span>
+          <span id="authoring-created-pin-count" class="pcb-authoring-readout-value">0</span>
         </div>
         <div id="authoring-tool-buttons" class="pcb-toolbar-group pcb-toolbar-group-wrap">
           ${AUTHORING_TOOL_BUTTONS.map((tool) => `<button class="pcb-toolbar-btn pcb-toolbar-btn-ghost pcb-authoring-tool-btn${tool.enabled ? "" : " is-placeholder"}" data-authoring-tool="${tool.id}" ${tool.enabled ? "" : "disabled"}>${tool.label}</button>`).join("")}
@@ -1424,6 +1523,8 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   const authoringPanel = toolbarRoot.querySelector("#pcb-authoring-panel");
   const authoringToggleBtn = toolbarRoot.querySelector("#btn-authoring-toggle");
   const authoringActiveTool = toolbarRoot.querySelector("#authoring-active-tool");
+  const authoringSelectedComponent = toolbarRoot.querySelector("#authoring-selected-component");
+  const authoringCreatedPinCount = toolbarRoot.querySelector("#authoring-created-pin-count");
   const authoringToolButtons = Array.from(toolbarRoot.querySelectorAll("[data-authoring-tool]"));
 
   if (uiLayer) {
@@ -1464,6 +1565,12 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     if (authoringActiveTool) {
       authoringActiveTool.textContent = activeToolName;
     }
+    if (authoringSelectedComponent) {
+      authoringSelectedComponent.textContent = state.selectedComponentId || "(none)";
+    }
+    if (authoringCreatedPinCount) {
+      authoringCreatedPinCount.textContent = String(listCreatedPins().length);
+    }
 
     authoringToolButtons.forEach((button) => {
       const isActive = button.dataset.authoringTool === state.activeTool;
@@ -1476,13 +1583,23 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   }
 
   function setAuthoringModeState(enabled) {
-    setAuthoringMode(enabled);
+    const nextState = setAuthoringMode(enabled);
+    if (!nextState.enabled) {
+      disableComponentPinEditor();
+    }
     syncAuthoringUi();
     return getAuthoringState();
   }
 
   function setAuthoringToolState(toolName) {
     const nextState = setAuthoringTool(toolName);
+    if (!nextState.enabled || nextState.activeTool !== AUTHORING_TOOLS.ADD_PIN) {
+      disableComponentPinEditor();
+    } else if (nextState.selectedComponentId) {
+      setPinEditorComponent(nextState.selectedComponentId);
+      pinEditorState.isEditing = true;
+      redrawPinEditorOverlays();
+    }
     syncAuthoringUi();
     return nextState;
   }
@@ -1633,6 +1750,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         railFile,
       });
       currentSelection = null;
+      setAuthoringSelection({ componentId: null, pinId: null });
       pinEditorState = {
         componentId: null,
         pins: [],
@@ -1642,6 +1760,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       };
       clearOverlayList(pinEditorOverlays);
       redrawPickedPadOverlays();
+      refreshAuthoringReadoutUi();
 
       viewerInstance.addHandler("canvas-click", handleCanvasClick);
 
@@ -1734,6 +1853,8 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     listPickedPads,
     clearPickedPads,
     removeLastPickedPad,
+    removeLastCreatedPin,
+    clearCreatedPins,
     exportPickedPads,
     exportPickedPadsJson,
     enableComponentPinEditor,

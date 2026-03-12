@@ -38,6 +38,8 @@ export function installPcbViewerDevApi({ viewerApiProvider } = {}) {
   window.editComponentPins = (componentId) => callViewer("editComponentPins", componentId);
   window.listComponentPins = () => callViewer("listComponentPins") || [];
   window.listCreatedPins = () => callViewer("listCreatedPins") || [];
+  window.removeLastCreatedPin = () => callViewer("removeLastCreatedPin");
+  window.clearCreatedPins = () => callViewer("clearCreatedPins") || [];
   window.selectPin = (pinId) => callViewer("selectPin", pinId);
   window.selectCreatedPin = (pinId) => callViewer("selectCreatedPin", pinId);
   window.renamePin = (pinId, newId) => callViewer("renamePin", pinId, newId);
@@ -85,6 +87,8 @@ export function installPcbViewerDevApi({ viewerApiProvider } = {}) {
     editComponentPins: window.editComponentPins,
     listComponentPins: window.listComponentPins,
     listCreatedPins: window.listCreatedPins,
+    removeLastCreatedPin: window.removeLastCreatedPin,
+    clearCreatedPins: window.clearCreatedPins,
     selectPin: window.selectPin,
     selectCreatedPin: window.selectCreatedPin,
     renamePin: window.renamePin,
