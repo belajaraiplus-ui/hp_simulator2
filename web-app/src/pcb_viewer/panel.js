@@ -48,8 +48,10 @@ let latestPickedPadId = null;
 const PAD_MARKER_DIAMETER_IMAGE_PX = 12;
 const PIN_EDITOR_DEFAULT_RADIUS = 6;
 const PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX = 14;
-const PIN_TYPE_VALUES = new Set(["resistor", "capacitor", "diode", "mosfet", "ic", "fuse", "inductor", "jumper", "test_point", "passive", "signal", "power", "ground"]);
-const PIN_ROLE_VALUES = new Set(["ground", "signal", "power", "passive", "test_point", "anode", "cathode", "gate", "drain", "source", "input", "output", "pin1", "pin2"]);
+const PIN_TYPE_OPTIONS = ["resistor", "capacitor", "diode", "mosfet", "ic", "fuse", "inductor", "jumper", "test_point", "passive", "signal", "power", "ground"];
+const PIN_ROLE_OPTIONS = ["ground", "signal", "power", "passive", "test_point", "anode", "cathode", "gate", "drain", "source", "input", "output", "pin1", "pin2"];
+const PIN_TYPE_VALUES = new Set(PIN_TYPE_OPTIONS);
+const PIN_ROLE_VALUES = new Set(PIN_ROLE_OPTIONS);
 
 let pinEditorState = {
   componentId: null,
@@ -59,6 +61,7 @@ let pinEditorState = {
   relocateOnNextClick: false,
 };
 let pinEditorOverlays = [];
+let pinInspectorSyncing = false;
 let placedProbeTargets = {
   positive: null,
   negative: null,
@@ -277,6 +280,7 @@ export function clearScene() {
   };
   resetAuthoringState();
   refreshAuthoringReadoutUi();
+  syncPinInspectorUi();
 
   clearCache();
 
@@ -518,22 +522,54 @@ function syncRuntimeComponentPins() {
   runtimeComponent.raw.pins = runtimeComponent.pins.map((pin) => ({ ...pin }));
 }
 
+function getPinVisualStyle(pin = {}, { selected = false } = {}) {
+  const normalizedType = String(pin.pinType || "").toLowerCase();
+  const normalizedRole = String(pin.pinRole || "").toLowerCase();
+
+  let key = "unknown";
+  if (Boolean(pin.isGround) || normalizedRole === "ground" || normalizedType === "ground") key = "ground";
+  else if (normalizedRole === "power" || normalizedType === "power") key = "power";
+  else if (Boolean(pin.isTestPoint) || normalizedRole === "test_point" || normalizedType === "test_point") key = "test_point";
+  else if (normalizedRole === "signal" || normalizedType === "signal" || ["input", "output", "gate", "drain", "source", "anode", "cathode"].includes(normalizedRole)) key = "signal";
+  else if (normalizedRole === "passive" || ["resistor", "capacitor", "inductor", "fuse", "jumper", "passive"].includes(normalizedType)) key = "passive";
+
+  const palette = {
+    ground: { fill: "rgba(34, 197, 94, 0.48)", stroke: "rgba(187, 247, 208, 0.95)", glow: "rgba(34, 197, 94, 0.72)" },
+    power: { fill: "rgba(239, 68, 68, 0.48)", stroke: "rgba(254, 202, 202, 0.95)", glow: "rgba(239, 68, 68, 0.72)" },
+    signal: { fill: "rgba(59, 130, 246, 0.45)", stroke: "rgba(191, 219, 254, 0.95)", glow: "rgba(59, 130, 246, 0.7)" },
+    test_point: { fill: "rgba(250, 204, 21, 0.52)", stroke: "rgba(254, 249, 195, 0.97)", glow: "rgba(250, 204, 21, 0.75)" },
+    passive: { fill: "rgba(249, 115, 22, 0.44)", stroke: "rgba(255, 237, 213, 0.94)", glow: "rgba(249, 115, 22, 0.65)" },
+    unknown: { fill: "rgba(148, 163, 184, 0.35)", stroke: "rgba(226, 232, 240, 0.9)", glow: "rgba(148, 163, 184, 0.55)" },
+  };
+
+  const base = palette[key] || palette.unknown;
+  const isManual = pin.authoringSource === "manual-click";
+  const radius = Number.isFinite(Number(pin.radius)) ? Number(pin.radius) : PIN_EDITOR_DEFAULT_RADIUS;
+  const emphasizedRadius = Math.max(3.5, radius + (isManual ? 1 : 0) + (selected ? 2 : 0));
+  return {
+    fill: base.fill,
+    stroke: selected ? "rgba(255, 255, 255, 1)" : base.stroke,
+    glow: selected ? "rgba(255, 255, 255, 0.9)" : base.glow,
+    markerRadius: emphasizedRadius,
+    opacity: selected ? 0.98 : (isManual ? 0.94 : 0.85),
+    zIndex: selected ? "8" : (isManual ? "7" : "6"),
+  };
+}
+
 function createPinEditorOverlayElement(pin, selected = false) {
+  const style = getPinVisualStyle(pin, { selected });
   const element = document.createElement("button");
   element.type = "button";
   element.style.width = `${PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX}px`;
   element.style.height = `${PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX}px`;
   element.style.borderRadius = "50%";
-  element.style.border = selected ? "2px solid #fff7d6" : "1px solid #ffffff";
-  const isManual = pin.authoringSource === "manual-click";
-  element.style.background = selected
-    ? "rgba(255, 184, 0, 0.96)"
-    : (isManual ? "rgba(26, 174, 255, 0.9)" : "rgba(111, 255, 163, 0.85)");
-  element.style.boxShadow = selected
-    ? "0 0 12px rgba(255, 184, 0, 0.95)"
-    : "0 0 7px rgba(26, 174, 255, 0.8)";
+  element.style.border = `2px solid ${style.stroke}`;
+  element.style.background = style.fill;
+  element.style.boxShadow = `0 0 0 1px rgba(15, 23, 42, 0.35), 0 0 11px ${style.glow}`;
+  element.style.opacity = String(style.opacity);
   element.style.pointerEvents = "none";
   element.style.padding = "0";
+  element.style.zIndex = style.zIndex;
   element.title = `${pin.id}${pin.name ? ` (${pin.name})` : ""} @ (${pin.x}, ${pin.y}) [${pin.authoringSource || "unknown"}]`;
   return element;
 }
@@ -546,8 +582,9 @@ function redrawPinEditorOverlays() {
   pinEditorState.pins.forEach((pin) => {
     const xi = pin.x * sx;
     const yi = pin.y * sy;
-    const markerRadiusX = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sx);
-    const markerRadiusY = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sy);
+    const markerStyle = getPinVisualStyle(pin, { selected: pin.id === pinEditorState.selectedPinId });
+    const markerRadiusX = Math.max(1, markerStyle.markerRadius * sx);
+    const markerRadiusY = Math.max(1, markerStyle.markerRadius * sy);
     const rect = new OpenSeadragon.Rect(
       (xi - markerRadiusX) / imgW,
       (yi - markerRadiusY) / imgH,
@@ -591,6 +628,7 @@ function setPinEditorComponent(componentId) {
   pinEditorState.selectedPinId = pins[0]?.id || null;
   pinEditorState.relocateOnNextClick = false;
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   return clonePinEditorState();
 }
 
@@ -642,12 +680,68 @@ function addEditorPinAtPoint(boardPoint) {
   pinEditorState.selectedPinId = pin.id;
   syncRuntimeComponentPins();
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   return { ...pin };
 }
 
 function getSelectedRuntimeComponent() {
   if (!pinEditorState.componentId) return null;
   return currentBoardRuntime?.componentsById?.[pinEditorState.componentId] || null;
+}
+
+function getSelectedEditorPin() {
+  if (!pinEditorState.selectedPinId) return null;
+  return pinEditorState.pins.find((pin) => String(pin.id) === String(pinEditorState.selectedPinId)) || null;
+}
+
+function syncPinInspectorUi() {
+  const panel = document.querySelector("#pcb-pin-inspector");
+  if (!panel) return;
+
+  const pin = getSelectedEditorPin();
+  const disabled = !pin;
+  const statusEl = panel.querySelector("#pin-inspector-status");
+  const idEl = panel.querySelector("#pin-edit-id");
+  const nameEl = panel.querySelector("#pin-edit-name");
+  const typeEl = panel.querySelector("#pin-edit-type");
+  const roleEl = panel.querySelector("#pin-edit-role");
+  const nodeEl = panel.querySelector("#pin-edit-node");
+  const railEl = panel.querySelector("#pin-edit-rail");
+  const radiusEl = panel.querySelector("#pin-edit-radius");
+  const groundEl = panel.querySelector("#pin-edit-ground");
+  const testPointEl = panel.querySelector("#pin-edit-test-point");
+
+  pinInspectorSyncing = true;
+  [idEl, nameEl, typeEl, roleEl, nodeEl, railEl, radiusEl, groundEl, testPointEl].forEach((el) => {
+    if (el) el.disabled = disabled;
+  });
+
+  if (!pin) {
+    if (statusEl) statusEl.textContent = "No pin selected. Click a pin marker or create one in Add Pin mode.";
+    if (idEl) idEl.value = "";
+    if (nameEl) nameEl.value = "";
+    if (typeEl) typeEl.value = "";
+    if (roleEl) roleEl.value = "";
+    if (nodeEl) nodeEl.value = "";
+    if (railEl) railEl.value = "";
+    if (radiusEl) radiusEl.value = String(PIN_EDITOR_DEFAULT_RADIUS);
+    if (groundEl) groundEl.checked = false;
+    if (testPointEl) testPointEl.checked = false;
+    pinInspectorSyncing = false;
+    return;
+  }
+
+  if (statusEl) statusEl.textContent = `Editing pin ${pin.id}${pin.componentId ? ` on ${pin.componentId}` : ""}`;
+  if (idEl) idEl.value = pin.id || "";
+  if (nameEl) nameEl.value = pin.name || "";
+  if (typeEl) typeEl.value = pin.pinType || "";
+  if (roleEl) roleEl.value = pin.pinRole || "";
+  if (nodeEl) nodeEl.value = pin.node || "";
+  if (railEl) railEl.value = pin.railId || "";
+  if (radiusEl) radiusEl.value = String(pin.radius || PIN_EDITOR_DEFAULT_RADIUS);
+  if (groundEl) groundEl.checked = Boolean(pin.isGround);
+  if (testPointEl) testPointEl.checked = Boolean(pin.isTestPoint);
+  pinInspectorSyncing = false;
 }
 
 
@@ -683,6 +777,7 @@ export function editComponentPins(componentId = null) {
   if (!setPinEditorComponent(targetId)) return null;
   pinEditorState.isEditing = true;
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   console.info(`[pcb] Pin editor enabled for component ${targetId}`);
   return clonePinEditorState();
 }
@@ -701,6 +796,7 @@ export function enableComponentPinEditor() {
   if (!pinEditorState.componentId) console.warn("[pcb] No component selected for pin editor. Manual loose pin authoring enabled.");
   pinEditorState.isEditing = true;
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   return true;
 }
 
@@ -708,6 +804,7 @@ export function disableComponentPinEditor() {
   pinEditorState.isEditing = false;
   pinEditorState.relocateOnNextClick = false;
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   return true;
 }
 
@@ -749,6 +846,7 @@ export function selectPin(pinId) {
   if (!pin) return null;
   pinEditorState.selectedPinId = pin.id;
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   return { ...pin };
 }
 
@@ -777,6 +875,7 @@ function updatePin(pinId, patch = {}) {
   if (pinEditorState.selectedPinId === wanted) pinEditorState.selectedPinId = next.id;
   syncRuntimeComponentPins();
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   return { ...next };
 }
 
@@ -845,6 +944,7 @@ export function deleteSelectedPin() {
   pinEditorState.selectedPinId = pinEditorState.pins[idx]?.id || pinEditorState.pins[idx - 1]?.id || null;
   syncRuntimeComponentPins();
   redrawPinEditorOverlays();
+  syncPinInspectorUi();
   return removed ? { ...removed } : null;
 }
 
@@ -1253,6 +1353,7 @@ function dispatchSelection(pick, { source = "board" } = {}) {
   };
 
   applySelectionVisuals(pick);
+  syncPinInspectorUi();
 
   if (pick.type === "component" || pick.type === "component-pin") {
     setAuthoringSelection({ componentId: pick.componentId, pinId: pick.type === "component-pin" ? pick.pinId : null });
@@ -1359,8 +1460,7 @@ function handleCanvasClick(event) {
     }
 
     if (hitPin) {
-      pinEditorState.selectedPinId = hitPin.id;
-      redrawPinEditorOverlays();
+      selectPin(hitPin.id);
       if (mountPoint) setStatus(mountPoint, `Selected pin ${hitPin.id}${pinEditorState.componentId ? ` on ${pinEditorState.componentId}` : ""}`);
       event.preventDefaultAction = true;
       return;
@@ -1449,6 +1549,57 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
           ${AUTHORING_TOOL_BUTTONS.map((tool) => `<button class="pcb-toolbar-btn pcb-toolbar-btn-ghost pcb-authoring-tool-btn${tool.enabled ? "" : " is-placeholder"}" data-authoring-tool="${tool.id}" ${tool.enabled ? "" : "disabled"}>${tool.label}</button>`).join("")}
         </div>
       </div>
+      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack pcb-pin-inspector" id="pcb-pin-inspector">
+        <div class="pcb-authoring-header">
+          <span class="pcb-toolbar-label">Pin Inspector</span>
+          <span class="pcb-authoring-badge">Stage 3</span>
+        </div>
+        <span id="pin-inspector-status" class="pcb-pin-inspector-status">No pin selected. Click a pin marker or create one in Add Pin mode.</span>
+        <div class="pcb-pin-inspector-grid">
+          <label class="pcb-toolbar-field">
+            <span class="pcb-toolbar-label">ID</span>
+            <input id="pin-edit-id" class="pcb-pin-input" type="text" placeholder="PIN_001">
+          </label>
+          <label class="pcb-toolbar-field">
+            <span class="pcb-toolbar-label">Name</span>
+            <input id="pin-edit-name" class="pcb-pin-input" type="text" placeholder="Label">
+          </label>
+          <label class="pcb-toolbar-field">
+            <span class="pcb-toolbar-label">Type</span>
+            <select id="pin-edit-type" class="pcb-toolbar-select">
+              <option value="">(none)</option>
+              ${PIN_TYPE_OPTIONS.map((value) => `<option value="${value}">${value}</option>`).join("")}
+            </select>
+          </label>
+          <label class="pcb-toolbar-field">
+            <span class="pcb-toolbar-label">Role</span>
+            <select id="pin-edit-role" class="pcb-toolbar-select">
+              <option value="">(none)</option>
+              ${PIN_ROLE_OPTIONS.map((value) => `<option value="${value}">${value}</option>`).join("")}
+            </select>
+          </label>
+          <label class="pcb-toolbar-field">
+            <span class="pcb-toolbar-label">Node</span>
+            <input id="pin-edit-node" class="pcb-pin-input" type="text" placeholder="Net/node">
+          </label>
+          <label class="pcb-toolbar-field">
+            <span class="pcb-toolbar-label">Rail</span>
+            <input id="pin-edit-rail" class="pcb-pin-input" type="text" placeholder="PPBUS_G3H">
+          </label>
+          <label class="pcb-toolbar-field">
+            <span class="pcb-toolbar-label">Radius</span>
+            <input id="pin-edit-radius" class="pcb-pin-input" type="number" min="1" step="0.5" value="6">
+          </label>
+          <label class="pcb-pin-checkbox-field">
+            <input id="pin-edit-ground" type="checkbox">
+            <span>Ground</span>
+          </label>
+          <label class="pcb-pin-checkbox-field">
+            <input id="pin-edit-test-point" type="checkbox">
+            <span>Test Point</span>
+          </label>
+        </div>
+      </div>
       <div class="pcb-toolbar-cluster">
         <label class="pcb-toolbar-field pcb-toolbar-field-wide">
           <span class="pcb-toolbar-label">Board</span>
@@ -1526,6 +1677,16 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   const authoringSelectedComponent = toolbarRoot.querySelector("#authoring-selected-component");
   const authoringCreatedPinCount = toolbarRoot.querySelector("#authoring-created-pin-count");
   const authoringToolButtons = Array.from(toolbarRoot.querySelectorAll("[data-authoring-tool]"));
+  const pinInspectorPanel = toolbarRoot.querySelector("#pcb-pin-inspector");
+  const pinEditId = toolbarRoot.querySelector("#pin-edit-id");
+  const pinEditName = toolbarRoot.querySelector("#pin-edit-name");
+  const pinEditType = toolbarRoot.querySelector("#pin-edit-type");
+  const pinEditRole = toolbarRoot.querySelector("#pin-edit-role");
+  const pinEditNode = toolbarRoot.querySelector("#pin-edit-node");
+  const pinEditRail = toolbarRoot.querySelector("#pin-edit-rail");
+  const pinEditRadius = toolbarRoot.querySelector("#pin-edit-radius");
+  const pinEditGround = toolbarRoot.querySelector("#pin-edit-ground");
+  const pinEditTestPoint = toolbarRoot.querySelector("#pin-edit-test-point");
 
   if (uiLayer) {
     const stopViewerInput = (event) => event.stopPropagation();
@@ -1618,6 +1779,27 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   });
 
   syncAuthoringUi();
+
+  const applySelectedPinMutation = (mutator) => {
+    if (pinInspectorSyncing) return;
+    const selectedPin = getSelectedEditorPin();
+    if (!selectedPin) return;
+    mutator(selectedPin.id);
+    syncPinInspectorUi();
+    if (pinInspectorPanel) pinInspectorPanel.classList.add("is-dirty");
+    window.setTimeout(() => pinInspectorPanel?.classList.remove("is-dirty"), 140);
+  };
+
+  pinEditId?.addEventListener("change", () => applySelectedPinMutation((pinId) => renamePin(pinId, pinEditId.value)));
+  pinEditName?.addEventListener("input", () => applySelectedPinMutation((pinId) => setPinName(pinId, pinEditName.value)));
+  pinEditType?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinType(pinId, pinEditType.value || null)));
+  pinEditRole?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinRole(pinId, pinEditRole.value || null)));
+  pinEditNode?.addEventListener("input", () => applySelectedPinMutation((pinId) => setPinNode(pinId, pinEditNode.value || null)));
+  pinEditRail?.addEventListener("input", () => applySelectedPinMutation((pinId) => setPinRail(pinId, pinEditRail.value || null)));
+  pinEditRadius?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinRadius(pinId, pinEditRadius.value)));
+  pinEditGround?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinGround(pinId, pinEditGround.checked)));
+  pinEditTestPoint?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinTestPoint(pinId, pinEditTestPoint.checked)));
+  syncPinInspectorUi();
 
   canvasTarget.addEventListener("wheel", (event) => {
     if (probeMode || !viewerInstance?.viewport) return;
