@@ -62,6 +62,7 @@ let pinEditorState = {
 };
 let pinEditorOverlays = [];
 let pinInspectorSyncing = false;
+let exportMode = "pins-only";
 let placedProbeTargets = {
   positive: null,
   negative: null,
@@ -751,6 +752,79 @@ function refreshAuthoringReadoutUi() {
   const createdPinCountEl = document.querySelector("#authoring-created-pin-count");
   if (selectedComponentEl) selectedComponentEl.textContent = state.selectedComponentId || "(none)";
   if (createdPinCountEl) createdPinCountEl.textContent = String(listCreatedPins().length);
+  refreshExportPanelUi();
+}
+
+function resolveExportPayload(mode = exportMode) {
+  if (mode === "component-patch") {
+    return exportSelectedComponentPatch();
+  }
+  const payload = exportCreatedPins();
+  if (!payload?.componentId && (!Array.isArray(payload?.pins) || payload.pins.length === 0)) {
+    return null;
+  }
+  return payload;
+}
+
+function resolveExportJson(mode = exportMode) {
+  const payload = resolveExportPayload(mode);
+  return payload ? JSON.stringify(payload, null, 2) : "";
+}
+
+async function copyExportPayloadJson(mode = exportMode) {
+  const json = resolveExportJson(mode);
+  if (!json) return false;
+  try {
+    await navigator.clipboard.writeText(json);
+    return true;
+  } catch {
+    const textarea = document.createElement("textarea");
+    textarea.value = json;
+    textarea.setAttribute("readonly", "readonly");
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return copied;
+  }
+}
+
+function downloadExportPayloadJson(mode = exportMode) {
+  const json = resolveExportJson(mode);
+  if (!json) return false;
+  const componentId = getSelectedComponentId() || "component";
+  const suffix = mode === "component-patch" ? "patch" : "pins";
+  const blob = new Blob([json], { type: "application/json" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = `${componentId}_${suffix}.json`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+  return true;
+}
+
+function refreshExportPanelUi() {
+  const selectedComponentEl = document.querySelector("#authoring-export-component");
+  const editedPinCountEl = document.querySelector("#authoring-export-pin-count");
+  const previewEl = document.querySelector("#authoring-export-preview");
+  const emptyEl = document.querySelector("#authoring-export-empty");
+
+  const selectedComponentId = getSelectedComponentId();
+  const editedPins = dumpSelectedComponentPins();
+  const json = resolveExportJson(exportMode);
+
+  if (selectedComponentEl) selectedComponentEl.textContent = selectedComponentId || "(none)";
+  if (editedPinCountEl) editedPinCountEl.textContent = String(editedPins.length);
+
+  if (!previewEl || !emptyEl) return;
+  previewEl.textContent = json;
+  const hasPayload = Boolean(json);
+  previewEl.hidden = !hasPayload;
+  emptyEl.hidden = hasPayload;
 }
 
 function isAuthoringAddPinActive() {
@@ -1600,6 +1674,31 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
           </label>
         </div>
       </div>
+      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack pcb-export-panel" id="pcb-export-panel">
+        <div class="pcb-authoring-header">
+          <span class="pcb-toolbar-label">Export</span>
+          <span class="pcb-authoring-badge">Stage 4</span>
+        </div>
+        <div class="pcb-authoring-readout">
+          <span class="pcb-toolbar-label">Selected Component</span>
+          <span id="authoring-export-component" class="pcb-authoring-readout-value">(none)</span>
+          <span class="pcb-toolbar-label">Pins in Component Editor</span>
+          <span id="authoring-export-pin-count" class="pcb-authoring-readout-value">0</span>
+        </div>
+        <label class="pcb-toolbar-field pcb-toolbar-field-wide">
+          <span class="pcb-toolbar-label">Export Mode</span>
+          <select id="authoring-export-mode" class="pcb-toolbar-select">
+            <option value="pins-only">Pins Only</option>
+            <option value="component-patch">Component Patch</option>
+          </select>
+        </label>
+        <div id="authoring-export-empty" class="pcb-export-empty">No export payload yet. Select a component and create or edit pins.</div>
+        <pre id="authoring-export-preview" class="pcb-export-preview" hidden></pre>
+        <div class="pcb-toolbar-group pcb-toolbar-group-wrap">
+          <button id="btn-authoring-copy-export" class="pcb-toolbar-btn pcb-toolbar-btn-ghost">Copy JSON</button>
+          <button id="btn-authoring-download-export" class="pcb-toolbar-btn pcb-toolbar-btn-ghost">Download .json</button>
+        </div>
+      </div>
       <div class="pcb-toolbar-cluster">
         <label class="pcb-toolbar-field pcb-toolbar-field-wide">
           <span class="pcb-toolbar-label">Board</span>
@@ -1687,6 +1786,9 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   const pinEditRadius = toolbarRoot.querySelector("#pin-edit-radius");
   const pinEditGround = toolbarRoot.querySelector("#pin-edit-ground");
   const pinEditTestPoint = toolbarRoot.querySelector("#pin-edit-test-point");
+  const exportModeSelect = toolbarRoot.querySelector("#authoring-export-mode");
+  const copyExportBtn = toolbarRoot.querySelector("#btn-authoring-copy-export");
+  const downloadExportBtn = toolbarRoot.querySelector("#btn-authoring-download-export");
 
   if (uiLayer) {
     const stopViewerInput = (event) => event.stopPropagation();
@@ -1786,6 +1888,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     if (!selectedPin) return;
     mutator(selectedPin.id);
     syncPinInspectorUi();
+    refreshExportPanelUi();
     if (pinInspectorPanel) pinInspectorPanel.classList.add("is-dirty");
     window.setTimeout(() => pinInspectorPanel?.classList.remove("is-dirty"), 140);
   };
@@ -1799,7 +1902,30 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   pinEditRadius?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinRadius(pinId, pinEditRadius.value)));
   pinEditGround?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinGround(pinId, pinEditGround.checked)));
   pinEditTestPoint?.addEventListener("change", () => applySelectedPinMutation((pinId) => setPinTestPoint(pinId, pinEditTestPoint.checked)));
+
+  exportModeSelect?.addEventListener("change", () => {
+    exportMode = exportModeSelect.value === "component-patch" ? "component-patch" : "pins-only";
+    refreshExportPanelUi();
+  });
+
+  copyExportBtn?.addEventListener("click", async () => {
+    const copied = await copyExportPayloadJson(exportMode);
+    const statusTarget = document.querySelector("#motherboardMap");
+    if (statusTarget) {
+      setStatus(statusTarget, copied ? "Export JSON copied to clipboard." : "No export payload to copy.");
+    }
+  });
+
+  downloadExportBtn?.addEventListener("click", () => {
+    const downloaded = downloadExportPayloadJson(exportMode);
+    const statusTarget = document.querySelector("#motherboardMap");
+    if (statusTarget) {
+      setStatus(statusTarget, downloaded ? "Export JSON downloaded." : "No export payload to download.");
+    }
+  });
+
   syncPinInspectorUi();
+  refreshExportPanelUi();
 
   canvasTarget.addEventListener("wheel", (event) => {
     if (probeMode || !viewerInstance?.viewport) return;

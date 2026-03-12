@@ -1168,6 +1168,35 @@ body {
   accent-color: #59b7ff;
 }
 
+.pcb-export-panel {
+  min-width: 320px;
+  max-width: 460px;
+  border-color: rgba(103, 163, 218, 0.62);
+  background: rgba(8, 20, 32, 0.84);
+}
+
+.pcb-export-empty {
+  font-size: 11px;
+  color: #c0d6e7;
+  line-height: 1.4;
+}
+
+.pcb-export-preview {
+  margin: 0;
+  max-height: 230px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(86, 132, 176, 0.62);
+  background: rgba(3, 10, 16, 0.82);
+  color: #d9ecff;
+  font-size: 11px;
+  line-height: 1.45;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .pcb-viewer-ui.is-authoring-active {
   border-color: rgba(131, 96, 230, 0.95);
 }
