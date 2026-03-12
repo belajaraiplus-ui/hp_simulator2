@@ -1168,6 +1168,64 @@ body {
   accent-color: #59b7ff;
 }
 
+.pcb-validation-panel {
+  min-width: 320px;
+  max-width: 520px;
+  border-color: rgba(206, 154, 77, 0.62);
+  background: rgba(29, 20, 8, 0.84);
+}
+
+.pcb-validation-status {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.pcb-validation-status[data-severity="error"] {
+  color: #ff9f9f;
+}
+
+.pcb-validation-status[data-severity="warning"] {
+  color: #ffd48a;
+}
+
+.pcb-validation-status[data-severity="info"] {
+  color: #9fd9ff;
+}
+
+.pcb-validation-empty {
+  font-size: 11px;
+  color: #e4cead;
+  line-height: 1.4;
+}
+
+.pcb-validation-list {
+  margin: 0;
+  padding: 0 0 0 16px;
+  max-height: 220px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pcb-validation-item {
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.pcb-validation-item.is-error {
+  color: #ffb8b8;
+}
+
+.pcb-validation-item.is-warning {
+  color: #ffd99f;
+}
+
+.pcb-validation-item.is-info {
+  color: #bae8ff;
+}
+
 .pcb-export-panel {
   min-width: 320px;
   max-width: 460px;

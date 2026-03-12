@@ -753,6 +753,149 @@ function refreshAuthoringReadoutUi() {
   if (selectedComponentEl) selectedComponentEl.textContent = state.selectedComponentId || "(none)";
   if (createdPinCountEl) createdPinCountEl.textContent = String(listCreatedPins().length);
   refreshExportPanelUi();
+  refreshValidationPanelUi();
+}
+
+function buildValidationMessage(severity, message, context = {}) {
+  return {
+    severity,
+    message,
+    componentId: context.componentId || null,
+    pinId: context.pinId || null,
+  };
+}
+
+function summarizeValidationStatus(messages = []) {
+  const counts = { error: 0, warning: 0, info: 0 };
+  messages.forEach((entry) => {
+    if (entry?.severity === "error") counts.error += 1;
+    else if (entry?.severity === "warning") counts.warning += 1;
+    else counts.info += 1;
+  });
+
+  const status = counts.error > 0
+    ? "Blocked"
+    : counts.warning > 0
+      ? "Needs Review"
+      : "Ready";
+
+  return { status, counts };
+}
+
+function computeAuthoringValidation() {
+  const selectedComponentId = getSelectedComponentId();
+  const pins = dumpSelectedComponentPins();
+  const messages = [];
+
+  if (!selectedComponentId) {
+    messages.push(buildValidationMessage("error", "No component selected for authoring validation."));
+  }
+
+  const seenPinIds = new Map();
+  let measurablePins = 0;
+
+  pins.forEach((pin) => {
+    const pinId = String(pin?.id || "").trim();
+    const hasNode = Boolean(String(pin?.node || "").trim());
+    const hasRail = Boolean(String(pin?.railId || pin?.rail || "").trim());
+    const hasType = Boolean(String(pin?.pinType || "").trim());
+    const hasRole = Boolean(String(pin?.pinRole || "").trim());
+
+    if (!pin?.componentId) {
+      messages.push(buildValidationMessage(
+        "error",
+        `Pin \`${pinId || "(missing id)"}\` has no componentId mapping.`,
+        { componentId: selectedComponentId, pinId: pinId || null }
+      ));
+    }
+
+    if (pinId) {
+      const duplicateCount = seenPinIds.get(pinId) || 0;
+      seenPinIds.set(pinId, duplicateCount + 1);
+    }
+
+    if (!hasNode && !hasRail) {
+      messages.push(buildValidationMessage(
+        "warning",
+        `Pin \`${pinId || "(missing id)"}\` has no railId or node mapping.`,
+        { componentId: selectedComponentId, pinId: pinId || null }
+      ));
+      messages.push(buildValidationMessage(
+        "info",
+        `Pin \`${pinId || "(missing id)"}\` is clickable but not measurable yet.`,
+        { componentId: selectedComponentId, pinId: pinId || null }
+      ));
+    } else {
+      measurablePins += 1;
+    }
+
+    const needsTyping = pin?.authoringSource === "manual-click" || hasNode || hasRail || Boolean(pin?.isGround) || Boolean(pin?.isTestPoint);
+    if (needsTyping && (!hasType || !hasRole)) {
+      messages.push(buildValidationMessage(
+        "warning",
+        `Pin \`${pinId || "(missing id)"}\` is missing ${!hasType && !hasRole ? "pinType and pinRole" : (!hasType ? "pinType" : "pinRole")}.`,
+        { componentId: selectedComponentId, pinId: pinId || null }
+      ));
+    }
+  });
+
+  seenPinIds.forEach((count, pinId) => {
+    if (count > 1) {
+      messages.push(buildValidationMessage(
+        "error",
+        `Duplicate pin id \`${pinId}\` in component \`${selectedComponentId || "(none)"}\`.`,
+        { componentId: selectedComponentId, pinId }
+      ));
+    }
+  });
+
+  if (selectedComponentId && pins.length) {
+    if (measurablePins === 0) {
+      messages.push(buildValidationMessage("warning", `Component \`${selectedComponentId}\` currently has no measurable pins.`, { componentId: selectedComponentId }));
+    } else if (measurablePins < pins.length) {
+      messages.push(buildValidationMessage("info", `Component \`${selectedComponentId}\` is partially measurable (${measurablePins}/${pins.length} pins mapped).`, { componentId: selectedComponentId }));
+    } else {
+      messages.push(buildValidationMessage("info", `Component \`${selectedComponentId}\` has measurable mappings on all current pins.`, { componentId: selectedComponentId }));
+    }
+  }
+
+  const summary = summarizeValidationStatus(messages);
+  return {
+    ...summary,
+    selectedComponentId,
+    pinCount: pins.length,
+    messages,
+  };
+}
+
+function refreshValidationPanelUi() {
+  const statusEl = document.querySelector("#authoring-validation-status");
+  const countEl = document.querySelector("#authoring-validation-counts");
+  const listEl = document.querySelector("#authoring-validation-list");
+  const emptyEl = document.querySelector("#authoring-validation-empty");
+
+  if (!statusEl || !countEl || !listEl || !emptyEl) return;
+
+  const validation = computeAuthoringValidation();
+
+  statusEl.textContent = validation.status;
+  statusEl.dataset.severity = validation.counts.error > 0 ? "error" : (validation.counts.warning > 0 ? "warning" : "info");
+  countEl.textContent = `${validation.counts.error} error(s) · ${validation.counts.warning} warning(s) · ${validation.counts.info} info`;
+
+  listEl.innerHTML = "";
+  validation.messages.forEach((entry) => {
+    const item = document.createElement("li");
+    item.className = `pcb-validation-item is-${entry.severity}`;
+    const scope = [];
+    if (entry.componentId) scope.push(`component ${entry.componentId}`);
+    if (entry.pinId) scope.push(`pin ${entry.pinId}`);
+    item.textContent = `${entry.severity.toUpperCase()}: ${entry.message}${scope.length ? ` (${scope.join(", ")})` : ""}`;
+    listEl.appendChild(item);
+  });
+
+  const hasMessages = validation.messages.length > 0;
+  emptyEl.hidden = hasMessages;
+  listEl.hidden = !hasMessages;
 }
 
 function resolveExportPayload(mode = exportMode) {
@@ -1674,6 +1817,20 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
           </label>
         </div>
       </div>
+      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack pcb-validation-panel" id="pcb-validation-panel">
+        <div class="pcb-authoring-header">
+          <span class="pcb-toolbar-label">Validation</span>
+          <span class="pcb-authoring-badge">Stage 5</span>
+        </div>
+        <div class="pcb-authoring-readout">
+          <span class="pcb-toolbar-label">Current Status</span>
+          <span id="authoring-validation-status" class="pcb-validation-status" data-severity="info">Ready</span>
+          <span class="pcb-toolbar-label">Counts</span>
+          <span id="authoring-validation-counts" class="pcb-authoring-readout-value">0 error(s) · 0 warning(s) · 0 info</span>
+        </div>
+        <div id="authoring-validation-empty" class="pcb-validation-empty">Validation messages will appear while you author pins/components.</div>
+        <ul id="authoring-validation-list" class="pcb-validation-list" hidden></ul>
+      </div>
       <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack pcb-export-panel" id="pcb-export-panel">
         <div class="pcb-authoring-header">
           <span class="pcb-toolbar-label">Export</span>
@@ -1889,6 +2046,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     mutator(selectedPin.id);
     syncPinInspectorUi();
     refreshExportPanelUi();
+    refreshValidationPanelUi();
     if (pinInspectorPanel) pinInspectorPanel.classList.add("is-dirty");
     window.setTimeout(() => pinInspectorPanel?.classList.remove("is-dirty"), 140);
   };
@@ -1906,6 +2064,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   exportModeSelect?.addEventListener("change", () => {
     exportMode = exportModeSelect.value === "component-patch" ? "component-patch" : "pins-only";
     refreshExportPanelUi();
+    refreshValidationPanelUi();
   });
 
   copyExportBtn?.addEventListener("click", async () => {
@@ -1926,6 +2085,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
 
   syncPinInspectorUi();
   refreshExportPanelUi();
+  refreshValidationPanelUi();
 
   canvasTarget.addEventListener("wheel", (event) => {
     if (probeMode || !viewerInstance?.viewport) return;
