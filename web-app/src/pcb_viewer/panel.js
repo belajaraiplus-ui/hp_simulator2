@@ -476,6 +476,37 @@ function nextGeneratedPinId() {
   return `PIN_${Date.now()}`;
 }
 
+function ensureUniquePinId(preferredId = "") {
+  const baseId = String(preferredId || "").trim();
+  const used = new Set(pinEditorState.pins.map((pin) => String(pin.id || "").trim()).filter(Boolean));
+  if (!baseId) return nextGeneratedPinId();
+  if (!used.has(baseId)) return baseId;
+
+  if (/^\d+$/.test(baseId)) {
+    let numeric = Number(baseId) + 1;
+    while (used.has(String(numeric))) numeric += 1;
+    return String(numeric);
+  }
+
+  const trailingNumberMatch = baseId.match(/^(.*?)(\d+)$/);
+  if (trailingNumberMatch) {
+    const [, prefix, digits] = trailingNumberMatch;
+    let numeric = Number(digits);
+    const width = digits.length;
+    do {
+      numeric += 1;
+      const candidate = `${prefix}${String(numeric).padStart(width, "0")}`;
+      if (!used.has(candidate)) return candidate;
+    } while (numeric < 999999);
+  }
+
+  for (let i = 2; i <= 9999; i += 1) {
+    const candidate = `${baseId}_${i}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${baseId}_${Date.now()}`;
+}
+
 function syncRuntimeComponentPins() {
   if (!currentBoardRuntime || !pinEditorState.componentId) return;
   const runtimeComponent = currentBoardRuntime.componentsById?.[pinEditorState.componentId];
@@ -593,10 +624,11 @@ function addEditorPinAtPoint(boardPoint) {
   const selectedComponent = getSelectedRuntimeComponent() || currentBoardRuntime?.componentsById?.[currentSelection?.pick?.componentId] || null;
   const sequence = pinEditorState.pins.filter((pin) => pin.authoringSource === "manual-click").length + 1;
   const defaults = inferPinDefaultsFromComponent(selectedComponent, sequence);
-  const id = defaults.id || nextGeneratedPinId();
+  const id = ensureUniquePinId(defaults.id);
+  const name = defaults.name === defaults.id ? id : (defaults.name || id);
   const pin = {
     id,
-    name: defaults.name || id,
+    name,
     x: Math.round(boardPoint.x),
     y: Math.round(boardPoint.y),
     radius: PIN_EDITOR_DEFAULT_RADIUS,
