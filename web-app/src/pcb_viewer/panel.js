@@ -476,6 +476,20 @@ function nextGeneratedPinId() {
   return `PIN_${Date.now()}`;
 }
 
+function buildUniquePinId(preferredId = null) {
+  const used = new Set(pinEditorState.pins.map((pin) => String(pin.id || "").trim()));
+  const desired = String(preferredId || "").trim();
+  if (!desired) return nextGeneratedPinId();
+  if (!used.has(desired)) return desired;
+
+  for (let i = 2; i <= 9999; i += 1) {
+    const candidate = `${desired}_${i}`;
+    if (!used.has(candidate)) return candidate;
+  }
+
+  return nextGeneratedPinId();
+}
+
 function syncRuntimeComponentPins() {
   if (!currentBoardRuntime || !pinEditorState.componentId) return;
   const runtimeComponent = currentBoardRuntime.componentsById?.[pinEditorState.componentId];
@@ -593,7 +607,7 @@ function addEditorPinAtPoint(boardPoint) {
   const selectedComponent = getSelectedRuntimeComponent() || currentBoardRuntime?.componentsById?.[currentSelection?.pick?.componentId] || null;
   const sequence = pinEditorState.pins.filter((pin) => pin.authoringSource === "manual-click").length + 1;
   const defaults = inferPinDefaultsFromComponent(selectedComponent, sequence);
-  const id = defaults.id || nextGeneratedPinId();
+  const id = buildUniquePinId(defaults.id);
   const pin = {
     id,
     name: defaults.name || id,
