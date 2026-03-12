@@ -65,6 +65,11 @@ export function installPcbViewerDevApi({ viewerApiProvider } = {}) {
   window.debugPinEditorState = () => callViewer("debugPinEditorState");
   window.debugPinPlacementState = () => callViewer("debugPinPlacementState");
 
+  window.enableAuthoringMode = () => callViewer("enableAuthoringMode");
+  window.disableAuthoringMode = () => callViewer("disableAuthoringMode");
+  window.setAuthoringTool = (toolName) => callViewer("setAuthoringTool", toolName);
+  window.debugAuthoringState = () => callViewer("debugAuthoringState");
+
   return {
     enablePadPicker: window.enablePadPicker,
     disablePadPicker: window.disablePadPicker,
@@ -106,6 +111,10 @@ export function installPcbViewerDevApi({ viewerApiProvider } = {}) {
     dumpSelectedPin: window.dumpSelectedPin,
     debugPinEditorState: window.debugPinEditorState,
     debugPinPlacementState: window.debugPinPlacementState,
+    enableAuthoringMode: window.enableAuthoringMode,
+    disableAuthoringMode: window.disableAuthoringMode,
+    setAuthoringTool: window.setAuthoringTool,
+    debugAuthoringState: window.debugAuthoringState,
     dumpViewerRuntime: window.dumpViewerRuntime,
   };
 }
