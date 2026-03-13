@@ -44,7 +44,7 @@ export async function createDeepZoomViewer({ el, board, getTileUrl }) {
     showNavigator: true,
     wrapHorizontal: false,
     wrapVertical: false,
-    
+
     // UX & Navigation Settings
     animationTime: 0.5,
     blendTime: 0.1,
@@ -53,6 +53,26 @@ export async function createDeepZoomViewer({ el, board, getTileUrl }) {
     minZoomImageRatio: 0.8,
     maxZoomPixelRatio: 2.0,
     defaultZoomLevel: 0,
+
+    // CRITICAL: Disable click-to-zoom so single clicks always fire
+    // canvas-click with event.quick=true — needed for pin placement
+    // and probe picking. Zoom is handled via scroll wheel instead.
+    clickToZoom: false,
+    dblClickToZoom: false,
+    gestureSettingsMouse: {
+      scrollToZoom: true,
+      clickToZoom: false,
+      dblClickToZoom: false,
+      pinchToZoom: false,
+      flickEnabled: false,
+    },
+    gestureSettingsTouch: {
+      scrollToZoom: false,
+      clickToZoom: false,
+      dblClickToZoom: false,
+      pinchToZoom: true,
+      flickEnabled: false,
+    },
   });
 
   if (typeof board?.source_url === "string" && board.source_url.length > 0) {
