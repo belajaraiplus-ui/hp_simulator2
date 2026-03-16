@@ -18,6 +18,21 @@ import {
   describePick,
   screenToBoardPoint,
 } from "./viewer/picking.js";
+import {
+  initAuthoringStudio,
+  updateAuthoringViewerRefs,
+  handleAuthoringCanvasClick,
+  installBoxDragHandlers,
+  refreshOverlays as refreshAuthoringOverlays,
+  resetAuthoringOnBoardChange,
+  installAuthoringDevHelpers,
+  isAuthoringEnabled,
+  isBoxDragActive,
+  isAuthoringActive,
+  shouldInterceptDrag,
+  getActiveTool,
+  getAuthoringState,
+} from "./authoring_studio.js";
 
 let viewerInstance = null;
 let railOverlays = [];
@@ -1228,6 +1243,12 @@ export function setPsuTargetRail(railId) {
 function handleCanvasClick(event) {
   if (!event?.quick || !viewerInstance || !currentBoardRuntime) return;
 
+  // ── Authoring Studio intercept ──
+  if (isAuthoringEnabled()) {
+    const handled = handleAuthoringCanvasClick(event, viewerInstance, currentBoardRuntime);
+    if (handled) return;
+  }
+
   const point = screenToBoardPoint(viewerInstance, currentBoardRuntime, event.position);
 
   if (pinEditorState.isEditing) {
@@ -1429,6 +1450,8 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   }, { passive: false });
 
   canvasTarget.addEventListener("pointerdown", (event) => {
+    // Don't start nav drag if authoring box tool is active
+    if (shouldInterceptDrag()) return;
     if (probeMode || !viewerInstance?.viewport) return;
     if (event.pointerType === "mouse" && event.button !== 0) return;
     manualNavDrag = {
@@ -1469,6 +1492,41 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   canvasTarget.addEventListener("pointerup", endManualNavDrag);
   canvasTarget.addEventListener("pointercancel", endManualNavDrag);
   canvasTarget.addEventListener("lostpointercapture", endManualNavDrag);
+
+  // ── Direct click handler (registered once) ──────────────────────────────────
+  // OSD's canvas-click event.quick is unreliable when clickToZoom is disabled.
+  // We track drag distance ourselves and call handleCanvasClick with a synthetic
+  // event object that is compatible with the existing handler.
+  let _clickDownX = 0, _clickDownY = 0, _clickDownTime = 0;
+  canvasTarget.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    _clickDownX = e.clientX;
+    _clickDownY = e.clientY;
+    _clickDownTime = Date.now();
+  }, { capture: false }); // passive listener, doesn't interfere with box drag
+
+  canvasTarget.addEventListener("click", (e) => {
+    if (!viewerInstance || !currentBoardRuntime) return;
+
+    const movedPx = Math.hypot(e.clientX - _clickDownX, e.clientY - _clickDownY);
+    if (movedPx > 8) return;
+    if (Date.now() - _clickDownTime > 600) return;
+    if (isBoxDragActive()) return;
+
+    if (isAuthoringEnabled()) {
+      const rect = canvasTarget.getBoundingClientRect();
+      const screenX = e.clientX - rect.left;
+      const screenY = e.clientY - rect.top;
+      const syntheticEvent = {
+        quick: true,
+        position: new OpenSeadragon.Point(screenX, screenY),
+        preventDefaultAction: false,
+      };
+      console.debug("[authoring] click →", getActiveTool(), { screenX, screenY });
+      const handled = handleAuthoringCanvasClick(syntheticEvent, viewerInstance, currentBoardRuntime);
+      if (handled) return;
+    }
+  }, false);
 
   function syncModeButtons() {
     if (probeBtn) {
@@ -1555,6 +1613,20 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       clearOverlayList(pinEditorOverlays);
       redrawPickedPadOverlays();
 
+      // ── Authoring Studio: update refs & install drag handler ──
+      resetAuthoringOnBoardChange();
+      initAuthoringStudio({
+        viewerInstance,
+        boardRuntime: currentBoardRuntime,
+        getSpaces,
+        mountTarget: mountPoint,
+        screenToBoardPoint,
+      });
+      installBoxDragHandlers(canvasTarget, viewerInstance, currentBoardRuntime);
+      installAuthoringDevHelpers();
+
+      // canvas-click via OSD (for probe/pin-editor flow — NOT for authoring pin tool)
+      // This is registered once per viewer; OSD deduplicates the same function reference.
       viewerInstance.addHandler("canvas-click", handleCanvasClick);
 
       railSelect.innerHTML = '<option value="">-- Select Rail --</option>'
@@ -1685,5 +1757,8 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     setProbePolarity,
     setPlacedProbeTargets,
     debugPick,
+    // ── Authoring Studio ──
+    getAuthoringState,
+    isAuthoringEnabled,
   };
 }

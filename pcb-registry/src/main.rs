@@ -2,7 +2,7 @@ mod routes;
 mod state;
 mod model;
 
-use axum::{routing::get, Router};
+use axum::{routing::{get, post}, Router};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::EnvFilter;
 use std::path::PathBuf;
@@ -85,6 +85,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/api/boards/:id/thermal", get(routes::get_thermal))
         .route("/api/boards/:id/source", get(routes::get_source))
         .route("/api/boards/:id/tiles/:level/:tile", get(routes::get_tile))
+        // DEV: Authoring studio endpoints
+        .route("/api/boards/:id/authoring/patch-components", post(routes::authoring_patch_components))
         .with_state(state)
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http());

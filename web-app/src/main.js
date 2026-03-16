@@ -105,6 +105,11 @@ const probeTargets = {
   negative: null,
 };
 
+// pcbViewerAPI declared at module scope so clearProbeTargets /
+// setProbeTarget (also module scope) can access it safely.
+// It is assigned inside DOMContentLoaded once the viewer is ready.
+let pcbViewerAPI = null;
+
 
 function renderDiagnosisInfo(diagnosis) {
   if (!diagnosis) return;
@@ -855,7 +860,7 @@ document.addEventListener("DOMContentLoaded", () => {
   })();
 
   // 2) INIT PCB VIEWER
-  let pcbViewerAPI = null;
+  // pcbViewerAPI is declared at module scope; assign here updates it globally.
   installPcbViewerDevApi({ viewerApiProvider: () => pcbViewerAPI });
 
   try {

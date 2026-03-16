@@ -65,6 +65,13 @@ export function installPcbViewerDevApi({ viewerApiProvider } = {}) {
   window.debugPinEditorState = () => callViewer("debugPinEditorState");
   window.debugPinPlacementState = () => callViewer("debugPinPlacementState");
 
+  // Authoring Studio helpers (installed by authoring_studio.js itself via installAuthoringDevHelpers)
+  // window.enableAuthoringMode, window.disableAuthoringMode,
+  // window.setAuthoringTool, window.debugAuthoringState,
+  // window.listCreatedAuthoringPins, window.listBoxes,
+  // window.dumpSelectedAuthoringPin, window.dumpSelectedBox,
+  // window.exportAuthoringJson, window.exportSelectedComponentPatchAuthoring
+
   return {
     enablePadPicker: window.enablePadPicker,
     disablePadPicker: window.disablePadPicker,
