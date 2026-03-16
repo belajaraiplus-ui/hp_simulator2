@@ -8,6 +8,11 @@ export function computeBoardSpaces(board) {
   return { imgW, imgH, dataW, dataH, sx, sy };
 }
 
+const HIDDEN_PROBE_BOARD_IDS = new Set([
+  "samsung_galaxy_a55_5g",
+  "samsung_galaxy_a15",
+]);
+
 function toFiniteNumber(value, fallback = null) {
   const n = Number(value);
   return Number.isFinite(n) ? n : fallback;
@@ -319,17 +324,22 @@ export function querySpatialIndexRange(index, box) {
 export function buildBoardRuntime({ board, rails = [], components = [], topology = null, thermal = null, railFile = null } = {}) {
   const spaces = computeBoardSpaces(board);
   const defaults = railFile?.defaults || {};
-  const normalizedRails = (Array.isArray(rails) ? rails : []).map((rail, index) => normalizeRailRuntime(rail, index, spaces, defaults));
-  const probes = normalizedRails.flatMap((rail) => rail.probePoints.map((probe) => ({
-    ...probe,
-    type: "probe",
-    bbox: {
-      minX: probe.x - 8,
-      minY: probe.y - 8,
-      maxX: probe.x + 8,
-      maxY: probe.y + 8,
-    },
-  })));
+  const suppressProbePoints = HIDDEN_PROBE_BOARD_IDS.has(String(board?.id || ""));
+  const normalizedRails = (Array.isArray(rails) ? rails : [])
+    .map((rail, index) => normalizeRailRuntime(rail, index, spaces, defaults))
+    .map((rail) => (suppressProbePoints ? { ...rail, probePoints: [] } : rail));
+  const probes = suppressProbePoints
+    ? []
+    : normalizedRails.flatMap((rail) => rail.probePoints.map((probe) => ({
+      ...probe,
+      type: "probe",
+      bbox: {
+        minX: probe.x - 8,
+        minY: probe.y - 8,
+        maxX: probe.x + 8,
+        maxY: probe.y + 8,
+      },
+    })));
 
   const railsById = Object.fromEntries(normalizedRails.map((rail) => [rail.id, rail]));
   const normalizedComponents = hydrateComponentRails(
