@@ -295,6 +295,138 @@ pub async fn get_components(Path(board_id): Path<String>, State(st): State<AppSt
     (StatusCode::OK, Json(arc.as_ref().clone())).into_response()
 }
 
+// ─── Authoring: patch components (DEV ONLY) ──────────────────────────────────
+
+#[derive(Debug, serde::Deserialize)]
+pub struct AuthoringPatchBody {
+    /// New or updated components to merge into components.json
+    #[serde(default)]
+    pub components: Vec<serde_json::Value>,
+    /// If true, replace entire components array instead of merging
+    #[serde(default)]
+    pub overwrite: bool,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct AuthoringSaveResult {
+    pub ok: bool,
+    pub board_id: String,
+    pub components_written: usize,
+    pub total_components: usize,
+    pub path: String,
+}
+
+pub async fn authoring_patch_components(
+    Path(board_id): Path<String>,
+    State(st): State<AppState>,
+    Json(body): Json<AuthoringPatchBody>,
+) -> impl IntoResponse {
+    if !valid_board_id(&board_id) {
+        return (StatusCode::BAD_REQUEST, "invalid board id").into_response();
+    }
+
+    let path = st.components_path(&board_id);
+
+    // Read existing file as raw JSON Value to preserve unknown fields
+    let existing_raw: serde_json::Value = if path.exists() {
+        match tokio::fs::read(&path).await {
+            Ok(bytes) => match serde_json::from_slice(&bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("authoring: existing components.json parse failed: {}", e);
+                    serde_json::json!({ "version": 1, "components": [] })
+                }
+            },
+            Err(e) => {
+                tracing::warn!("authoring: read existing components failed: {}", e);
+                serde_json::json!({ "version": 1, "components": [] })
+            }
+        }
+    } else {
+        serde_json::json!({ "version": 1, "components": [] })
+    };
+
+    // Build merged output
+    let merged = if body.overwrite {
+        // Full overwrite: keep version but replace components array
+        let version = existing_raw.get("version").cloned().unwrap_or(serde_json::json!(1));
+        serde_json::json!({
+            "version": version,
+            "components": body.components
+        })
+    } else {
+        // Merge: existing components + new ones (by id, new overrides existing)
+        let existing_comps = existing_raw
+            .get("components")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        // Build id set of incoming new components
+        let new_ids: std::collections::HashSet<String> = body.components
+            .iter()
+            .filter_map(|c| c.get("id").and_then(|v| v.as_str()).map(|s| s.to_string()))
+            .collect();
+
+        // Keep existing components that are NOT being replaced
+        let mut merged_comps: Vec<serde_json::Value> = existing_comps
+            .into_iter()
+            .filter(|c| {
+                let id = c.get("id").and_then(|v| v.as_str()).unwrap_or("");
+                !new_ids.contains(id)
+            })
+            .collect();
+
+        // Append new/updated components at the end
+        merged_comps.extend(body.components.clone());
+
+        let version = existing_raw.get("version").cloned().unwrap_or(serde_json::json!(1));
+        serde_json::json!({
+            "version": version,
+            "components": merged_comps
+        })
+    };
+
+    let total_components = merged
+        .get("components")
+        .and_then(|v| v.as_array())
+        .map(|a| a.len())
+        .unwrap_or(0);
+
+    // Pretty-print JSON
+    let json_str = match serde_json::to_string_pretty(&merged) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::error!("authoring: serialize failed: {}", e);
+            return (StatusCode::INTERNAL_SERVER_ERROR, "failed to serialize components").into_response();
+        }
+    };
+
+    // Write to disk
+    if let Err(e) = tokio::fs::write(&path, json_str.as_bytes()).await {
+        tracing::error!("authoring: write failed: path={} err={}", path.display(), e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, "failed to write components.json").into_response();
+    }
+
+    // Invalidate cache so next GET re-reads from disk
+    st.components_cache.remove(&board_id);
+
+    tracing::info!(
+        "authoring: saved components.json for board={} merged={} total={}",
+        board_id,
+        body.components.len(),
+        total_components
+    );
+
+    (StatusCode::OK, Json(AuthoringSaveResult {
+        ok: true,
+        board_id: board_id.clone(),
+        components_written: body.components.len(),
+        total_components,
+        path: path.display().to_string(),
+    })).into_response()
+}
+
 pub async fn get_rails(Path(board_id): Path<String>, State(st): State<AppState>) -> impl IntoResponse {
     if !valid_board_id(&board_id) {
         return (StatusCode::BAD_REQUEST, "invalid board id").into_response();

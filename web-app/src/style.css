@@ -1744,6 +1744,20 @@ body {
   color: #ffb1aa;
 }
 
+.as-btn-save {
+  background: linear-gradient(180deg, rgba(46, 204, 113, 0.2) 0%, rgba(46, 204, 113, 0.08) 100%);
+  border-color: rgba(46, 204, 113, 0.4);
+  color: #7fffb2;
+}
+.as-btn-save:hover {
+  background: rgba(46, 204, 113, 0.25);
+  border-color: rgba(46, 204, 113, 0.6);
+}
+.as-btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .as-btn-sm {
   padding: 5px 10px;
   font-size: 10px;
@@ -1752,13 +1766,22 @@ body {
 /* Export */
 .as-export-controls {
   display: flex;
+  flex-direction: column;
   gap: 6px;
   margin-bottom: 8px;
-  align-items: center;
+}
+
+.as-btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+.as-btn-row .as-btn {
+  flex: 1;
 }
 
 .as-export-controls .as-select {
-  flex: 1;
+  width: 100%;
 }
 
 .as-json-preview {

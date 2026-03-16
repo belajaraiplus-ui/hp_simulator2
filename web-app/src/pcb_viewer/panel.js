@@ -27,6 +27,7 @@ import {
   resetAuthoringOnBoardChange,
   installAuthoringDevHelpers,
   isAuthoringEnabled,
+  isBoxDragActive,
   isAuthoringActive,
   shouldInterceptDrag,
   getActiveTool,
@@ -1507,29 +1508,24 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   canvasTarget.addEventListener("click", (e) => {
     if (!viewerInstance || !currentBoardRuntime) return;
 
-    // Reject if moved too far (was a drag, not a click)
     const movedPx = Math.hypot(e.clientX - _clickDownX, e.clientY - _clickDownY);
     if (movedPx > 8) return;
-    // Reject if held too long (> 600ms = likely intentional drag)
     if (Date.now() - _clickDownTime > 600) return;
+    if (isBoxDragActive()) return;
 
-    // If authoring mode is active, route click there first
     if (isAuthoringEnabled()) {
       const rect = canvasTarget.getBoundingClientRect();
       const screenX = e.clientX - rect.left;
       const screenY = e.clientY - rect.top;
-      // Build synthetic OSD-compatible event with position as OSD Point
       const syntheticEvent = {
         quick: true,
         position: new OpenSeadragon.Point(screenX, screenY),
         preventDefaultAction: false,
       };
+      console.debug("[authoring] click →", getActiveTool(), { screenX, screenY });
       const handled = handleAuthoringCanvasClick(syntheticEvent, viewerInstance, currentBoardRuntime);
       if (handled) return;
     }
-
-    // Otherwise fall through to OSD's own canvas-click handler
-    // (which fires probing / pin editor logic)
   }, false);
 
   function syncModeButtons() {

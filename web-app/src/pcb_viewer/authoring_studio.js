@@ -209,7 +209,10 @@ function buildStudioHTML() {
             <option value="pins">Pins Only</option>
             <option value="component-patch">Component Patch</option>
           </select>
-          <button id="as-copy-export" class="as-btn as-btn-accent">📋 Copy JSON</button>
+          <div class="as-btn-row">
+            <button id="as-copy-export" class="as-btn as-btn-accent">📋 Copy JSON</button>
+            <button id="as-save-to-file" class="as-btn as-btn-save" title="Save directly to components.json on disk via API">💾 Save to File</button>
+          </div>
         </div>
         <pre id="as-export-preview" class="as-json-preview"></pre>
       </div>
@@ -280,6 +283,12 @@ function wireExportPanel() {
         setAuthoringStatus("❌ Copy failed. Select text manually.");
       });
     });
+  }
+
+  // Save to File button
+  const saveBtn = studioPanel.querySelector("#as-save-to-file");
+  if (saveBtn) {
+    saveBtn.addEventListener("click", () => saveToFile(saveBtn));
   }
 }
 
@@ -983,6 +992,51 @@ function refreshItemsList() {
 
 // ─── Export ────────────────────────────────────────────────────────────────────
 
+function buildComponentPatchPayload() {
+  // Build component-patch format: each box becomes a component with pins inside
+  const compMap = {};
+
+  // Add boxes as component scaffolds
+  authoringState.boxes.forEach(box => {
+    compMap[box.id] = {
+      id: box.id,
+      refdes: box.label || box.id,
+      kind: box.kind || "IC",
+      bbox: box.bbox ? { ...box.bbox } : undefined,
+      shape: box.bbox ? {
+        type: "poly",
+        points: [
+          [box.bbox.x, box.bbox.y],
+          [box.bbox.x + box.bbox.w, box.bbox.y],
+          [box.bbox.x + box.bbox.w, box.bbox.y + box.bbox.h],
+          [box.bbox.x, box.bbox.y + box.bbox.h],
+        ]
+      } : undefined,
+      pins: [],
+    };
+  });
+
+  // Assign pins to their parent component
+  authoringState.pins.forEach(pin => {
+    const compId = pin.componentId || pin.boxId || null;
+    // Ensure component entry exists (pin may have no box)
+    if (compId && !compMap[compId]) {
+      compMap[compId] = { id: compId, refdes: compId, kind: "unknown", pins: [] };
+    }
+    const target = compId ? compMap[compId] : (compMap["_unassigned"] = compMap["_unassigned"] || { id: "_unassigned", pins: [] });
+    target.pins.push({
+      id: pin.id,
+      x: Math.round(pin.x),
+      y: Math.round(pin.y),
+      name: pin.name || pin.id,
+      railId: pin.railId || null,
+      node: pin.node || pin.railId || null,
+    });
+  });
+
+  return Object.values(compMap);
+}
+
 function buildExportJson() {
   const mode = authoringState.exportMode;
   let data;
@@ -992,14 +1046,7 @@ function buildExportJson() {
   } else if (mode === "pins") {
     data = { pins: authoringState.pins.map(p => ({ ...p })) };
   } else if (mode === "component-patch") {
-    // Group pins by componentId/boxId
-    const compMap = {};
-    authoringState.pins.forEach(pin => {
-      const key = pin.componentId || pin.boxId || "_unassigned";
-      if (!compMap[key]) compMap[key] = { id: key, pins: [] };
-      compMap[key].pins.push({ ...pin });
-    });
-    data = { components: Object.values(compMap) };
+    data = { components: buildComponentPatchPayload() };
   } else {
     data = {
       boardId: _boardRuntime?.board?.id || null,
@@ -1009,6 +1056,48 @@ function buildExportJson() {
   }
 
   return JSON.stringify(data, null, 2);
+}
+
+async function saveToFile(btn) {
+  const boardId = _boardRuntime?.board?.id;
+  if (!boardId) {
+    setAuthoringStatus("❌ No board loaded — cannot save.");
+    return;
+  }
+
+  const components = buildComponentPatchPayload();
+  if (!components.length) {
+    setAuthoringStatus("⚠️ Nothing to save (no boxes/pins).");
+    return;
+  }
+
+  const originalText = btn ? btn.textContent : "";
+  if (btn) { btn.disabled = true; btn.textContent = "⏳ Saving..."; }
+
+  try {
+    const res = await fetch(`/api/boards/${boardId}/authoring/patch-components`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ components, overwrite: false }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+
+    const result = await res.json();
+    setAuthoringStatus(
+      `✅ Saved! ${result.components_written} component(s) written → ${result.total_components} total in components.json`
+    );
+    if (btn) { btn.textContent = "✅ Saved!"; }
+    setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = "💾 Save to File"; } }, 2500);
+
+  } catch (err) {
+    console.error("[authoring] saveToFile failed:", err);
+    setAuthoringStatus(`❌ Save failed: ${err.message}`);
+    if (btn) { btn.disabled = false; btn.textContent = originalText || "💾 Save to File"; }
+  }
 }
 
 function refreshExportPanel() {
