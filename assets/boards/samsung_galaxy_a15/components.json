@@ -1,22 +1,49 @@
 {
-  "version": 1,
   "components": [
     {
-      "id": "U1201",
-      "refdes": "U1201",
-      "kind": "IC",
-      "bbox": { "x": 252, "y": 176, "w": 56, "h": 52 },
-      "shape": {
-        "type": "poly",
-        "points": [[252,176],[308,176],[308,228],[252,228]]
-      },
-      "tags": ["pmic"],
-      "hints": {
-        "rails": ["VCORE", "VIO"]
+      "bbox": {
+        "h": 52,
+        "w": 56,
+        "x": 252,
+        "y": 176
       },
       "electricalProperties": {
         "diodeDrop": 0.55
-      }
+      },
+      "hints": {
+        "rails": [
+          "VCORE",
+          "VIO"
+        ]
+      },
+      "id": "U1201",
+      "kind": "IC",
+      "refdes": "U1201",
+      "shape": {
+        "points": [
+          [
+            252,
+            176
+          ],
+          [
+            308,
+            176
+          ],
+          [
+            308,
+            228
+          ],
+          [
+            252,
+            228
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": [
+        "pmic"
+      ]
     }
-  ]
+  ],
+  "version": 1
 }

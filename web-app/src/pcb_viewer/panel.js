@@ -923,6 +923,27 @@ function createRectOverlay({ border, background, boxShadow = "none" }) {
   return el;
 }
 
+function createComponentLabelOverlay(label) {
+  const el = document.createElement("div");
+  el.style.position = "absolute";
+  el.style.display = "flex";
+  el.style.alignItems = "center";
+  el.style.justifyContent = "center";
+  el.style.padding = "2px 8px";
+  el.style.border = "1px solid rgba(74, 222, 128, 0.78)";
+  el.style.borderRadius = "999px";
+  el.style.background = "rgba(3, 10, 6, 0.9)";
+  el.style.color = "#dcfce7";
+  el.style.boxShadow = "0 0 8px rgba(74, 222, 128, 0.32)";
+  el.style.fontSize = "11px";
+  el.style.fontWeight = "700";
+  el.style.letterSpacing = "0.04em";
+  el.style.whiteSpace = "nowrap";
+  el.style.pointerEvents = "none";
+  el.textContent = label;
+  return el;
+}
+
 function addBoxOverlay(list, box, styles = {}) {
   if (!viewerInstance || !box) return;
   const { imgW, imgH, sx, sy } = getSpaces();
@@ -937,6 +958,28 @@ function addBoxOverlay(list, box, styles = {}) {
     Math.max(1, maxYi - minYi) / imgH
   );
   const element = createRectOverlay(styles);
+  viewerInstance.addOverlay({ element, location: rect });
+  list.push({ element });
+}
+
+function addComponentLabelOverlay(list, component) {
+  if (!viewerInstance || !component?.bbox) return;
+  const label = String(component.refdes || component.id || "").trim();
+  if (!label) return;
+
+  const { imgW, imgH, sx, sy } = getSpaces();
+  const minXi = component.bbox.minX * sx;
+  const minYi = component.bbox.minY * sy;
+  const labelWidthPx = Math.max(54, Math.min(140, label.length * 9 + 18));
+  const labelHeightPx = 24;
+  const offsetPx = 8;
+  const rect = new OpenSeadragon.Rect(
+    Math.max(0, minXi) / imgW,
+    Math.max(0, minYi - labelHeightPx - offsetPx) / imgH,
+    labelWidthPx / imgW,
+    labelHeightPx / imgH
+  );
+  const element = createComponentLabelOverlay(label);
   viewerInstance.addOverlay({ element, location: rect });
   list.push({ element });
 }
@@ -959,6 +1002,7 @@ function drawComponentOverlay(component) {
     background: "rgba(74, 222, 128, 0.14)",
     boxShadow: "0 0 10px rgba(74, 222, 128, 0.4)",
   });
+  addComponentLabelOverlay(componentOverlays, component);
 }
 
 function drawPsuTargetOverlay(rail) {
@@ -1304,7 +1348,15 @@ function handleCanvasClick(event) {
     return;
   }
 
-  if (!probeMode) return;
+  if (!probeMode) {
+    if (!point) return;
+    const picked = pickBoardTarget(currentBoardRuntime, point);
+    if (picked?.type === "component" || picked?.type === "component-pin") {
+      dispatchSelection(picked, { source: "canvas" });
+    }
+    return;
+  }
+
   const picked = pickAtScreenPoint(viewerInstance, currentBoardRuntime, event.position);
   if (!picked) {
     const mountPoint = document.querySelector("#motherboardMap");

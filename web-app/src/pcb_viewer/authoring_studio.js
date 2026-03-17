@@ -998,18 +998,42 @@ function buildComponentPatchPayload() {
 
   // Add boxes as component scaffolds
   authoringState.boxes.forEach(box => {
+    const bbox = Number.isFinite(Number(box?.bbox?.x))
+      && Number.isFinite(Number(box?.bbox?.y))
+      && Number.isFinite(Number(box?.bbox?.w))
+      && Number.isFinite(Number(box?.bbox?.h))
+      ? {
+        x: Number(box.bbox.x),
+        y: Number(box.bbox.y),
+        w: Number(box.bbox.w),
+        h: Number(box.bbox.h),
+      }
+      : (
+        Number.isFinite(Number(box?.x))
+        && Number.isFinite(Number(box?.y))
+        && Number.isFinite(Number(box?.w))
+        && Number.isFinite(Number(box?.h))
+          ? {
+            x: Math.round(Number(box.x)),
+            y: Math.round(Number(box.y)),
+            w: Math.round(Number(box.w)),
+            h: Math.round(Number(box.h)),
+          }
+          : undefined
+      );
+
     compMap[box.id] = {
       id: box.id,
       refdes: box.label || box.id,
       kind: box.kind || "IC",
-      bbox: box.bbox ? { ...box.bbox } : undefined,
-      shape: box.bbox ? {
+      bbox,
+      shape: bbox ? {
         type: "poly",
         points: [
-          [box.bbox.x, box.bbox.y],
-          [box.bbox.x + box.bbox.w, box.bbox.y],
-          [box.bbox.x + box.bbox.w, box.bbox.y + box.bbox.h],
-          [box.bbox.x, box.bbox.y + box.bbox.h],
+          [bbox.x, bbox.y],
+          [bbox.x + bbox.w, bbox.y],
+          [bbox.x + bbox.w, bbox.y + bbox.h],
+          [bbox.x, bbox.y + bbox.h],
         ]
       } : undefined,
       pins: [],
