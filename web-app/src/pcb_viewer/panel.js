@@ -52,6 +52,7 @@ let pickedPadOverlays = [];
 let pickedPadCounter = 0;
 let latestPadPoint = null;
 let latestPickedPadId = null;
+let lastSyntheticCanvasClick = null;
 const PAD_MARKER_DIAMETER_IMAGE_PX = 12;
 const PIN_EDITOR_DEFAULT_RADIUS = 6;
 const PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX = 14;
@@ -1287,6 +1288,15 @@ export function setPsuTargetRail(railId) {
 function handleCanvasClick(event) {
   if (!event?.quick || !viewerInstance || !currentBoardRuntime) return;
 
+  if (!event.syntheticDirectClick && lastSyntheticCanvasClick) {
+    const ageMs = Date.now() - lastSyntheticCanvasClick.time;
+    const dx = Math.abs((event.position?.x || 0) - lastSyntheticCanvasClick.x);
+    const dy = Math.abs((event.position?.y || 0) - lastSyntheticCanvasClick.y);
+    if (ageMs < 250 && dx <= 2 && dy <= 2) {
+      return;
+    }
+  }
+
   // ── Authoring Studio intercept ──
   if (isAuthoringEnabled()) {
     const handled = handleAuthoringCanvasClick(event, viewerInstance, currentBoardRuntime);
@@ -1566,18 +1576,32 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     if (isBoxDragActive()) return;
 
     if (isAuthoringEnabled()) {
-      const rect = canvasTarget.getBoundingClientRect();
-      const screenX = e.clientX - rect.left;
-      const screenY = e.clientY - rect.top;
+      const screenX = e.clientX;
+      const screenY = e.clientY;
       const syntheticEvent = {
         quick: true,
         position: new OpenSeadragon.Point(screenX, screenY),
         preventDefaultAction: false,
+        syntheticDirectClick: true,
       };
       console.debug("[authoring] click →", getActiveTool(), { screenX, screenY });
       const handled = handleAuthoringCanvasClick(syntheticEvent, viewerInstance, currentBoardRuntime);
       if (handled) return;
+      lastSyntheticCanvasClick = { x: screenX, y: screenY, time: Date.now() };
+      handleCanvasClick(syntheticEvent);
+      return;
     }
+
+    const screenX = e.clientX;
+    const screenY = e.clientY;
+    const syntheticEvent = {
+      quick: true,
+      position: new OpenSeadragon.Point(screenX, screenY),
+      preventDefaultAction: false,
+      syntheticDirectClick: true,
+    };
+    lastSyntheticCanvasClick = { x: screenX, y: screenY, time: Date.now() };
+    handleCanvasClick(syntheticEvent);
   }, false);
 
   function syncModeButtons() {

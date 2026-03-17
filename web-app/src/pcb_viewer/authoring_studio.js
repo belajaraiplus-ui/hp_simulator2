@@ -382,14 +382,34 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
   if (_boxDragInstalled) return;
   _boxDragInstalled = true;
 
+  const resolvePointerBoardPoint = (e) => {
+    // Try client-space first (OSD native path), then canvas-local fallback.
+    let point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, { x: e.clientX, y: e.clientY });
+    if (point) return point;
+
+    const rect = canvasTarget.getBoundingClientRect?.();
+    if (!rect) return null;
+    point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    });
+    if (point) return point;
+
+    if (typeof window !== "undefined") {
+      point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, {
+        x: e.clientX + window.scrollX,
+        y: e.clientY + window.scrollY,
+      });
+      if (point) return point;
+    }
+    return null;
+  };
+
   canvasTarget.addEventListener("pointerdown", (e) => {
     if (!authoringState.enabled || authoringState.activeTool !== "box") return;
     if (!_viewerInstance?.viewport) return;
 
-    const rect = canvasTarget.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
-    const boardPt = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, { x: localX, y: localY });
+    const boardPt = resolvePointerBoardPoint(e);
     if (!boardPt) return;
 
     dragState = {
@@ -444,10 +464,7 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
     canvasTarget.releasePointerCapture?.(dragState.pointerId);
 
     // Calculate end board point
-    const rect = canvasTarget.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
-    const boardPt = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, { x: localX, y: localY });
+    const boardPt = resolvePointerBoardPoint(e);
 
     if (boardPt) {
       const startB = dragState.startBoard;

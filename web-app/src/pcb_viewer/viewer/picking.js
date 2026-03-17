@@ -64,18 +64,73 @@ export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
 
   if (!Number.isFinite(pixelPoint.x) || !Number.isFinite(pixelPoint.y)) return null;
 
-  const viewportPoint = viewer.viewport.pointFromPixel(pixelPoint, true);
-  const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
-  const { sx, sy } = boardRuntime.spaces;
-
-  return {
-    screen: { x: pixelPoint.x, y: pixelPoint.y },
-    image: { x: imagePoint.x, y: imagePoint.y },
-    board: {
-      x: imagePoint.x / sx,
-      y: imagePoint.y / sy,
-    },
+  const tryConvert = (candidate) => {
+    if (!candidate || !Number.isFinite(candidate.x) || !Number.isFinite(candidate.y)) return null;
+    const viewportPoint = viewer.viewport.pointFromPixel(candidate, true);
+    const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
+    const { sx, sy } = boardRuntime.spaces;
+    if (!Number.isFinite(imagePoint?.x) || !Number.isFinite(imagePoint?.y) || !Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) {
+      return null;
+    }
+    return {
+      screen: { x: candidate.x, y: candidate.y },
+      image: { x: imagePoint.x, y: imagePoint.y },
+      board: {
+        x: imagePoint.x / sx,
+        y: imagePoint.y / sy,
+      },
+    };
   };
+
+  const scoreCandidate = (result) => {
+    if (!result) return Number.POSITIVE_INFINITY;
+    const { imgW, imgH, dataW, dataH } = boardRuntime.spaces || {};
+    const penalty = (value, min, max) => {
+      if (!Number.isFinite(value)) return 1e9;
+      let score = 0;
+      if (Number.isFinite(min) && value < min) score += min - value;
+      if (Number.isFinite(max) && value > max) score += value - max;
+      return score;
+    };
+    return penalty(result.image.x, 0, imgW)
+      + penalty(result.image.y, 0, imgH)
+      + penalty(result.board.x, 0, dataW)
+      + penalty(result.board.y, 0, dataH);
+  };
+
+  const candidates = [];
+  const seen = new Set();
+  const pushCandidate = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const key = `${Math.round(x * 1000)}:${Math.round(y * 1000)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ x, y });
+  };
+
+  pushCandidate(pixelPoint.x, pixelPoint.y);
+
+  const rectSources = [viewer?.canvas, viewer?.container, viewer?.element].filter(Boolean);
+  rectSources.forEach((source) => {
+    const rect = source?.getBoundingClientRect?.();
+    if (!rect) return;
+    // Some click paths provide client/page coordinates, others element-local.
+    // Keep all plausible offsets and score against board/image bounds.
+    pushCandidate(pixelPoint.x - rect.left, pixelPoint.y - rect.top);
+  });
+
+  if (typeof window !== "undefined") {
+    pushCandidate(pixelPoint.x + window.scrollX, pixelPoint.y + window.scrollY);
+  }
+
+  const converted = candidates.map((candidate) => ({
+    result: tryConvert(candidate),
+  }));
+  converted.forEach((entry) => {
+    entry.score = scoreCandidate(entry.result);
+  });
+  converted.sort((left, right) => left.score - right.score);
+  return converted[0]?.result || null;
 }
 
 function pickProbe(boardRuntime, boardPoint, imagePoint) {
