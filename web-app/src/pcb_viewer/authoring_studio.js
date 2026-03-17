@@ -376,12 +376,24 @@ export function handleAuthoringCanvasClick(event, viewerInstance, boardRuntime) 
 }
 
 // Box drag — uses pointer events on the canvas target
+// Handlers are stored so they can be removed and reinstalled on board reload.
+let _boxDragHandlers = null;
+
 export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntime) {
   if (!canvasTarget) return;
-  // Guard: only install once (board reload calls this again)
-  if (_boxDragInstalled) return;
+
+  // Remove previous handlers if present (board reload case)
+  if (_boxDragHandlers) {
+    canvasTarget.removeEventListener("pointerdown", _boxDragHandlers.down, true);
+    canvasTarget.removeEventListener("pointermove", _boxDragHandlers.move, true);
+    canvasTarget.removeEventListener("pointerup",   _boxDragHandlers.end,  true);
+    canvasTarget.removeEventListener("pointercancel", _boxDragHandlers.end, true);
+    _boxDragHandlers = null;
+  }
   _boxDragInstalled = true;
 
+  // Always use live module-level refs (_viewerInstance, _boardRuntime) so that
+  // after updateAuthoringViewerRefs() the handlers pick up the new viewer.
   const resolvePointerBoardPoint = (e) => {
     // Try client-space first (OSD native path), then canvas-local fallback.
     let point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, { x: e.clientX, y: e.clientY });
@@ -405,7 +417,7 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
     return null;
   };
 
-  canvasTarget.addEventListener("pointerdown", (e) => {
+  const onPointerDown = (e) => {
     if (!authoringState.enabled || authoringState.activeTool !== "box") return;
     if (!_viewerInstance?.viewport) return;
 
@@ -433,9 +445,9 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
     canvasTarget.setPointerCapture?.(e.pointerId);
     e.preventDefault();
     e.stopPropagation();
-  }, true);
+  };
 
-  canvasTarget.addEventListener("pointermove", (e) => {
+  const onPointerMove = (e) => {
     if (!dragState || e.pointerId !== dragState.pointerId) return;
     if (!dragPreviewEl) return;
 
@@ -451,7 +463,7 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
 
     e.preventDefault();
     e.stopPropagation();
-  }, true);
+  };
 
   const endDrag = (e) => {
     if (!dragState) return;
@@ -494,8 +506,13 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
     }
   };
 
-  canvasTarget.addEventListener("pointerup", endDrag, true);
-  canvasTarget.addEventListener("pointercancel", endDrag, true);
+  canvasTarget.addEventListener("pointerdown",  onPointerDown, true);
+  canvasTarget.addEventListener("pointermove",  onPointerMove, true);
+  canvasTarget.addEventListener("pointerup",    endDrag,       true);
+  canvasTarget.addEventListener("pointercancel", endDrag,      true);
+
+  // Save refs for cleanup on next board load
+  _boxDragHandlers = { down: onPointerDown, move: onPointerMove, end: endDrag };
 }
 
 // ─── Box CRUD ──────────────────────────────────────────────────────────────────
@@ -1313,6 +1330,10 @@ export function resetAuthoringOnBoardChange() {
   authoringState.selectedBoxId = null;
   authoringState.selectedPinId = null;
   authoringState.selectedComponentId = null;
+  // Reset drag-handler guard so installBoxDragHandlers reinstalls cleanly
+  // on the new canvas/viewer after a board reload.
+  _boxDragInstalled = false;
+  dragState = null;
   clearAuthoringOverlays();
   if (authoringState.enabled) {
     refreshOverlays();

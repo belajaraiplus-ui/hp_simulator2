@@ -1,3 +1,4 @@
+import OpenSeadragon from "openseadragon";
 import { querySpatialIndex, querySpatialIndexRange } from "./spatial_index.js";
 
 function pointInBox(point, box, padding = 0) {
@@ -66,7 +67,11 @@ export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
 
   const tryConvert = (candidate) => {
     if (!candidate || !Number.isFinite(candidate.x) || !Number.isFinite(candidate.y)) return null;
-    const viewportPoint = viewer.viewport.pointFromPixel(candidate, true);
+    // pointFromPixel requires an OSD Point (needs .minus() internally)
+    const osdPixel = candidate instanceof OpenSeadragon.Point
+      ? candidate
+      : new OpenSeadragon.Point(candidate.x, candidate.y);
+    const viewportPoint = viewer.viewport.pointFromPixel(osdPixel, true);
     const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
     const { sx, sy } = boardRuntime.spaces;
     if (!Number.isFinite(imagePoint?.x) || !Number.isFinite(imagePoint?.y) || !Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) {

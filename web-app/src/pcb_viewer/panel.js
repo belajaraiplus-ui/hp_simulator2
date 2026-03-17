@@ -251,6 +251,7 @@ export function clearScene() {
   clearOverlayList(psuTargetOverlays);
   clearOverlayList(pickedPadOverlays);
   clearOverlayList(pinEditorOverlays);
+  _clearComponentLabelEls();
   safeDestroyViewer();
 
   currentBoard = null;
@@ -926,23 +927,52 @@ function createRectOverlay({ border, background, boxShadow = "none" }) {
 
 function createComponentLabelOverlay(label) {
   const el = document.createElement("div");
-  el.style.position = "absolute";
-  el.style.display = "flex";
+  el.style.display = "inline-flex";
   el.style.alignItems = "center";
   el.style.justifyContent = "center";
-  el.style.padding = "2px 8px";
-  el.style.border = "1px solid rgba(74, 222, 128, 0.78)";
+  el.style.width = "max-content";
+  el.style.padding = "3px 10px";
+  el.style.border = "1px solid rgba(74, 222, 128, 0.85)";
   el.style.borderRadius = "999px";
-  el.style.background = "rgba(3, 10, 6, 0.9)";
+  el.style.background = "rgba(3, 10, 6, 0.92)";
   el.style.color = "#dcfce7";
-  el.style.boxShadow = "0 0 8px rgba(74, 222, 128, 0.32)";
+  el.style.boxShadow = "0 0 8px rgba(74, 222, 128, 0.4)";
   el.style.fontSize = "11px";
   el.style.fontWeight = "700";
   el.style.letterSpacing = "0.04em";
   el.style.whiteSpace = "nowrap";
   el.style.pointerEvents = "none";
+  el.style.userSelect = "none";
   el.textContent = label;
   return el;
+}
+
+// ── Floating fixed-size label system ──────────────────────────────────────────
+// Each entry: { el, nx, ny } where nx/ny are OSD viewport coords (0–1 range)
+let _componentLabelEntries = [];
+let _componentLabelViewportHandler = null;
+
+function _positionLabelEl(el, nx, ny) {
+  if (!viewerInstance?.viewport) return;
+  const pt = viewerInstance.viewport.viewportToViewerElementCoordinates(
+    new OpenSeadragon.Point(nx, ny)
+  );
+  if (!pt) return;
+  el.style.left = `${pt.x}px`;
+  el.style.top  = `${pt.y}px`;
+}
+
+function _repositionAllLabelEls() {
+  _componentLabelEntries.forEach(({ el, nx, ny }) => _positionLabelEl(el, nx, ny));
+}
+
+function _clearComponentLabelEls() {
+  if (_componentLabelViewportHandler && viewerInstance) {
+    try { viewerInstance.removeHandler("update-viewport", _componentLabelViewportHandler); } catch { /* ok */ }
+    _componentLabelViewportHandler = null;
+  }
+  _componentLabelEntries.forEach(({ el }) => el.parentNode?.removeChild(el));
+  _componentLabelEntries = [];
 }
 
 function addBoxOverlay(list, box, styles = {}) {
@@ -969,20 +999,31 @@ function addComponentLabelOverlay(list, component) {
   if (!label) return;
 
   const { imgW, imgH, sx, sy } = getSpaces();
-  const minXi = component.bbox.minX * sx;
-  const minYi = component.bbox.minY * sy;
-  const labelWidthPx = Math.max(54, Math.min(140, label.length * 9 + 18));
-  const labelHeightPx = 24;
-  const offsetPx = 8;
-  const rect = new OpenSeadragon.Rect(
-    Math.max(0, minXi) / imgW,
-    Math.max(0, minYi - labelHeightPx - offsetPx) / imgH,
-    labelWidthPx / imgW,
-    labelHeightPx / imgH
-  );
-  const element = createComponentLabelOverlay(label);
-  viewerInstance.addOverlay({ element, location: rect });
-  list.push({ element });
+  const bbox = component.bbox;
+
+  // Anchor: center-X, top-Y of component in OSD viewport units (0–1)
+  const nx = (((bbox.minX + bbox.maxX) / 2) * sx) / imgW;
+  const ny = (bbox.minY * sy) / imgH;
+
+  const el = createComponentLabelOverlay(label);
+  el.style.position = "absolute";
+  // bottom-center of label sits 8px above component top edge
+  el.style.transform = "translate(-50%, calc(-100% - 8px))";
+  el.style.zIndex = "100";
+
+  const container = viewerInstance.container;
+  if (!container) return;
+  container.appendChild(el);
+  _componentLabelEntries.push({ el, nx, ny });
+  list.push({ element: el });
+
+  _positionLabelEl(el, nx, ny);
+
+  if (_componentLabelViewportHandler) {
+    try { viewerInstance.removeHandler("update-viewport", _componentLabelViewportHandler); } catch { /* ok */ }
+  }
+  _componentLabelViewportHandler = _repositionAllLabelEls;
+  viewerInstance.addHandler("update-viewport", _componentLabelViewportHandler);
 }
 
 function drawRailOverlay(rail) {
@@ -997,6 +1038,7 @@ function drawRailOverlay(rail) {
 
 function drawComponentOverlay(component) {
   clearOverlayList(componentOverlays);
+  _clearComponentLabelEls();
   if (!component?.bbox) return;
   addBoxOverlay(componentOverlays, component.bbox, {
     border: "2px solid rgba(74, 222, 128, 0.92)",
