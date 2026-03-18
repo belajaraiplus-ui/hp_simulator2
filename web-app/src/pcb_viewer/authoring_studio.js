@@ -1151,6 +1151,9 @@ async function saveToFile(btn) {
     if (btn) { btn.textContent = "✅ Saved!"; }
     setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = "💾 Save to File"; } }, 2500);
 
+    // Notify panel.js to refresh labels (board data changed)
+    window.dispatchEvent(new CustomEvent("pcb:authoring-saved", { detail: { boardId } }));
+
   } catch (err) {
     console.error("[authoring] saveToFile failed:", err);
     setAuthoringStatus(`❌ Save failed: ${err.message}`);

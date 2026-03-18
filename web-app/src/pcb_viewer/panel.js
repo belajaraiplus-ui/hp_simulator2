@@ -948,83 +948,105 @@ function createComponentLabelOverlay(label) {
 }
 
 // ── Floating fixed-size label system ──────────────────────────────────────────
-// Each entry: { el, nx, ny } where nx/ny are OSD viewport coords (0–1 range)
-let _componentLabelEntries = [];
+// Renders labels for ALL components in the board. Labels persist across
+// selection changes and are only cleared when the board is unloaded.
+let _componentLabelEntries = [];   // { el, vpPoint }
 let _componentLabelViewportHandler = null;
-
-function _positionLabelEl(el, nx, ny) {
-  if (!viewerInstance?.viewport) return;
-  const pt = viewerInstance.viewport.viewportToViewerElementCoordinates(
-    new OpenSeadragon.Point(nx, ny)
-  );
-  if (!pt) return;
-  el.style.left = `${pt.x}px`;
-  el.style.top  = `${pt.y}px`;
-}
-
-function _repositionAllLabelEls() {
-  _componentLabelEntries.forEach(({ el, nx, ny }) => _positionLabelEl(el, nx, ny));
-}
 
 function _clearComponentLabelEls() {
   if (_componentLabelViewportHandler && viewerInstance) {
     try { viewerInstance.removeHandler("update-viewport", _componentLabelViewportHandler); } catch { /* ok */ }
+    try { viewerInstance.removeHandler("animation", _componentLabelViewportHandler); } catch { /* ok */ }
     _componentLabelViewportHandler = null;
   }
   _componentLabelEntries.forEach(({ el }) => el.parentNode?.removeChild(el));
   _componentLabelEntries = [];
 }
 
+function _updateAllLabelPositions() {
+  if (!viewerInstance?.viewport) return;
+  _componentLabelEntries.forEach(({ el, vpPoint }) => {
+    const screenPt = viewerInstance.viewport.pixelFromPoint(vpPoint, true);
+    if (screenPt) {
+      el.style.left = `${screenPt.x}px`;
+      el.style.top  = `${screenPt.y}px`;
+    }
+  });
+}
+
+function _ensureLabelViewportHandler() {
+  if (_componentLabelViewportHandler) return;
+  if (!viewerInstance) return;
+  _componentLabelViewportHandler = _updateAllLabelPositions;
+  viewerInstance.addHandler("update-viewport", _componentLabelViewportHandler);
+  viewerInstance.addHandler("animation", _componentLabelViewportHandler);
+}
+
+/**
+ * Render labels for ALL components in boardRuntime.
+ * Called once after board + viewer are ready.
+ */
+export function drawAllComponentLabels() {
+  _clearComponentLabelEls();
+  if (!viewerInstance?.viewport || !currentBoardRuntime) return;
+
+  const container = viewerInstance.container;
+  if (!container) return;
+
+  const { sx, sy } = getSpaces();
+
+  currentBoardRuntime.components.forEach(component => {
+    if (!component?.bbox) return;
+    const label = String(component.refdes || component.id || "").trim();
+    if (!label) return;
+
+    // Anchor: horizontal-center, top edge of component (in image pixels)
+    const centerXi = ((component.bbox.minX + component.bbox.maxX) / 2) * sx;
+    const topYi    = component.bbox.minY * sy;
+
+    // Use OSD's native image→viewport conversion (handles aspect ratio)
+    const vpPoint = viewerInstance.viewport.imageToViewportCoordinates(centerXi, topYi);
+
+    // Create the label
+    const el = createComponentLabelOverlay(label);
+    el.style.position = "absolute";
+    el.style.left = "0";
+    el.style.top  = "0";
+    el.style.zIndex = "100";
+    // center horizontally, sit above the anchor
+    el.style.transform = "translate(-50%, calc(-100% - 6px))";
+
+    container.appendChild(el);
+    _componentLabelEntries.push({ el, vpPoint });
+  });
+
+  // Position immediately + wire up live updates
+  _updateAllLabelPositions();
+  _ensureLabelViewportHandler();
+}
+
 function addBoxOverlay(list, box, styles = {}) {
-  if (!viewerInstance || !box) return;
-  const { imgW, imgH, sx, sy } = getSpaces();
+  if (!viewerInstance?.viewport || !box) return;
+  const { sx, sy } = getSpaces();
   const minXi = box.minX * sx;
   const minYi = box.minY * sy;
   const maxXi = box.maxX * sx;
   const maxYi = box.maxY * sy;
+
+  // Use OSD's native coordinate conversion (handles aspect ratio properly)
+  const topLeft = viewerInstance.viewport.imageToViewportCoordinates(minXi, minYi);
+  const botRight = viewerInstance.viewport.imageToViewportCoordinates(maxXi, maxYi);
   const rect = new OpenSeadragon.Rect(
-    minXi / imgW,
-    minYi / imgH,
-    Math.max(1, maxXi - minXi) / imgW,
-    Math.max(1, maxYi - minYi) / imgH
+    topLeft.x,
+    topLeft.y,
+    Math.max(0.001, botRight.x - topLeft.x),
+    Math.max(0.001, botRight.y - topLeft.y)
   );
   const element = createRectOverlay(styles);
   viewerInstance.addOverlay({ element, location: rect });
   list.push({ element });
 }
 
-function addComponentLabelOverlay(list, component) {
-  if (!viewerInstance || !component?.bbox) return;
-  const label = String(component.refdes || component.id || "").trim();
-  if (!label) return;
-
-  const { imgW, imgH, sx, sy } = getSpaces();
-  const bbox = component.bbox;
-
-  // Anchor: center-X, top-Y of component in OSD viewport units (0–1)
-  const nx = (((bbox.minX + bbox.maxX) / 2) * sx) / imgW;
-  const ny = (bbox.minY * sy) / imgH;
-
-  const el = createComponentLabelOverlay(label);
-  el.style.position = "absolute";
-  // bottom-center of label sits 8px above component top edge
-  el.style.transform = "translate(-50%, calc(-100% - 8px))";
-  el.style.zIndex = "100";
-
-  const container = viewerInstance.container;
-  if (!container) return;
-  container.appendChild(el);
-  _componentLabelEntries.push({ el, nx, ny });
-  list.push({ element: el });
-
-  _positionLabelEl(el, nx, ny);
-
-  if (_componentLabelViewportHandler) {
-    try { viewerInstance.removeHandler("update-viewport", _componentLabelViewportHandler); } catch { /* ok */ }
-  }
-  _componentLabelViewportHandler = _repositionAllLabelEls;
-  viewerInstance.addHandler("update-viewport", _componentLabelViewportHandler);
-}
 
 function drawRailOverlay(rail) {
   clearOverlayList(railOverlays);
@@ -1038,14 +1060,12 @@ function drawRailOverlay(rail) {
 
 function drawComponentOverlay(component) {
   clearOverlayList(componentOverlays);
-  _clearComponentLabelEls();
   if (!component?.bbox) return;
   addBoxOverlay(componentOverlays, component.bbox, {
     border: "2px solid rgba(74, 222, 128, 0.92)",
     background: "rgba(74, 222, 128, 0.14)",
     boxShadow: "0 0 10px rgba(74, 222, 128, 0.4)",
   });
-  addComponentLabelOverlay(componentOverlays, component);
 }
 
 function drawPsuTargetOverlay(rail) {
@@ -1411,6 +1431,14 @@ function handleCanvasClick(event) {
 
   const picked = pickAtScreenPoint(viewerInstance, currentBoardRuntime, event.position);
   if (!picked) {
+    // Fallback: try to select a component even in probe mode
+    if (point) {
+      const compPick = pickBoardTarget(currentBoardRuntime, point);
+      if (compPick?.type === "component" || compPick?.type === "component-pin") {
+        dispatchSelection(compPick, { source: "canvas" });
+        return;
+      }
+    }
     const mountPoint = document.querySelector("#motherboardMap");
     if (mountPoint) setStatus(mountPoint, "No measurable target at click position.");
     window.dispatchEvent(new CustomEvent("pcb:pick-missed", {
@@ -1752,6 +1780,19 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
 
       setProbeModeState(viewerInstance, currentBoardRuntime, true);
       syncModeButtons();
+
+      // Draw labels for all components once the image is fully loaded
+      // so imageToViewportCoordinates has correct data
+      const _drawLabelsOnce = () => {
+        drawAllComponentLabels();
+        viewerInstance.removeHandler("open", _drawLabelsOnce);
+      };
+      if (viewerInstance.world?.getItemCount() > 0) {
+        // Image already open — draw immediately
+        drawAllComponentLabels();
+      } else {
+        viewerInstance.addHandler("open", _drawLabelsOnce);
+      }
       probeBtn.onclick = () => {
         setProbeModeState(viewerInstance, currentBoardRuntime, true);
         syncModeButtons();
@@ -1790,6 +1831,30 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         onBoardReady(detail);
       }
       window.dispatchEvent(new CustomEvent("pcb:board-runtime-ready", { detail }));
+
+      // When authoring saves new components, refresh runtime + labels
+      window.addEventListener("pcb:authoring-saved", async (e) => {
+        if (e.detail?.boardId !== boardId || !viewerInstance) return;
+        try {
+          const freshComponents = await loadComponents(boardId);
+          const freshRailFile = await loadRailsFile(boardId);
+          const freshRails = Array.isArray(freshRailFile?.rails) ? freshRailFile.rails : [];
+          currentBoard = { ...boardData, components: freshComponents, rails: freshRails, topology, thermal, railFile: freshRailFile };
+          currentBoardRuntime = buildBoardRuntime({
+            board: boardData,
+            rails: freshRails,
+            components: freshComponents,
+            topology,
+            thermal,
+            railFile: freshRailFile,
+          });
+          drawAllComponentLabels();
+          if (probeMode) drawProbePoints(viewerInstance, currentBoardRuntime);
+          console.info("[pcb] Runtime refreshed after authoring save — labels updated.");
+        } catch (err) {
+          console.warn("[pcb] Failed to refresh runtime after save:", err);
+        }
+      });
     } catch (error) {
       console.error("Load board failed:", error);
       setStatus(mountPoint, `Load failed: ${error.message}`);
