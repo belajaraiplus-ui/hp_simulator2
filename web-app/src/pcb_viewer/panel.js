@@ -53,6 +53,7 @@ let pickedPadCounter = 0;
 let latestPadPoint = null;
 let latestPickedPadId = null;
 let lastSyntheticCanvasClick = null;
+let authoringSavedHandler = null;
 const PAD_MARKER_DIAMETER_IMAGE_PX = 12;
 const PIN_EDITOR_DEFAULT_RADIUS = 6;
 const PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX = 14;
@@ -275,6 +276,11 @@ export function clearScene() {
     positive: null,
     negative: null,
   };
+
+  if (authoringSavedHandler) {
+    window.removeEventListener("pcb:authoring-saved", authoringSavedHandler);
+    authoringSavedHandler = null;
+  }
 
   clearCache();
 
@@ -1833,9 +1839,13 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       window.dispatchEvent(new CustomEvent("pcb:board-runtime-ready", { detail }));
 
       // When authoring saves new components, refresh runtime + labels
-      window.addEventListener("pcb:authoring-saved", async (e) => {
+      if (authoringSavedHandler) {
+        window.removeEventListener("pcb:authoring-saved", authoringSavedHandler);
+      }
+      authoringSavedHandler = async (e) => {
         if (e.detail?.boardId !== boardId || !viewerInstance) return;
         try {
+          clearCache(boardId);
           const freshComponents = await loadComponents(boardId);
           const freshRailFile = await loadRailsFile(boardId);
           const freshRails = Array.isArray(freshRailFile?.rails) ? freshRailFile.rails : [];
@@ -1848,13 +1858,19 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
             thermal,
             railFile: freshRailFile,
           });
+          updateAuthoringViewerRefs({
+            viewerInstance,
+            boardRuntime: currentBoardRuntime,
+            getSpaces,
+          });
           drawAllComponentLabels();
           if (probeMode) drawProbePoints(viewerInstance, currentBoardRuntime);
           console.info("[pcb] Runtime refreshed after authoring save — labels updated.");
         } catch (err) {
           console.warn("[pcb] Failed to refresh runtime after save:", err);
         }
-      });
+      };
+      window.addEventListener("pcb:authoring-saved", authoringSavedHandler);
     } catch (error) {
       console.error("Load board failed:", error);
       setStatus(mountPoint, `Load failed: ${error.message}`);

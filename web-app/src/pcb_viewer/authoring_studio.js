@@ -127,6 +127,141 @@ export function isBoxDragActive() {
   return dragState !== null;
 }
 
+function normalizeAuthoringId(value) {
+  const normalized = String(value || "").trim();
+  return normalized || null;
+}
+
+function collectUsedAuthoringIds(prefix) {
+  const used = new Set();
+  const add = (value) => {
+    const normalized = normalizeAuthoringId(value);
+    if (normalized) used.add(normalized);
+  };
+
+  if (prefix === "BOX") {
+    Object.keys(_boardRuntime?.componentsById || {}).forEach(add);
+    authoringState.boxes.forEach((box) => {
+      add(box?.id);
+      add(box?.componentId);
+    });
+    return used;
+  }
+
+  authoringState.pins.forEach((pin) => add(pin?.id));
+  (_boardRuntime?.components || []).forEach((component) => {
+    (component?.pins || []).forEach((pin) => add(pin?.id));
+  });
+  return used;
+}
+
+function nextAuthoringId(prefix) {
+  const counterKey = prefix === "BOX" ? "boxCounter" : "pinCounter";
+  const used = collectUsedAuthoringIds(prefix);
+
+  while (true) {
+    authoringState[counterKey] += 1;
+    const candidate = `${prefix}_${String(authoringState[counterKey]).padStart(3, "0")}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
+function getComponentIdForBox(box) {
+  return normalizeAuthoringId(box?.componentId) || normalizeAuthoringId(box?.id);
+}
+
+function getComponentIdForPin(pin, boxComponentIds = new Map()) {
+  return normalizeAuthoringId(pin?.componentId)
+    || boxComponentIds.get(pin?.boxId)
+    || normalizeAuthoringId(pin?.boxId)
+    || null;
+}
+
+function cloneExistingComponent(componentId) {
+  const raw = componentId ? _boardRuntime?.componentsById?.[componentId]?.raw : null;
+  if (!raw || typeof raw !== "object") return null;
+  return JSON.parse(JSON.stringify(raw));
+}
+
+function buildBoxBbox(box) {
+  if (
+    Number.isFinite(Number(box?.bbox?.x))
+    && Number.isFinite(Number(box?.bbox?.y))
+    && Number.isFinite(Number(box?.bbox?.w))
+    && Number.isFinite(Number(box?.bbox?.h))
+  ) {
+    return {
+      x: Number(box.bbox.x),
+      y: Number(box.bbox.y),
+      w: Number(box.bbox.w),
+      h: Number(box.bbox.h),
+    };
+  }
+
+  if (
+    Number.isFinite(Number(box?.x))
+    && Number.isFinite(Number(box?.y))
+    && Number.isFinite(Number(box?.w))
+    && Number.isFinite(Number(box?.h))
+  ) {
+    return {
+      x: Math.round(Number(box.x)),
+      y: Math.round(Number(box.y)),
+      w: Math.round(Number(box.w)),
+      h: Math.round(Number(box.h)),
+    };
+  }
+
+  return undefined;
+}
+
+function buildShapeFromBbox(bbox) {
+  if (!bbox) return undefined;
+  return {
+    type: "poly",
+    points: [
+      [bbox.x, bbox.y],
+      [bbox.x + bbox.w, bbox.y],
+      [bbox.x + bbox.w, bbox.y + bbox.h],
+      [bbox.x, bbox.y + bbox.h],
+    ],
+  };
+}
+
+function buildAuthoredPinPayload(pin) {
+  return {
+    id: normalizeAuthoringId(pin?.id) || "PIN",
+    x: Math.round(Number(pin?.x) || 0),
+    y: Math.round(Number(pin?.y) || 0),
+    name: normalizeAuthoringId(pin?.name) || normalizeAuthoringId(pin?.id) || "PIN",
+    railId: normalizeAuthoringId(pin?.railId),
+    node: normalizeAuthoringId(pin?.node) || normalizeAuthoringId(pin?.railId),
+    radius: Number.isFinite(Number(pin?.radius)) && Number(pin.radius) > 0 ? Number(pin.radius) : 6,
+    pinType: normalizeAuthoringId(pin?.pinType),
+    pinRole: normalizeAuthoringId(pin?.pinRole),
+    isGround: Boolean(pin?.isGround),
+    isTestPoint: Boolean(pin?.isTestPoint),
+    authoringSource: normalizeAuthoringId(pin?.authoringSource) || "manual-click",
+  };
+}
+
+function buildBoardOverlayRect({ x, y, w, h }, spaces) {
+  if (!_viewerInstance?.viewport || !spaces) return null;
+  const { sx, sy } = spaces;
+  const minXi = Number(x) * sx;
+  const minYi = Number(y) * sy;
+  const maxXi = (Number(x) + Number(w)) * sx;
+  const maxYi = (Number(y) + Number(h)) * sy;
+  const topLeft = _viewerInstance.viewport.imageToViewportCoordinates(minXi, minYi);
+  const botRight = _viewerInstance.viewport.imageToViewportCoordinates(maxXi, maxYi);
+  return new OpenSeadragon.Rect(
+    topLeft.x,
+    topLeft.y,
+    Math.max(0.001, botRight.x - topLeft.x),
+    Math.max(0.001, botRight.y - topLeft.y)
+  );
+}
+
 // ─── Build Studio Panel ────────────────────────────────────────────────────────
 
 function buildStudioPanel(mountTarget) {
@@ -518,8 +653,7 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
 // ─── Box CRUD ──────────────────────────────────────────────────────────────────
 
 function addBox({ x, y, w, h }) {
-  authoringState.boxCounter += 1;
-  const id = `BOX_${String(authoringState.boxCounter).padStart(3, "0")}`;
+  const id = nextAuthoringId("BOX");
   const box = {
     id,
     componentId: authoringState.selectedComponentId || null,
@@ -586,8 +720,7 @@ function deleteBox(boxId) {
 // ─── Pin CRUD ──────────────────────────────────────────────────────────────────
 
 function addPinAtBoardPoint(boardPoint) {
-  authoringState.pinCounter += 1;
-  const id = `PIN_${String(authoringState.pinCounter).padStart(3, "0")}`;
+  const id = nextAuthoringId("PIN");
 
   // Find enclosing box
   let boxId = authoringState.selectedBoxId || null;
@@ -740,19 +873,11 @@ export function refreshOverlays() {
 
   const spaces = _getSpaces?.() || _boardRuntime.spaces;
   if (!spaces) return;
-  const { imgW, imgH, sx, sy } = spaces;
 
   // Draw boxes
   authoringState.boxes.forEach(box => {
-    const xi = box.x * sx;
-    const yi = box.y * sy;
-    const wi = box.w * sx;
-    const hi = box.h * sy;
-
-    const rect = new OpenSeadragon.Rect(
-      xi / imgW, yi / imgH,
-      Math.max(1, wi) / imgW, Math.max(1, hi) / imgH
-    );
+    const rect = buildBoardOverlayRect(box, spaces);
+    if (!rect) return;
 
     const el = document.createElement("div");
     const selected = box.id === authoringState.selectedBoxId;
@@ -785,18 +910,14 @@ export function refreshOverlays() {
 
   // Draw pins
   authoringState.pins.forEach(pin => {
-    const xi = pin.x * sx;
-    const yi = pin.y * sy;
     const r = Math.max(1, (pin.radius || 6));
-    const markerRx = r * sx;
-    const markerRy = r * sy;
-
-    const rect = new OpenSeadragon.Rect(
-      (xi - markerRx) / imgW,
-      (yi - markerRy) / imgH,
-      (markerRx * 2) / imgW,
-      (markerRy * 2) / imgH
-    );
+    const rect = buildBoardOverlayRect({
+      x: pin.x - r,
+      y: pin.y - r,
+      w: r * 2,
+      h: r * 2,
+    }, spaces);
+    if (!rect) return;
 
     const selected = pin.id === authoringState.selectedPinId;
     const el = document.createElement("div");
@@ -1027,69 +1148,53 @@ function refreshItemsList() {
 // ─── Export ────────────────────────────────────────────────────────────────────
 
 function buildComponentPatchPayload() {
-  // Build component-patch format: each box becomes a component with pins inside
   const compMap = {};
+  const boxComponentIds = new Map();
+  const authoredPinsByComponentId = new Map();
 
-  // Add boxes as component scaffolds
-  authoringState.boxes.forEach(box => {
-    const bbox = Number.isFinite(Number(box?.bbox?.x))
-      && Number.isFinite(Number(box?.bbox?.y))
-      && Number.isFinite(Number(box?.bbox?.w))
-      && Number.isFinite(Number(box?.bbox?.h))
-      ? {
-        x: Number(box.bbox.x),
-        y: Number(box.bbox.y),
-        w: Number(box.bbox.w),
-        h: Number(box.bbox.h),
-      }
-      : (
-        Number.isFinite(Number(box?.x))
-        && Number.isFinite(Number(box?.y))
-        && Number.isFinite(Number(box?.w))
-        && Number.isFinite(Number(box?.h))
-          ? {
-            x: Math.round(Number(box.x)),
-            y: Math.round(Number(box.y)),
-            w: Math.round(Number(box.w)),
-            h: Math.round(Number(box.h)),
-          }
-          : undefined
-      );
+  authoringState.boxes.forEach((box) => {
+    boxComponentIds.set(box.id, getComponentIdForBox(box));
+  });
 
-    compMap[box.id] = {
-      id: box.id,
-      refdes: box.label || box.id,
-      kind: box.kind || "IC",
-      bbox,
-      shape: bbox ? {
-        type: "poly",
-        points: [
-          [bbox.x, bbox.y],
-          [bbox.x + bbox.w, bbox.y],
-          [bbox.x + bbox.w, bbox.y + bbox.h],
-          [bbox.x, bbox.y + bbox.h],
-        ]
-      } : undefined,
-      pins: [],
+  authoringState.pins.forEach((pin) => {
+    const componentId = getComponentIdForPin(pin, boxComponentIds) || "_unassigned";
+    if (!authoredPinsByComponentId.has(componentId)) {
+      authoredPinsByComponentId.set(componentId, []);
+    }
+    authoredPinsByComponentId.get(componentId).push(buildAuthoredPinPayload(pin));
+  });
+
+  authoringState.boxes.forEach((box) => {
+    const componentId = boxComponentIds.get(box.id);
+    const existing = cloneExistingComponent(componentId);
+    const bbox = buildBoxBbox(box);
+    const refdes = normalizeAuthoringId(box.label) || existing?.refdes || componentId;
+    const kind = normalizeAuthoringId(box.kind) || existing?.kind || existing?.type || "IC";
+    const authoredPins = authoredPinsByComponentId.get(componentId);
+
+    compMap[componentId] = {
+      ...(existing && typeof existing === "object" ? existing : {}),
+      id: componentId,
+      refdes,
+      kind,
+      bbox: bbox || existing?.bbox,
+      shape: bbox ? buildShapeFromBbox(bbox) : (existing?.shape || undefined),
+      pins: authoredPins
+        ? authoredPins.map((pin) => ({ ...pin }))
+        : (Array.isArray(existing?.pins) ? existing.pins : []),
     };
   });
 
-  // Assign pins to their parent component
-  authoringState.pins.forEach(pin => {
-    const compId = pin.componentId || pin.boxId || null;
-    // Ensure component entry exists (pin may have no box)
-    if (compId && !compMap[compId]) {
-      compMap[compId] = { id: compId, refdes: compId, kind: "unknown", pins: [] };
-    }
-    const target = compId ? compMap[compId] : (compMap["_unassigned"] = compMap["_unassigned"] || { id: "_unassigned", pins: [] });
-    target.pins.push({
-      id: pin.id,
-      x: Math.round(pin.x),
-      y: Math.round(pin.y),
-      name: pin.name || pin.id,
-      railId: pin.railId || null,
-      node: pin.node || pin.railId || null,
-    });
+  authoredPinsByComponentId.forEach((pins, componentId) => {
+    if (compMap[componentId]) return;
+    const existing = componentId === "_unassigned" ? null : cloneExistingComponent(componentId);
+    compMap[componentId] = {
+      ...(existing && typeof existing === "object" ? existing : {}),
+      id: componentId,
+      refdes: existing?.refdes || componentId,
+      kind: existing?.kind || existing?.type || "unknown",
+      pins: pins.map((pin) => ({ ...pin })),
+    };
   });
 
   return Object.values(compMap);
