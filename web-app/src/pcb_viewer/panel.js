@@ -1036,17 +1036,16 @@ function addBoxOverlay(list, box, styles = {}) {
   const { sx, sy } = getSpaces();
   const minXi = box.minX * sx;
   const minYi = box.minY * sy;
-  const maxXi = box.maxX * sx;
-  const maxYi = box.maxY * sy;
+  const widthXi = Math.max(1, (box.maxX - box.minX) * sx);
+  const heightYi = Math.max(1, (box.maxY - box.minY) * sy);
 
-  // Use OSD's native coordinate conversion (handles aspect ratio properly)
-  const topLeft = viewerInstance.viewport.imageToViewportCoordinates(minXi, minYi);
-  const botRight = viewerInstance.viewport.imageToViewportCoordinates(maxXi, maxYi);
-  const rect = new OpenSeadragon.Rect(
-    topLeft.x,
-    topLeft.y,
-    Math.max(0.001, botRight.x - topLeft.x),
-    Math.max(0.001, botRight.y - topLeft.y)
+  // Convert absolute image-pixel geometry into an OpenSeadragon viewport rect
+  // before adding the overlay, matching the expected components.json flow.
+  const rect = viewerInstance.viewport.imageToViewportRectangle(
+    minXi,
+    minYi,
+    widthXi,
+    heightYi
   );
   const element = createRectOverlay(styles);
   viewerInstance.addOverlay({ element, location: rect });

@@ -262,6 +262,73 @@ function buildBoardOverlayRect({ x, y, w, h }, spaces) {
   );
 }
 
+function suppressOverlayPointerEvent(event) {
+  if (!event) return;
+  event.stopPropagation?.();
+  event.preventDefault?.();
+}
+
+function updateBoxOverlayPosition(box, element, spaces) {
+  if (!_viewerInstance || !box || !element) return;
+  const rect = buildBoardOverlayRect(box, spaces);
+  if (!rect) return;
+  _viewerInstance.updateOverlay(element, rect);
+  element.title = `${box.id}${box.label ? ` (${box.label})` : ""} @ (${box.x}, ${box.y}) ${box.w}Ã—${box.h}`;
+}
+
+function wireEditableBoxOverlay(box, element, spaces) {
+  if (!_viewerInstance || !box || !element) return null;
+  if (authoringState.activeTool !== "edit") return null;
+
+  ["pointerdown", "pointermove", "pointerup", "click"].forEach((name) => {
+    element.addEventListener(name, suppressOverlayPointerEvent);
+  });
+
+  const tracker = new OpenSeadragon.MouseTracker({
+    element,
+    pressHandler: (event) => {
+      event.preventDefaultAction = true;
+      authoringState.selectedBoxId = box.id;
+      authoringState.selectedPinId = null;
+      setAuthoringStatus(`Selected box ${box.id}`);
+      refreshInspector();
+      refreshItemsList();
+      event.originalEvent?.stopPropagation?.();
+      event.originalEvent?.preventDefault?.();
+    },
+    dragHandler: (event) => {
+      event.preventDefaultAction = true;
+      const point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, event.position);
+      if (!point) return;
+
+      const liveBox = authoringState.boxes.find((entry) => entry.id === box.id);
+      if (!liveBox) return;
+
+      liveBox.x = Math.round(point.board.x - (liveBox.w / 2));
+      liveBox.y = Math.round(point.board.y - (liveBox.h / 2));
+      updateBoxOverlayPosition(liveBox, element, spaces);
+      event.originalEvent?.stopPropagation?.();
+      event.originalEvent?.preventDefault?.();
+    },
+    releaseHandler: (event) => {
+      event.preventDefaultAction = true;
+      const liveBox = authoringState.boxes.find((entry) => entry.id === box.id);
+      if (liveBox) {
+        setAuthoringStatus(`Moved box ${liveBox.id} to (${liveBox.x}, ${liveBox.y})`);
+      }
+      refreshOverlays();
+      refreshInspector();
+      refreshItemsList();
+      refreshExportPanel();
+      refreshValidationPanel();
+      event.originalEvent?.stopPropagation?.();
+      event.originalEvent?.preventDefault?.();
+    },
+  });
+  tracker.setTracking(true);
+  return tracker;
+}
+
 // ─── Build Studio Panel ────────────────────────────────────────────────────────
 
 function buildStudioPanel(mountTarget) {
@@ -389,6 +456,7 @@ function wireToolButtons() {
       authoringState.activeTool = tool;
       syncToolButtons();
       setAuthoringStatus(toolStatusMessage(tool));
+      refreshOverlays();
     });
   });
 }
@@ -860,6 +928,7 @@ function clearAuthoringOverlays() {
   if (!_viewerInstance) return;
   [...boxOverlays, ...pinOverlays].forEach(entry => {
     try {
+      entry.tracker?.destroy?.();
       _viewerInstance.removeOverlay(entry.element);
     } catch { /* ignore */ }
   });
@@ -885,7 +954,7 @@ export function refreshOverlays() {
     el.style.border = `${box.style.strokeWidth}px solid ${box.style.strokeColor}`;
     el.style.background = box.style.fillColor;
     el.style.boxSizing = "border-box";
-    el.style.pointerEvents = "none";
+    el.style.pointerEvents = authoringState.activeTool === "edit" ? "auto" : "none";
     if (selected) {
       el.style.boxShadow = "0 0 0 2px rgba(255,184,0,0.8), 0 0 12px rgba(255,184,0,0.4)";
     }
@@ -905,7 +974,8 @@ export function refreshOverlays() {
 
     el.title = `${box.id}${box.label ? ` (${box.label})` : ""} @ (${box.x}, ${box.y}) ${box.w}×${box.h}`;
     _viewerInstance.addOverlay({ element: el, location: rect });
-    boxOverlays.push({ element: el, boxId: box.id });
+    const tracker = wireEditableBoxOverlay(box, el, spaces);
+    boxOverlays.push({ element: el, boxId: box.id, tracker });
   });
 
   // Draw pins

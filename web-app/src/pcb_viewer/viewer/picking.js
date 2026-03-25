@@ -174,6 +174,36 @@ function pickComponent(boardRuntime, boardPoint) {
   return winner?.item || null;
 }
 
+function componentImageBox(component, boardRuntime) {
+  if (!component?.bbox || !boardRuntime?.spaces) return null;
+  const { sx, sy } = boardRuntime.spaces;
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) return null;
+  return {
+    minX: component.bbox.minX * sx,
+    minY: component.bbox.minY * sy,
+    maxX: component.bbox.maxX * sx,
+    maxY: component.bbox.maxY * sy,
+  };
+}
+
+function pickComponentByImageHitbox(boardRuntime, imagePoint) {
+  if (!boardRuntime || !Number.isFinite(imagePoint?.x) || !Number.isFinite(imagePoint?.y)) return null;
+
+  const candidates = (Array.isArray(boardRuntime.components) ? boardRuntime.components : [])
+    .map((component) => ({
+      item: component,
+      imageBox: componentImageBox(component, boardRuntime),
+    }))
+    .filter((entry) => pointInBox(imagePoint, entry.imageBox))
+    .map((entry) => ({
+      item: entry.item,
+      distance: areaOfBox(entry.imageBox),
+    }));
+
+  const [winner] = sortByPriority(candidates, "distance");
+  return winner?.item || null;
+}
+
 function extractContactPoint(contact) {
   if (!contact || typeof contact !== "object") return null;
   const x = Number(contact.x ?? contact.cx ?? contact.px);
@@ -365,7 +395,8 @@ export function pickBoardTarget(boardRuntime, boardPointLike) {
     };
   }
 
-  const component = pickComponent(boardRuntime, boardPoint);
+  const component = pickComponent(boardRuntime, boardPoint)
+    || pickComponentByImageHitbox(boardRuntime, imagePoint);
   if (component) {
     const componentPin = pickComponentPin(component, boardPoint, boardRuntime);
     if (componentPin) {
