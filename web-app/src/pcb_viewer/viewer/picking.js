@@ -59,6 +59,7 @@ function sortByPriority(items, metricKey = "distance") {
 export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
   if (!viewer?.viewport || !boardRuntime?.spaces || !screenPoint) return null;
 
+  const coordinateSpace = screenPoint?.coordinateSpace || screenPoint?.position?.coordinateSpace || null;
   const pixelPoint = screenPoint?.x != null && screenPoint?.y != null
     ? screenPoint
     : { x: screenPoint?.position?.x, y: screenPoint?.position?.y };
@@ -113,19 +114,30 @@ export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
     candidates.push({ x, y });
   };
 
-  pushCandidate(pixelPoint.x, pixelPoint.y);
+  if (coordinateSpace === "viewer-local") {
+    pushCandidate(pixelPoint.x, pixelPoint.y);
+  } else if (coordinateSpace === "client") {
+    const rect = viewer?.element?.getBoundingClientRect?.();
+    if (rect) {
+      pushCandidate(pixelPoint.x - rect.left, pixelPoint.y - rect.top);
+    } else {
+      pushCandidate(pixelPoint.x, pixelPoint.y);
+    }
+  } else {
+    pushCandidate(pixelPoint.x, pixelPoint.y);
 
-  const rectSources = [viewer?.canvas, viewer?.container, viewer?.element].filter(Boolean);
-  rectSources.forEach((source) => {
-    const rect = source?.getBoundingClientRect?.();
-    if (!rect) return;
-    // Some click paths provide client/page coordinates, others element-local.
-    // Keep all plausible offsets and score against board/image bounds.
-    pushCandidate(pixelPoint.x - rect.left, pixelPoint.y - rect.top);
-  });
+    const rectSources = [viewer?.canvas, viewer?.container, viewer?.element].filter(Boolean);
+    rectSources.forEach((source) => {
+      const rect = source?.getBoundingClientRect?.();
+      if (!rect) return;
+      // Some click paths provide client/page coordinates, others element-local.
+      // Keep all plausible offsets and score against board/image bounds.
+      pushCandidate(pixelPoint.x - rect.left, pixelPoint.y - rect.top);
+    });
 
-  if (typeof window !== "undefined") {
-    pushCandidate(pixelPoint.x + window.scrollX, pixelPoint.y + window.scrollY);
+    if (typeof window !== "undefined") {
+      pushCandidate(pixelPoint.x + window.scrollX, pixelPoint.y + window.scrollY);
+    }
   }
 
   const converted = candidates.map((candidate) => ({

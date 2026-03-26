@@ -67,6 +67,15 @@ function bboxFromComponent(component) {
       return { minX: x, minY: y, maxX: x + w, maxY: y + h };
     }
   }
+  if (component?.box) {
+    const minX = toFiniteNumber(component.box.minX);
+    const minY = toFiniteNumber(component.box.minY);
+    const maxX = toFiniteNumber(component.box.maxX);
+    const maxY = toFiniteNumber(component.box.maxY);
+    if ([minX, minY, maxX, maxY].every(Number.isFinite)) {
+      return { minX, minY, maxX, maxY };
+    }
+  }
   return bboxFromShape(component?.shape);
 }
 

@@ -1034,19 +1034,26 @@ export function drawAllComponentLabels() {
 function addBoxOverlay(list, box, styles = {}) {
   if (!viewerInstance?.viewport || !box) return;
   const { sx, sy } = getSpaces();
-  const minXi = box.minX * sx;
-  const minYi = box.minY * sy;
-  const widthXi = Math.max(1, (box.maxX - box.minX) * sx);
-  const heightYi = Math.max(1, (box.maxY - box.minY) * sy);
+  const rawMinX = Number(box.minX);
+  const rawMinY = Number(box.minY);
+  const rawMaxX = Number(box.maxX);
+  const rawMaxY = Number(box.maxY);
+  if (![rawMinX, rawMinY, rawMaxX, rawMaxY].every(Number.isFinite)) return;
 
-  // Convert absolute image-pixel geometry into an OpenSeadragon viewport rect
-  // before adding the overlay, matching the expected components.json flow.
-  const rect = viewerInstance.viewport.imageToViewportRectangle(
+  const looksLikeImageSpace = rawMaxX > currentBoardRuntime?.spaces?.dataW
+    || rawMaxY > currentBoardRuntime?.spaces?.dataH;
+  const minXi = looksLikeImageSpace ? rawMinX : rawMinX * sx;
+  const minYi = looksLikeImageSpace ? rawMinY : rawMinY * sy;
+  const maxXi = looksLikeImageSpace ? rawMaxX : rawMaxX * sx;
+  const maxYi = looksLikeImageSpace ? rawMaxY : rawMaxY * sy;
+
+  const imgRect = new OpenSeadragon.Rect(
     minXi,
     minYi,
-    widthXi,
-    heightYi
+    Math.max(1, maxXi - minXi),
+    Math.max(1, maxYi - minYi)
   );
+  const rect = viewerInstance.viewport.imageToViewportRectangle(imgRect);
   const element = createRectOverlay(styles);
   viewerInstance.addOverlay({ element, location: rect });
   list.push({ element });
@@ -1653,9 +1660,11 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     if (isAuthoringEnabled()) {
       const screenX = e.clientX;
       const screenY = e.clientY;
+      const screenPoint = new OpenSeadragon.Point(screenX, screenY);
+      screenPoint.coordinateSpace = "client";
       const syntheticEvent = {
         quick: true,
-        position: new OpenSeadragon.Point(screenX, screenY),
+        position: screenPoint,
         preventDefaultAction: false,
         syntheticDirectClick: true,
       };
@@ -1669,9 +1678,11 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
 
     const screenX = e.clientX;
     const screenY = e.clientY;
+    const screenPoint = new OpenSeadragon.Point(screenX, screenY);
+    screenPoint.coordinateSpace = "client";
     const syntheticEvent = {
       quick: true,
-      position: new OpenSeadragon.Point(screenX, screenY),
+      position: screenPoint,
       preventDefaultAction: false,
       syntheticDirectClick: true,
     };

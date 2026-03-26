@@ -101,6 +101,9 @@ function safeScreenToBoardPoint(viewer, runtime, screenXY) {
   const y = screenXY?.y ?? screenXY?.position?.y;
   if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
   const osdPoint = new OpenSeadragon.Point(x, y);
+  if (screenXY?.coordinateSpace) {
+    osdPoint.coordinateSpace = screenXY.coordinateSpace;
+  }
   return _screenToBoardPointFn(viewer, runtime, osdPoint);
 }
 
@@ -276,6 +279,28 @@ function updateBoxOverlayPosition(box, element, spaces) {
   element.title = `${box.id}${box.label ? ` (${box.label})` : ""} @ (${box.x}, ${box.y}) ${box.w}Ã—${box.h}`;
 }
 
+function dragDeltaToBoardDelta(delta, spaces) {
+  if (!_viewerInstance?.viewport || !delta || !spaces) return null;
+  const sx = Number(spaces?.sx);
+  const sy = Number(spaces?.sy);
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) return null;
+
+  const viewportDelta = _viewerInstance.viewport.deltaPointsFromPixels(delta);
+  const imageOrigin = _viewerInstance.viewport.viewportToImageCoordinates(new OpenSeadragon.Point(0, 0));
+  const imageTarget = _viewerInstance.viewport.viewportToImageCoordinates(
+    new OpenSeadragon.Point(viewportDelta.x, viewportDelta.y)
+  );
+  const imageDelta = new OpenSeadragon.Point(
+    imageTarget.x - imageOrigin.x,
+    imageTarget.y - imageOrigin.y
+  );
+
+  return {
+    x: imageDelta.x / sx,
+    y: imageDelta.y / sy,
+  };
+}
+
 function wireEditableBoxOverlay(box, element, spaces) {
   if (!_viewerInstance || !box || !element) return null;
   if (authoringState.activeTool !== "edit") return null;
@@ -298,14 +323,14 @@ function wireEditableBoxOverlay(box, element, spaces) {
     },
     dragHandler: (event) => {
       event.preventDefaultAction = true;
-      const point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, event.position);
-      if (!point) return;
-
       const liveBox = authoringState.boxes.find((entry) => entry.id === box.id);
       if (!liveBox) return;
 
-      liveBox.x = Math.round(point.board.x - (liveBox.w / 2));
-      liveBox.y = Math.round(point.board.y - (liveBox.h / 2));
+      const boardDelta = dragDeltaToBoardDelta(event.delta, spaces);
+      if (!boardDelta) return;
+
+      liveBox.x = Number(liveBox.x || 0) + boardDelta.x;
+      liveBox.y = Number(liveBox.y || 0) + boardDelta.y;
       updateBoxOverlayPosition(liveBox, element, spaces);
       event.originalEvent?.stopPropagation?.();
       event.originalEvent?.preventDefault?.();
@@ -314,6 +339,9 @@ function wireEditableBoxOverlay(box, element, spaces) {
       event.preventDefaultAction = true;
       const liveBox = authoringState.boxes.find((entry) => entry.id === box.id);
       if (liveBox) {
+        liveBox.x = Math.round(Number(liveBox.x || 0));
+        liveBox.y = Math.round(Number(liveBox.y || 0));
+        updateBoxOverlayPosition(liveBox, element, spaces);
         setAuthoringStatus(`Moved box ${liveBox.id} to (${liveBox.x}, ${liveBox.y})`);
       }
       refreshOverlays();
@@ -598,26 +626,20 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
   // Always use live module-level refs (_viewerInstance, _boardRuntime) so that
   // after updateAuthoringViewerRefs() the handlers pick up the new viewer.
   const resolvePointerBoardPoint = (e) => {
-    // Try client-space first (OSD native path), then canvas-local fallback.
-    let point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, { x: e.clientX, y: e.clientY });
-    if (point) return point;
-
     const rect = canvasTarget.getBoundingClientRect?.();
-    if (!rect) return null;
-    point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, {
+    if (rect) {
+      return safeScreenToBoardPoint(_viewerInstance, _boardRuntime, {
       x: e.clientX - rect.left,
       y: e.clientY - rect.top,
-    });
-    if (point) return point;
-
-    if (typeof window !== "undefined") {
-      point = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, {
-        x: e.clientX + window.scrollX,
-        y: e.clientY + window.scrollY,
+        coordinateSpace: "viewer-local",
       });
-      if (point) return point;
     }
-    return null;
+
+    return safeScreenToBoardPoint(_viewerInstance, _boardRuntime, {
+      x: e.clientX,
+      y: e.clientY,
+      coordinateSpace: "client",
+    });
   };
 
   const onPointerDown = (e) => {
