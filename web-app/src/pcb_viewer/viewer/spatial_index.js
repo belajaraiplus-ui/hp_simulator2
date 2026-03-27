@@ -26,6 +26,25 @@ function normalizePoint(point) {
   return [x, y];
 }
 
+function normalizeContactPoint(contact, spaces) {
+  const x = toFiniteNumber(contact?.x ?? contact?.cx ?? contact?.px);
+  const y = toFiniteNumber(contact?.y ?? contact?.cy ?? contact?.py);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  const looksLikeImageSpace = (
+    (x > spaces?.dataW * 1.05 || y > spaces?.dataH * 1.05)
+    && x <= spaces?.imgW * 1.05
+    && y <= spaces?.imgH * 1.05
+  );
+
+  if (!looksLikeImageSpace) return { x, y, wasImageSpace: false };
+  return {
+    x: x / spaces.sx,
+    y: y / spaces.sy,
+    wasImageSpace: true,
+  };
+}
+
 function bboxFromPoints(points) {
   if (!Array.isArray(points) || !points.length) return null;
   const xs = points.map((point) => point[0]);
@@ -103,6 +122,40 @@ function normalizePointsToBoardSpace(points, spaces) {
   return points.map((point) => [point[0] / spaces.sx, point[1] / spaces.sy]);
 }
 
+function contactBoxesFromComponent(component, spaces) {
+  return [
+    ...(Array.isArray(component?.pins) ? component.pins : []),
+    ...(Array.isArray(component?.pads) ? component.pads : []),
+  ].map((contact) => {
+    const point = normalizeContactPoint(contact, spaces);
+    if (!point) return null;
+    const storedRadius = toFiniteNumber(contact?.radius);
+    const fallbackRadius = 6;
+    const radius = Number.isFinite(storedRadius) && storedRadius > 0
+      ? (point.wasImageSpace ? storedRadius / Math.max(spaces.sx, spaces.sy) : storedRadius)
+      : fallbackRadius;
+    return {
+      minX: point.x - radius,
+      minY: point.y - radius,
+      maxX: point.x + radius,
+      maxY: point.y + radius,
+    };
+  }).filter(Boolean);
+}
+
+function normalizeContactsToBoardSpace(contacts, spaces) {
+  return (Array.isArray(contacts) ? contacts : []).map((contact) => {
+    const point = normalizeContactPoint(contact, spaces);
+    if (!point) return null;
+    const next = { ...(contact || {}), x: point.x, y: point.y };
+    const storedRadius = toFiniteNumber(contact?.radius);
+    if (Number.isFinite(storedRadius) && storedRadius > 0 && point.wasImageSpace) {
+      next.radius = storedRadius / Math.max(spaces.sx, spaces.sy);
+    }
+    return next;
+  }).filter(Boolean);
+}
+
 function normalizeOverlayPolys(overlay) {
   if (!overlay) return [];
   const polys = Array.isArray(overlay)
@@ -120,7 +173,8 @@ function normalizeComponentPolys(component, spaces) {
     if (points.length >= 3) return [points];
   }
 
-  const box = normalizeBoxToBoardSpace(bboxFromComponent(component), spaces);
+  const box = normalizeBoxToBoardSpace(bboxFromComponent(component), spaces)
+    || mergeBoxes(contactBoxesFromComponent(component, spaces));
   if (!box) return [];
   return [[
     [box.minX, box.minY],
@@ -162,8 +216,17 @@ function distanceBetweenBoxes(a, b) {
 }
 
 function normalizeComponentRuntime(component, index, spaces) {
+  const pins = normalizeContactsToBoardSpace(component?.pins, spaces);
+  const pads = normalizeContactsToBoardSpace(component?.pads, spaces);
+  const componentWithNormalizedContacts = {
+    ...(component || {}),
+    pins,
+    pads,
+  };
   const polygons = normalizeComponentPolys(component, spaces);
-  const bbox = mergeBoxes(polygons.map(bboxFromPoints)) || normalizeBoxToBoardSpace(bboxFromComponent(component), spaces);
+  const bbox = mergeBoxes(polygons.map(bboxFromPoints))
+    || normalizeBoxToBoardSpace(bboxFromComponent(component), spaces)
+    || mergeBoxes(contactBoxesFromComponent(componentWithNormalizedContacts, spaces));
   return {
     index,
     id: String(component?.id || component?.refdes || `component_${index}`),
@@ -174,8 +237,8 @@ function normalizeComponentRuntime(component, index, spaces) {
     rails: normalizeRailRefs(component),
     bbox,
     polygons,
-    pins: Array.isArray(component?.pins) ? component.pins : [],
-    pads: Array.isArray(component?.pads) ? component.pads : [],
+    pins,
+    pads,
     nodes: Array.isArray(component?.nodes) ? component.nodes : [],
     hints: component?.hints || {},
     electricalProperties: component?.electricalProperties || component?.electrical || {},

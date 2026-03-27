@@ -56,6 +56,8 @@ function sortByPriority(items, metricKey = "distance") {
   });
 }
 
+const PIN_HIT_RADIUS_IMAGE_PX = 20;
+
 export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
   if (!viewer?.viewport || !boardRuntime?.spaces || !screenPoint) return null;
 
@@ -249,6 +251,76 @@ function contactHitRadius(contact, boardRuntime) {
   return Number.isFinite(storedRadius) ? Math.max(baseRadius, storedRadius) : baseRadius;
 }
 
+function boardToImagePoint(point, boardRuntime) {
+  if (!point || !boardRuntime?.spaces) return null;
+  const sx = Number(boardRuntime.spaces.sx);
+  const sy = Number(boardRuntime.spaces.sy);
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) return null;
+  return {
+    x: point.x * sx,
+    y: point.y * sy,
+  };
+}
+
+function contactHitRadiusImage(contact, boardRuntime) {
+  const storedRadius = Number(contact?.data?.radius);
+  const sx = Number(boardRuntime?.spaces?.sx);
+  const sy = Number(boardRuntime?.spaces?.sy);
+  if (!Number.isFinite(storedRadius) || !Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) {
+    return PIN_HIT_RADIUS_IMAGE_PX;
+  }
+  const storedRadiusPx = Math.max(Math.abs(storedRadius * sx), Math.abs(storedRadius * sy));
+  return Math.max(PIN_HIT_RADIUS_IMAGE_PX, storedRadiusPx);
+}
+
+function buildContactCandidate(entry, boardRuntime, boardPoint, imagePoint) {
+  const point = extractContactPoint(entry.data);
+  if (!point) return null;
+  const image = boardToImagePoint(point, boardRuntime);
+  return {
+    ...entry,
+    point,
+    image,
+    distance: Number.isFinite(boardPoint?.x) && Number.isFinite(boardPoint?.y)
+      ? distanceSq(boardPoint, point)
+      : Number.POSITIVE_INFINITY,
+    imageDistance: image && Number.isFinite(imagePoint?.x) && Number.isFinite(imagePoint?.y)
+      ? distanceSq(imagePoint, image)
+      : Number.POSITIVE_INFINITY,
+  };
+}
+
+function pickClosestContact(contacts, boardRuntime, boardPoint, imagePoint) {
+  const hasImagePoint = Number.isFinite(imagePoint?.x) && Number.isFinite(imagePoint?.y);
+  const hasBoardPoint = Number.isFinite(boardPoint?.x) && Number.isFinite(boardPoint?.y);
+  if (!hasImagePoint && !hasBoardPoint) return null;
+
+  const [winner] = contacts
+    .filter((entry) => {
+      if (hasImagePoint && Number.isFinite(entry.imageDistance)) {
+        const hitRadius = contactHitRadiusImage(entry, boardRuntime);
+        return entry.imageDistance <= hitRadius * hitRadius;
+      }
+      if (hasBoardPoint && Number.isFinite(entry.distance)) {
+        const hitRadius = contactHitRadius(entry, boardRuntime);
+        return entry.distance <= hitRadius * hitRadius;
+      }
+      return false;
+    })
+    .sort((a, b) => {
+      const primaryA = hasImagePoint ? a.imageDistance : a.distance;
+      const primaryB = hasImagePoint ? b.imageDistance : b.distance;
+      if (primaryA !== primaryB) return primaryA - primaryB;
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      const aComponentId = String(a.component?.id || "");
+      const bComponentId = String(b.component?.id || "");
+      if (aComponentId !== bComponentId) return aComponentId.localeCompare(bComponentId);
+      return String(a.data?.id || "").localeCompare(String(b.data?.id || ""));
+    });
+
+  return winner || null;
+}
+
 function buildComponentContactPick(component, winner) {
   const pinId = String(winner.data?.id || `${winner.kind.toUpperCase()}_${winner.index + 1}`);
   const railId = winner.data?.railId || winner.data?.rail || null;
@@ -273,37 +345,8 @@ function buildComponentContactPick(component, winner) {
   };
 }
 
-function pickComponentPin(component, boardPoint, boardRuntime) {
-  if (!component || !boardPoint || !boardRuntime) return null;
-
-  const contacts = [
-    ...(Array.isArray(component.pins) ? component.pins : []).map((pin, index) => ({ kind: "pin", index, data: pin })),
-    ...(Array.isArray(component.pads) ? component.pads : []).map((pad, index) => ({ kind: "pad", index, data: pad })),
-  ].map((entry) => {
-    const point = extractContactPoint(entry.data);
-    if (!point) return null;
-    return {
-      ...entry,
-      point,
-      distance: distanceSq(boardPoint, point),
-    };
-  }).filter(Boolean);
-
-  if (!contacts.length) return null;
-
-  const [winner] = contacts
-    .filter((entry) => {
-      const hitRadius = contactHitRadius(entry, boardRuntime);
-      return entry.distance <= hitRadius * hitRadius;
-    })
-    .sort((a, b) => a.distance - b.distance);
-
-  if (!winner) return null;
-  return buildComponentContactPick(component, winner);
-}
-
-function pickLooseComponentPin(boardRuntime, boardPoint) {
-  if (!boardRuntime || !boardPoint) return null;
+function pickLooseComponentPin(boardRuntime, boardPoint, imagePoint) {
+  if (!boardRuntime || (!boardPoint && !imagePoint)) return null;
 
   const contacts = [];
   (Array.isArray(boardRuntime.components) ? boardRuntime.components : []).forEach((component) => {
@@ -311,26 +354,15 @@ function pickLooseComponentPin(boardRuntime, boardPoint) {
       ...(Array.isArray(component?.pins) ? component.pins : []).map((pin, index) => ({ kind: "pin", index, data: pin })),
       ...(Array.isArray(component?.pads) ? component.pads : []).map((pad, index) => ({ kind: "pad", index, data: pad })),
     ].forEach((entry) => {
-      const point = extractContactPoint(entry.data);
-      if (!point) return;
-      contacts.push({
-        ...entry,
-        component,
-        point,
-        distance: distanceSq(boardPoint, point),
-      });
+      const candidate = buildContactCandidate({ ...entry, component }, boardRuntime, boardPoint, imagePoint);
+      if (!candidate) return;
+      contacts.push(candidate);
     });
   });
 
   if (!contacts.length) return null;
 
-  const [winner] = contacts
-    .filter((entry) => {
-      const hitRadius = contactHitRadius(entry, boardRuntime);
-      return entry.distance <= hitRadius * hitRadius;
-    })
-    .sort((a, b) => a.distance - b.distance);
-
+  const winner = pickClosestContact(contacts, boardRuntime, boardPoint, imagePoint);
   if (!winner?.component) return null;
   return buildComponentContactPick(winner.component, winner);
 }
@@ -457,39 +489,21 @@ export function pickBoardTarget(boardRuntime, boardPointLike) {
     };
   }
 
-  const component = pickComponent(boardRuntime, boardPoint)
-    || pickComponentByImageHitbox(boardRuntime, imagePoint);
-  if (component) {
-    const componentPin = pickComponentPin(component, boardPoint, boardRuntime);
-    if (componentPin) {
-      return {
-        ...componentPin,
-        boardPoint,
-        imagePoint,
-      };
-    }
-
-    const loosePin = pickLooseComponentPin(boardRuntime, boardPoint);
-    if (loosePin) {
-      return {
-        ...loosePin,
-        boardPoint,
-        imagePoint,
-      };
-    }
-
-    const candidate = resolveComponentMeasurementCandidate(component);
+  const loosePin = pickLooseComponentPin(boardRuntime, boardPoint, imagePoint);
+  if (loosePin) {
     return {
-      ...candidate,
+      ...loosePin,
       boardPoint,
       imagePoint,
     };
   }
 
-  const loosePin = pickLooseComponentPin(boardRuntime, boardPoint);
-  if (loosePin) {
+  const component = pickComponent(boardRuntime, boardPoint)
+    || pickComponentByImageHitbox(boardRuntime, imagePoint);
+  if (component) {
+    const candidate = resolveComponentMeasurementCandidate(component);
     return {
-      ...loosePin,
+      ...candidate,
       boardPoint,
       imagePoint,
     };

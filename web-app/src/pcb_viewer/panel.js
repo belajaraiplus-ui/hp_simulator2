@@ -551,7 +551,23 @@ function formatRuntimePinLabel(pin) {
     : pinLabel;
 }
 
-function createRuntimePinOverlayElement(pin, selected = false) {
+function getRuntimePinVisualState(pin, selectedPick) {
+  const pinComponentId = String(pin?.componentId || "");
+  const selectedComponentId = String(selectedPick?.componentId || "");
+  const selected = selectedPick?.type === "component-pin"
+    && selectedComponentId === pinComponentId
+    && String(selectedPick?.pinId || "") === String(pin?.id || "");
+  const componentSelected = selectedPick?.type === "component"
+    && selectedComponentId
+    && selectedComponentId === pinComponentId;
+  return {
+    selected,
+    componentSelected,
+    showLabel: selected || componentSelected,
+  };
+}
+
+function createRuntimePinOverlayElement(pin, { selected = false, showLabel = false, componentSelected = false } = {}) {
   const wrapper = document.createElement("div");
   wrapper.style.position = "relative";
   wrapper.style.width = "100%";
@@ -564,7 +580,9 @@ function createRuntimePinOverlayElement(pin, selected = false) {
   marker.style.height = "100%";
   marker.style.borderRadius = "50%";
   marker.style.boxSizing = "border-box";
-  marker.style.border = selected ? "2px solid #fff7d6" : "1px solid #ffffff";
+  marker.style.border = selected
+    ? "2px solid #fff7d6"
+    : (componentSelected ? "2px solid rgba(255, 222, 140, 0.92)" : "1px solid #ffffff");
   marker.style.background = selected
     ? "rgba(255, 184, 0, 0.96)"
     : (pin.isGround
@@ -572,10 +590,12 @@ function createRuntimePinOverlayElement(pin, selected = false) {
       : (pin.isTestPoint ? "rgba(255, 214, 10, 0.9)" : "rgba(26, 174, 255, 0.88)"));
   marker.style.boxShadow = selected
     ? "0 0 12px rgba(255, 184, 0, 0.95)"
-    : "0 0 7px rgba(26, 174, 255, 0.72)";
+    : (componentSelected
+      ? "0 0 10px rgba(255, 205, 86, 0.7)"
+      : "0 0 7px rgba(26, 174, 255, 0.72)");
   wrapper.appendChild(marker);
 
-  if (selected) {
+  if (showLabel) {
     const label = document.createElement("div");
     label.textContent = formatRuntimePinLabel(pin);
     label.style.position = "absolute";
@@ -584,13 +604,19 @@ function createRuntimePinOverlayElement(pin, selected = false) {
     label.style.transform = "translateX(-50%)";
     label.style.padding = "3px 8px";
     label.style.borderRadius = "999px";
-    label.style.border = "1px solid rgba(255, 184, 0, 0.9)";
-    label.style.background = "rgba(20, 12, 2, 0.96)";
-    label.style.color = "#fff6d6";
+    label.style.border = selected
+      ? "1px solid rgba(255, 184, 0, 0.9)"
+      : "1px solid rgba(255, 222, 140, 0.9)";
+    label.style.background = selected
+      ? "rgba(20, 12, 2, 0.96)"
+      : "rgba(25, 18, 8, 0.94)";
+    label.style.color = selected ? "#fff6d6" : "#fff1c4";
     label.style.fontSize = "11px";
     label.style.fontWeight = "700";
     label.style.whiteSpace = "nowrap";
-    label.style.boxShadow = "0 0 12px rgba(255, 184, 0, 0.35)";
+    label.style.boxShadow = selected
+      ? "0 0 12px rgba(255, 184, 0, 0.35)"
+      : "0 0 10px rgba(255, 214, 120, 0.22)";
     wrapper.appendChild(label);
   }
 
@@ -622,13 +648,12 @@ function redrawRuntimePinOverlays() {
   const selectedPick = currentSelection?.pick || null;
   const pins = listRuntimePins();
   pins.sort((left, right) => {
-    const leftSelected = selectedPick?.type === "component-pin"
-      && String(selectedPick.componentId || "") === String(left.componentId || "")
-      && String(selectedPick.pinId || "") === String(left.id || "");
-    const rightSelected = selectedPick?.type === "component-pin"
-      && String(selectedPick.componentId || "") === String(right.componentId || "")
-      && String(selectedPick.pinId || "") === String(right.id || "");
-    return Number(leftSelected) - Number(rightSelected);
+    const leftState = getRuntimePinVisualState(left, selectedPick);
+    const rightState = getRuntimePinVisualState(right, selectedPick);
+    const leftPriority = Number(leftState.showLabel) + Number(leftState.selected);
+    const rightPriority = Number(rightState.showLabel) + Number(rightState.selected);
+    if (leftPriority !== rightPriority) return leftPriority - rightPriority;
+    return String(left.id || "").localeCompare(String(right.id || ""));
   });
 
   pins.forEach((pin) => {
@@ -643,10 +668,8 @@ function redrawRuntimePinOverlays() {
       markerRadiusY * 2
     );
     const rect = viewerInstance.viewport.imageToViewportRectangle(imgRect);
-    const selected = selectedPick?.type === "component-pin"
-      && String(selectedPick.componentId || "") === String(pin.componentId || "")
-      && String(selectedPick.pinId || "") === String(pin.id || "");
-    const element = createRuntimePinOverlayElement(pin, selected);
+    const visualState = getRuntimePinVisualState(pin, selectedPick);
+    const element = createRuntimePinOverlayElement(pin, visualState);
     viewerInstance.addOverlay({ element, location: rect });
     runtimePinOverlays.push({ element, pinId: pin.id, componentId: pin.componentId });
   });

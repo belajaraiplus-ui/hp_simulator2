@@ -39,6 +39,162 @@
     },
     {
       "bbox": {
+        "h": 12,
+        "w": 12,
+        "x": 753,
+        "y": 187
+      },
+      "category": null,
+      "electrical": null,
+      "hints": null,
+      "id": "TP_PIN_001",
+      "kind": "ground",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_001",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_001",
+          "node": null,
+          "pinRole": "ground",
+          "pinType": "ground",
+          "radius": 6,
+          "railId": null,
+          "x": 759,
+          "y": 193
+        }
+      ],
+      "refdes": "TP_PIN_001",
+      "shape": {
+        "points": [
+          [
+            753,
+            187
+          ],
+          [
+            765,
+            187
+          ],
+          [
+            765,
+            199
+          ],
+          [
+            753,
+            199
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "bbox": {
+        "h": 12,
+        "w": 12,
+        "x": 855,
+        "y": 317
+      },
+      "category": null,
+      "electrical": null,
+      "hints": null,
+      "id": "TP_PIN_003",
+      "kind": "passive",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_003",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_003",
+          "node": null,
+          "pinRole": "passive",
+          "pinType": "passive",
+          "radius": 6,
+          "railId": null,
+          "x": 861,
+          "y": 323
+        }
+      ],
+      "refdes": "TP_PIN_003",
+      "shape": {
+        "points": [
+          [
+            855,
+            317
+          ],
+          [
+            867,
+            317
+          ],
+          [
+            867,
+            329
+          ],
+          [
+            855,
+            329
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "bbox": {
+        "h": 12,
+        "w": 12,
+        "x": 673,
+        "y": 315
+      },
+      "category": null,
+      "electrical": null,
+      "hints": null,
+      "id": "TP_PIN_004",
+      "kind": "test_point",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_004",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_004",
+          "node": null,
+          "pinRole": "test_point",
+          "pinType": "test_point",
+          "radius": 6,
+          "railId": null,
+          "x": 679,
+          "y": 321
+        }
+      ],
+      "refdes": "TP_PIN_004",
+      "shape": {
+        "points": [
+          [
+            673,
+            315
+          ],
+          [
+            685,
+            315
+          ],
+          [
+            685,
+            327
+          ],
+          [
+            673,
+            327
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "bbox": {
         "h": 168,
         "w": 181,
         "x": 1253,
@@ -49,7 +205,22 @@
       "hints": null,
       "id": "u444",
       "kind": "ic",
-      "pins": [],
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_007",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_007",
+          "node": null,
+          "pinRole": "signal",
+          "pinType": "signal",
+          "radius": 6,
+          "railId": null,
+          "x": 1344,
+          "y": 388
+        }
+      ],
       "refdes": "u444",
       "shape": {
         "points": [
@@ -73,41 +244,6 @@
         "type": "poly"
       },
       "tags": []
-    },
-    {
-      "id": "_unassigned",
-      "kind": "unknown",
-      "pins": [
-        {
-          "authoringSource": "manual-click",
-          "id": "PIN_006",
-          "isGround": false,
-          "isTestPoint": false,
-          "name": "PIN_006",
-          "node": null,
-          "pinRole": "power",
-          "pinType": "inductor",
-          "radius": 6,
-          "railId": null,
-          "x": 758,
-          "y": 198
-        },
-        {
-          "authoringSource": "manual-click",
-          "id": "PIN_007",
-          "isGround": false,
-          "isTestPoint": false,
-          "name": "PIN_007",
-          "node": null,
-          "pinRole": "passive",
-          "pinType": "signal",
-          "radius": 6,
-          "railId": null,
-          "x": 732,
-          "y": 193
-        }
-      ],
-      "refdes": "_unassigned"
     }
   ],
   "version": 1

@@ -15,6 +15,7 @@ const PIN_ROLE_OPTIONS = [
   "", "ground", "signal", "power", "passive", "test_point",
   "anode", "cathode", "gate", "drain", "source", "input", "output", "pin1", "pin2",
 ];
+const PIN_COMPONENT_SNAP_DISTANCE = 96;
 
 const TOOL_NAMES = ["select", "box", "pin", "edit"];
 
@@ -180,6 +181,56 @@ function getComponentIdForPin(pin, boxComponentIds = new Map()) {
     || null;
 }
 
+function pointFromPin(pin) {
+  const x = Number(pin?.x);
+  const y = Number(pin?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+  return { x, y };
+}
+
+function boxBoundsFromAuthoringBox(box) {
+  const bbox = buildBoxBbox(box);
+  if (!bbox) return null;
+  return {
+    minX: bbox.x,
+    minY: bbox.y,
+    maxX: bbox.x + bbox.w,
+    maxY: bbox.y + bbox.h,
+  };
+}
+
+function boxArea(bounds) {
+  if (!bounds) return Number.POSITIVE_INFINITY;
+  return Math.max(1, (bounds.maxX - bounds.minX) * (bounds.maxY - bounds.minY));
+}
+
+function distancePointToBounds(point, bounds) {
+  if (!point || !bounds) return Number.POSITIVE_INFINITY;
+  const dx = point.x < bounds.minX
+    ? bounds.minX - point.x
+    : (point.x > bounds.maxX ? point.x - bounds.maxX : 0);
+  const dy = point.y < bounds.minY
+    ? bounds.minY - point.y
+    : (point.y > bounds.maxY ? point.y - bounds.maxY : 0);
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function findAuthoringComponentIdAtBoardPoint(boardPoint, boxComponentIds = new Map()) {
+  if (!boardPoint || !Array.isArray(authoringState.boxes)) return null;
+  const matches = authoringState.boxes
+    .map((box) => ({ box, bounds: boxBoundsFromAuthoringBox(box) }))
+    .filter((entry) => entry.bounds)
+    .filter((entry) => (
+      boardPoint.x >= entry.bounds.minX
+      && boardPoint.x <= entry.bounds.maxX
+      && boardPoint.y >= entry.bounds.minY
+      && boardPoint.y <= entry.bounds.maxY
+    ))
+    .sort((left, right) => boxArea(left.bounds) - boxArea(right.bounds));
+  const componentId = matches[0]?.box ? getComponentIdForPin({ boxId: matches[0].box.id }, boxComponentIds) : null;
+  return normalizeAuthoringId(componentId);
+}
+
 function findRuntimeComponentIdAtBoardPoint(boardPoint) {
   if (!boardPoint || !Array.isArray(_boardRuntime?.components)) return null;
   const matches = _boardRuntime.components
@@ -197,6 +248,66 @@ function findRuntimeComponentIdAtBoardPoint(boardPoint) {
       return leftArea - rightArea;
     });
   return normalizeAuthoringId(matches[0]?.id || matches[0]?.refdes);
+}
+
+function findNearestAuthoringComponentId(boardPoint, boxComponentIds = new Map(), maxDistance = PIN_COMPONENT_SNAP_DISTANCE) {
+  if (!boardPoint || !Array.isArray(authoringState.boxes)) return null;
+  const [nearest] = authoringState.boxes
+    .map((box) => {
+      const bounds = boxBoundsFromAuthoringBox(box);
+      const componentId = getComponentIdForPin({ boxId: box?.id }, boxComponentIds);
+      if (!bounds || !componentId) return null;
+      return {
+        componentId,
+        distance: distancePointToBounds(boardPoint, bounds),
+        area: boxArea(bounds),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.distance - right.distance || left.area - right.area);
+
+  return nearest && nearest.distance <= maxDistance ? normalizeAuthoringId(nearest.componentId) : null;
+}
+
+function findNearestRuntimeComponentId(boardPoint, maxDistance = PIN_COMPONENT_SNAP_DISTANCE) {
+  if (!boardPoint || !Array.isArray(_boardRuntime?.components)) return null;
+  const [nearest] = _boardRuntime.components
+    .map((component) => {
+      const bounds = component?.bbox || null;
+      if (!bounds) return null;
+      return {
+        componentId: component?.id || component?.refdes || null,
+        distance: distancePointToBounds(boardPoint, bounds),
+        area: boxArea(bounds),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.distance - right.distance || left.area - right.area);
+
+  return nearest && nearest.distance <= maxDistance ? normalizeAuthoringId(nearest.componentId) : null;
+}
+
+function buildBoxComponentIdMap() {
+  const boxComponentIds = new Map();
+  authoringState.boxes.forEach((box) => {
+    const componentId = getComponentIdForBox(box);
+    if (componentId) boxComponentIds.set(box.id, componentId);
+  });
+  return boxComponentIds;
+}
+
+function resolvePinComponentId(pin, boxComponentIds = buildBoxComponentIdMap()) {
+  const explicit = getComponentIdForPin(pin, boxComponentIds);
+  if (explicit) return explicit;
+
+  const boardPoint = pointFromPin(pin);
+  if (!boardPoint) return null;
+
+  return findAuthoringComponentIdAtBoardPoint(boardPoint, boxComponentIds)
+    || findRuntimeComponentIdAtBoardPoint(boardPoint)
+    || findNearestAuthoringComponentId(boardPoint, boxComponentIds)
+    || findNearestRuntimeComponentId(boardPoint)
+    || null;
 }
 
 function cloneExistingComponent(componentId) {
@@ -264,6 +375,44 @@ function buildAuthoredPinPayload(pin) {
     isGround: Boolean(pin?.isGround),
     isTestPoint: Boolean(pin?.isTestPoint),
     authoringSource: normalizeAuthoringId(pin?.authoringSource) || "manual-click",
+  };
+}
+
+function buildStandalonePinBbox(pin) {
+  const x = Math.round(Number(pin?.x) || 0);
+  const y = Math.round(Number(pin?.y) || 0);
+  const radius = Number.isFinite(Number(pin?.radius)) && Number(pin.radius) > 0 ? Number(pin.radius) : 6;
+  return {
+    x: x - radius,
+    y: y - radius,
+    w: radius * 2,
+    h: radius * 2,
+  };
+}
+
+function fallbackStandaloneComponentId(pin) {
+  const pinId = normalizeAuthoringId(pin?.id) || "PIN";
+  if (pinId.toUpperCase().startsWith("TP_")) return pinId;
+  return `TP_${pinId}`;
+}
+
+function buildStandalonePinComponent(pin, componentId, existing = null) {
+  const pinPayload = buildAuthoredPinPayload(pin);
+  const bbox = buildStandalonePinBbox(pin);
+  const kind = normalizeAuthoringId(pin?.pinType)
+    || (pin?.isTestPoint ? "test_point" : null)
+    || existing?.kind
+    || existing?.type
+    || "test_point";
+  const refdes = existing?.refdes || componentId;
+  return {
+    ...(existing && typeof existing === "object" ? existing : {}),
+    id: componentId,
+    refdes,
+    kind,
+    bbox,
+    shape: buildShapeFromBbox(bbox),
+    pins: [pinPayload],
   };
 }
 
@@ -847,10 +996,13 @@ function addPinAtBoardPoint(boardPoint) {
   const selectedBox = boxId
     ? authoringState.boxes.find((entry) => entry.id === boxId) || null
     : null;
-  const inferredComponentId = normalizeAuthoringId(authoringState.selectedComponentId)
-    || getComponentIdForBox(selectedBox)
-    || findRuntimeComponentIdAtBoardPoint(boardPoint)
-    || null;
+  const boxComponentIds = buildBoxComponentIdMap();
+  const inferredComponentId = resolvePinComponentId({
+    componentId: normalizeAuthoringId(authoringState.selectedComponentId),
+    boxId,
+    x: Math.round(boardPoint.x),
+    y: Math.round(boardPoint.y),
+  }, boxComponentIds);
 
   const pin = {
     id,
@@ -911,9 +1063,11 @@ function selectPin(pinId) {
   const selectedBox = pin?.boxId
     ? authoringState.boxes.find((entry) => entry.id === pin.boxId) || null
     : null;
+  const boxComponentIds = buildBoxComponentIdMap();
   authoringState.selectedPinId = pinId;
   authoringState.selectedBoxId = null;
-  authoringState.selectedComponentId = normalizeAuthoringId(pin?.componentId)
+  authoringState.selectedComponentId = resolvePinComponentId(pin, boxComponentIds)
+    || normalizeAuthoringId(pin?.componentId)
     || getComponentIdForBox(selectedBox)
     || null;
   setAuthoringStatus(`Selected pin ${pinId}`);
@@ -1279,17 +1433,16 @@ function refreshItemsList() {
 
 // ─── Export ────────────────────────────────────────────────────────────────────
 
-function buildComponentPatchPayload() {
+function buildComponentPatchData() {
   const compMap = {};
-  const boxComponentIds = new Map();
+  const boxComponentIds = buildBoxComponentIdMap();
   const authoredPinsByComponentId = new Map();
-
-  authoringState.boxes.forEach((box) => {
-    boxComponentIds.set(box.id, getComponentIdForBox(box));
-  });
+  const standalonePins = [];
 
   authoringState.pins.forEach((pin) => {
-    const componentId = getComponentIdForPin(pin, boxComponentIds) || "_unassigned";
+    const resolvedComponentId = resolvePinComponentId(pin, boxComponentIds);
+    const componentId = resolvedComponentId || fallbackStandaloneComponentId(pin);
+    if (!resolvedComponentId) standalonePins.push({ ...pin, componentId });
     if (!authoredPinsByComponentId.has(componentId)) {
       authoredPinsByComponentId.set(componentId, []);
     }
@@ -1298,6 +1451,7 @@ function buildComponentPatchPayload() {
 
   authoringState.boxes.forEach((box) => {
     const componentId = boxComponentIds.get(box.id);
+    if (!componentId) return;
     const existing = cloneExistingComponent(componentId);
     const bbox = buildBoxBbox(box);
     const refdes = normalizeAuthoringId(box.label) || existing?.refdes || componentId;
@@ -1319,17 +1473,27 @@ function buildComponentPatchPayload() {
 
   authoredPinsByComponentId.forEach((pins, componentId) => {
     if (compMap[componentId]) return;
-    const existing = componentId === "_unassigned" ? null : cloneExistingComponent(componentId);
-    compMap[componentId] = {
-      ...(existing && typeof existing === "object" ? existing : {}),
-      id: componentId,
-      refdes: existing?.refdes || componentId,
-      kind: existing?.kind || existing?.type || "unknown",
-      pins: pins.map((pin) => ({ ...pin })),
-    };
+    const standalonePin = standalonePins.find((pin) => pin.componentId === componentId) || null;
+    const existing = cloneExistingComponent(componentId);
+    compMap[componentId] = standalonePin
+      ? buildStandalonePinComponent(standalonePin, componentId, existing)
+      : {
+        ...(existing && typeof existing === "object" ? existing : {}),
+        id: componentId,
+        refdes: existing?.refdes || componentId,
+        kind: existing?.kind || existing?.type || "unknown",
+        pins: pins.map((pin) => ({ ...pin })),
+      };
   });
 
-  return Object.values(compMap);
+  return {
+    components: Object.values(compMap),
+    standalonePins,
+  };
+}
+
+function buildComponentPatchPayload() {
+  return buildComponentPatchData().components;
 }
 
 function buildExportJson() {
@@ -1341,7 +1505,10 @@ function buildExportJson() {
   } else if (mode === "pins") {
     data = { pins: authoringState.pins.map(p => ({ ...p })) };
   } else if (mode === "component-patch") {
-    data = { components: buildComponentPatchPayload() };
+    const { components, standalonePins } = buildComponentPatchData();
+    data = standalonePins.length
+      ? { components, standalonePins }
+      : { components };
   } else {
     data = {
       boardId: _boardRuntime?.board?.id || null,
@@ -1360,7 +1527,7 @@ async function saveToFile(btn) {
     return;
   }
 
-  const components = buildComponentPatchPayload();
+  const { components, standalonePins } = buildComponentPatchData();
   if (!components.length) {
     setAuthoringStatus("⚠️ Nothing to save (no boxes/pins).");
     return;
@@ -1383,7 +1550,9 @@ async function saveToFile(btn) {
 
     const result = await res.json();
     setAuthoringStatus(
-      `✅ Saved! ${result.components_written} component(s) written → ${result.total_components} total in components.json`
+      standalonePins.length
+        ? `✅ Saved! ${result.components_written} component(s) written → ${result.total_components} total. ${standalonePins.length} pin(s) saved as standalone components.`
+        : `✅ Saved! ${result.components_written} component(s) written → ${result.total_components} total in components.json`
     );
     if (btn) { btn.textContent = "✅ Saved!"; }
     setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = "💾 Save to File"; } }, 2500);
@@ -1411,6 +1580,7 @@ function refreshExportPanel() {
 
 function runValidation() {
   const issues = [];
+  const boxComponentIds = buildBoxComponentIdMap();
 
   // Check for duplicate pin IDs
   const pinIds = new Set();
@@ -1430,10 +1600,10 @@ function runValidation() {
     boxIds.add(box.id);
   });
 
-  // Check pins without componentId/boxId
+  // Check pins without a resolvable component owner
   authoringState.pins.forEach(pin => {
-    if (!pin.componentId && !pin.boxId) {
-      issues.push({ severity: "warning", message: `Pin ${pin.id} has no componentId or boxId` });
+    if (!resolvePinComponentId(pin, boxComponentIds)) {
+      issues.push({ severity: "warning", message: `Pin ${pin.id} will be saved as standalone component ${fallbackStandaloneComponentId(pin)}` });
     }
     if (!pin.node && !pin.railId) {
       issues.push({ severity: "warning", message: `Pin ${pin.id} missing node/railId` });
