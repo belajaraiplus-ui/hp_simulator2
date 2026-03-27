@@ -68,6 +68,7 @@ let pinEditorState = {
   relocateOnNextClick: false,
 };
 let pinEditorOverlays = [];
+let runtimePinOverlays = [];
 let placedProbeTargets = {
   positive: null,
   negative: null,
@@ -252,6 +253,7 @@ export function clearScene() {
   clearOverlayList(psuTargetOverlays);
   clearOverlayList(pickedPadOverlays);
   clearOverlayList(pinEditorOverlays);
+  clearOverlayList(runtimePinOverlays);
   _clearComponentLabelEls();
   safeDestroyViewer();
 
@@ -542,9 +544,120 @@ function createPinEditorOverlayElement(pin, selected = false) {
   return element;
 }
 
+function formatRuntimePinLabel(pin) {
+  const pinLabel = pin.name && pin.name !== pin.id ? `${pin.id} · ${pin.name}` : (pin.name || pin.id);
+  return pin.componentLabel && pin.componentLabel !== "_unassigned"
+    ? `${pin.componentLabel} (${pinLabel})`
+    : pinLabel;
+}
+
+function createRuntimePinOverlayElement(pin, selected = false) {
+  const wrapper = document.createElement("div");
+  wrapper.style.position = "relative";
+  wrapper.style.width = "100%";
+  wrapper.style.height = "100%";
+  wrapper.style.pointerEvents = "none";
+  wrapper.style.overflow = "visible";
+
+  const marker = document.createElement("div");
+  marker.style.width = "100%";
+  marker.style.height = "100%";
+  marker.style.borderRadius = "50%";
+  marker.style.boxSizing = "border-box";
+  marker.style.border = selected ? "2px solid #fff7d6" : "1px solid #ffffff";
+  marker.style.background = selected
+    ? "rgba(255, 184, 0, 0.96)"
+    : (pin.isGround
+      ? "rgba(120, 120, 120, 0.92)"
+      : (pin.isTestPoint ? "rgba(255, 214, 10, 0.9)" : "rgba(26, 174, 255, 0.88)"));
+  marker.style.boxShadow = selected
+    ? "0 0 12px rgba(255, 184, 0, 0.95)"
+    : "0 0 7px rgba(26, 174, 255, 0.72)";
+  wrapper.appendChild(marker);
+
+  if (selected) {
+    const label = document.createElement("div");
+    label.textContent = formatRuntimePinLabel(pin);
+    label.style.position = "absolute";
+    label.style.left = "50%";
+    label.style.bottom = "calc(100% + 6px)";
+    label.style.transform = "translateX(-50%)";
+    label.style.padding = "3px 8px";
+    label.style.borderRadius = "999px";
+    label.style.border = "1px solid rgba(255, 184, 0, 0.9)";
+    label.style.background = "rgba(20, 12, 2, 0.96)";
+    label.style.color = "#fff6d6";
+    label.style.fontSize = "11px";
+    label.style.fontWeight = "700";
+    label.style.whiteSpace = "nowrap";
+    label.style.boxShadow = "0 0 12px rgba(255, 184, 0, 0.35)";
+    wrapper.appendChild(label);
+  }
+
+  wrapper.title = `${formatRuntimePinLabel(pin)} @ (${pin.x}, ${pin.y})`;
+  return wrapper;
+}
+
+function listRuntimePins() {
+  const pins = [];
+  (Array.isArray(currentBoardRuntime?.components) ? currentBoardRuntime.components : []).forEach((component) => {
+    (Array.isArray(component?.pins) ? component.pins : []).forEach((pin, index) => {
+      const normalized = normalizePinContact(pin, `${component?.id || "PIN"}_${index + 1}`);
+      if (!normalized) return;
+      pins.push({
+        ...normalized,
+        componentId: normalized.componentId || component?.id || null,
+        componentLabel: component?.refdes || component?.label || component?.id || null,
+      });
+    });
+  });
+  return pins;
+}
+
+function redrawRuntimePinOverlays() {
+  clearOverlayList(runtimePinOverlays);
+  if (!viewerInstance || !currentBoardRuntime || pinEditorState.isEditing) return;
+
+  const { sx, sy } = currentBoardRuntime.spaces;
+  const selectedPick = currentSelection?.pick || null;
+  const pins = listRuntimePins();
+  pins.sort((left, right) => {
+    const leftSelected = selectedPick?.type === "component-pin"
+      && String(selectedPick.componentId || "") === String(left.componentId || "")
+      && String(selectedPick.pinId || "") === String(left.id || "");
+    const rightSelected = selectedPick?.type === "component-pin"
+      && String(selectedPick.componentId || "") === String(right.componentId || "")
+      && String(selectedPick.pinId || "") === String(right.id || "");
+    return Number(leftSelected) - Number(rightSelected);
+  });
+
+  pins.forEach((pin) => {
+    const xi = pin.x * sx;
+    const yi = pin.y * sy;
+    const markerRadiusX = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sx);
+    const markerRadiusY = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sy);
+    const imgRect = new OpenSeadragon.Rect(
+      xi - markerRadiusX,
+      yi - markerRadiusY,
+      markerRadiusX * 2,
+      markerRadiusY * 2
+    );
+    const rect = viewerInstance.viewport.imageToViewportRectangle(imgRect);
+    const selected = selectedPick?.type === "component-pin"
+      && String(selectedPick.componentId || "") === String(pin.componentId || "")
+      && String(selectedPick.pinId || "") === String(pin.id || "");
+    const element = createRuntimePinOverlayElement(pin, selected);
+    viewerInstance.addOverlay({ element, location: rect });
+    runtimePinOverlays.push({ element, pinId: pin.id, componentId: pin.componentId });
+  });
+}
+
 function redrawPinEditorOverlays() {
   clearOverlayList(pinEditorOverlays);
-  if (!viewerInstance || !currentBoardRuntime || !pinEditorState.isEditing) return;
+  if (!viewerInstance || !currentBoardRuntime || !pinEditorState.isEditing) {
+    redrawRuntimePinOverlays();
+    return;
+  }
 
   const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
   pinEditorState.pins.forEach((pin) => {
@@ -563,6 +676,7 @@ function redrawPinEditorOverlays() {
     viewerInstance.addOverlay({ element, location: rect });
     pinEditorOverlays.push({ element, pinId: pin.id });
   });
+  redrawRuntimePinOverlays();
 }
 
 function clonePinEditorState() {
@@ -1299,9 +1413,7 @@ function applySelectionVisuals(pick) {
   if (pick.type === "component" || pick.type === "component-pin") {
     const component = currentBoardRuntime?.componentsById?.[pick.componentId];
     if (component) drawComponentOverlay(component);
-    if (pinEditorState.isEditing && pinEditorState.componentId === pick.componentId) {
-      redrawPinEditorOverlays();
-    }
+    redrawPinEditorOverlays();
     return;
   }
   if (pick.type === "rail") {
@@ -1773,6 +1885,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         relocateOnNextClick: false,
       };
       clearOverlayList(pinEditorOverlays);
+      clearOverlayList(runtimePinOverlays);
       redrawPickedPadOverlays();
 
       // ── Authoring Studio: update refs & install drag handler ──
@@ -1801,11 +1914,13 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       // so imageToViewportCoordinates has correct data
       const _drawLabelsOnce = () => {
         drawAllComponentLabels();
+        redrawPinEditorOverlays();
         viewerInstance.removeHandler("open", _drawLabelsOnce);
       };
       if (viewerInstance.world?.getItemCount() > 0) {
         // Image already open — draw immediately
         drawAllComponentLabels();
+        redrawPinEditorOverlays();
       } else {
         viewerInstance.addHandler("open", _drawLabelsOnce);
       }
@@ -1874,6 +1989,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
             getSpaces,
           });
           drawAllComponentLabels();
+          redrawPinEditorOverlays();
           if (probeMode) drawProbePoints(viewerInstance, currentBoardRuntime);
           console.info("[pcb] Runtime refreshed after authoring save — labels updated.");
         } catch (err) {

@@ -180,6 +180,25 @@ function getComponentIdForPin(pin, boxComponentIds = new Map()) {
     || null;
 }
 
+function findRuntimeComponentIdAtBoardPoint(boardPoint) {
+  if (!boardPoint || !Array.isArray(_boardRuntime?.components)) return null;
+  const matches = _boardRuntime.components
+    .filter((component) => {
+      const box = component?.bbox;
+      return box
+        && boardPoint.x >= box.minX && boardPoint.x <= box.maxX
+        && boardPoint.y >= box.minY && boardPoint.y <= box.maxY;
+    })
+    .sort((left, right) => {
+      const leftBox = left?.bbox;
+      const rightBox = right?.bbox;
+      const leftArea = leftBox ? Math.max(1, (leftBox.maxX - leftBox.minX) * (leftBox.maxY - leftBox.minY)) : Number.POSITIVE_INFINITY;
+      const rightArea = rightBox ? Math.max(1, (rightBox.maxX - rightBox.minX) * (rightBox.maxY - rightBox.minY)) : Number.POSITIVE_INFINITY;
+      return leftArea - rightArea;
+    });
+  return normalizeAuthoringId(matches[0]?.id || matches[0]?.refdes);
+}
+
 function cloneExistingComponent(componentId) {
   const raw = componentId ? _boardRuntime?.componentsById?.[componentId]?.raw : null;
   if (!raw || typeof raw !== "object") return null;
@@ -760,6 +779,7 @@ function addBox({ x, y, w, h }) {
   authoringState.boxes.push(box);
   authoringState.selectedBoxId = id;
   authoringState.selectedPinId = null;
+  authoringState.selectedComponentId = getComponentIdForBox(box);
   setAuthoringStatus(`Created box ${id} at (${x}, ${y}) ${w}×${h}`);
   refreshOverlays();
   refreshInspector();
@@ -770,8 +790,10 @@ function addBox({ x, y, w, h }) {
 }
 
 function selectBox(boxId) {
+  const box = authoringState.boxes.find(b => b.id === boxId) || null;
   authoringState.selectedBoxId = boxId;
   authoringState.selectedPinId = null;
+  authoringState.selectedComponentId = getComponentIdForBox(box);
   setAuthoringStatus(`Selected box ${boxId}`);
   refreshOverlays();
   refreshInspector();
@@ -822,13 +844,21 @@ function addPinAtBoardPoint(boardPoint) {
     if (enclosingBox) boxId = enclosingBox.id;
   }
 
+  const selectedBox = boxId
+    ? authoringState.boxes.find((entry) => entry.id === boxId) || null
+    : null;
+  const inferredComponentId = normalizeAuthoringId(authoringState.selectedComponentId)
+    || getComponentIdForBox(selectedBox)
+    || findRuntimeComponentIdAtBoardPoint(boardPoint)
+    || null;
+
   const pin = {
     id,
     name: id,
     x: Math.round(boardPoint.x),
     y: Math.round(boardPoint.y),
     radius: 6,
-    componentId: authoringState.selectedComponentId || null,
+    componentId: inferredComponentId,
     boxId,
     node: null,
     railId: null,
@@ -858,11 +888,14 @@ function addPinAtBoardPoint(boardPoint) {
   authoringState.pins.push(pin);
   authoringState.selectedPinId = id;
   authoringState.selectedBoxId = null;
+  authoringState.selectedComponentId = inferredComponentId;
 
-  if (!boxId) {
-    setAuthoringStatus(`⚠ Pin ${id} at (${pin.x}, ${pin.y}) — no box/component selected`);
-  } else {
+  if (boxId) {
     setAuthoringStatus(`Created pin ${id} at (${pin.x}, ${pin.y}) in ${boxId}`);
+  } else if (inferredComponentId) {
+    setAuthoringStatus(`Created pin ${id} at (${pin.x}, ${pin.y}) on ${inferredComponentId}`);
+  } else {
+    setAuthoringStatus(`⚠ Pin ${id} at (${pin.x}, ${pin.y}) — no box/component selected`);
   }
 
   refreshOverlays();
@@ -874,8 +907,15 @@ function addPinAtBoardPoint(boardPoint) {
 }
 
 function selectPin(pinId) {
+  const pin = authoringState.pins.find((entry) => entry.id === pinId) || null;
+  const selectedBox = pin?.boxId
+    ? authoringState.boxes.find((entry) => entry.id === pin.boxId) || null
+    : null;
   authoringState.selectedPinId = pinId;
   authoringState.selectedBoxId = null;
+  authoringState.selectedComponentId = normalizeAuthoringId(pin?.componentId)
+    || getComponentIdForBox(selectedBox)
+    || null;
   setAuthoringStatus(`Selected pin ${pinId}`);
   refreshOverlays();
   refreshInspector();

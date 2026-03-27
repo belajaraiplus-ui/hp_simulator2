@@ -243,6 +243,36 @@ function inferComponentModeHints(component) {
   return [...hints];
 }
 
+function contactHitRadius(contact, boardRuntime) {
+  const baseRadius = Math.max(6 / (boardRuntime?.spaces?.sx || 1), 6 / (boardRuntime?.spaces?.sy || 1), 4);
+  const storedRadius = Number(contact?.data?.radius);
+  return Number.isFinite(storedRadius) ? Math.max(baseRadius, storedRadius) : baseRadius;
+}
+
+function buildComponentContactPick(component, winner) {
+  const pinId = String(winner.data?.id || `${winner.kind.toUpperCase()}_${winner.index + 1}`);
+  const railId = winner.data?.railId || winner.data?.rail || null;
+  const node = winner.data?.node || null;
+  const pinLabel = String(winner.data?.name || winner.data?.label || pinId);
+  const componentLabel = String(component?.refdes || component?.id || "").trim();
+  const targetLabel = componentLabel && componentLabel !== "_unassigned"
+    ? `${componentLabel} (${pinLabel})`
+    : pinLabel;
+
+  return {
+    type: "component-pin",
+    id: `${component.id}:${pinId}`,
+    componentId: component.id,
+    componentKind: component.kind,
+    pinId,
+    node,
+    railId,
+    label: targetLabel,
+    modeHints: inferComponentModeHints(component),
+    raw: winner.data,
+  };
+}
+
 function pickComponentPin(component, boardPoint, boardRuntime) {
   if (!component || !boardPoint || !boardRuntime) return null;
 
@@ -261,28 +291,48 @@ function pickComponentPin(component, boardPoint, boardRuntime) {
 
   if (!contacts.length) return null;
 
-  const hitRadius = Math.max(6 / (boardRuntime?.spaces?.sx || 1), 6 / (boardRuntime?.spaces?.sy || 1), 4);
   const [winner] = contacts
-    .filter((entry) => entry.distance <= hitRadius * hitRadius)
+    .filter((entry) => {
+      const hitRadius = contactHitRadius(entry, boardRuntime);
+      return entry.distance <= hitRadius * hitRadius;
+    })
     .sort((a, b) => a.distance - b.distance);
 
   if (!winner) return null;
-  const pinId = String(winner.data?.id || `${winner.kind.toUpperCase()}_${winner.index + 1}`);
-  const railId = winner.data?.railId || winner.data?.rail || null;
-  const node = winner.data?.node || null;
+  return buildComponentContactPick(component, winner);
+}
 
-  return {
-    type: "component-pin",
-    id: `${component.id}:${pinId}`,
-    componentId: component.id,
-    componentKind: component.kind,
-    pinId,
-    node,
-    railId,
-    label: `${component.refdes || component.id} (${pinId})`,
-    modeHints: inferComponentModeHints(component),
-    raw: winner.data,
-  };
+function pickLooseComponentPin(boardRuntime, boardPoint) {
+  if (!boardRuntime || !boardPoint) return null;
+
+  const contacts = [];
+  (Array.isArray(boardRuntime.components) ? boardRuntime.components : []).forEach((component) => {
+    [
+      ...(Array.isArray(component?.pins) ? component.pins : []).map((pin, index) => ({ kind: "pin", index, data: pin })),
+      ...(Array.isArray(component?.pads) ? component.pads : []).map((pad, index) => ({ kind: "pad", index, data: pad })),
+    ].forEach((entry) => {
+      const point = extractContactPoint(entry.data);
+      if (!point) return;
+      contacts.push({
+        ...entry,
+        component,
+        point,
+        distance: distanceSq(boardPoint, point),
+      });
+    });
+  });
+
+  if (!contacts.length) return null;
+
+  const [winner] = contacts
+    .filter((entry) => {
+      const hitRadius = contactHitRadius(entry, boardRuntime);
+      return entry.distance <= hitRadius * hitRadius;
+    })
+    .sort((a, b) => a.distance - b.distance);
+
+  if (!winner?.component) return null;
+  return buildComponentContactPick(winner.component, winner);
 }
 
 function resolveComponentMeasurementCandidate(component) {
@@ -419,9 +469,27 @@ export function pickBoardTarget(boardRuntime, boardPointLike) {
       };
     }
 
+    const loosePin = pickLooseComponentPin(boardRuntime, boardPoint);
+    if (loosePin) {
+      return {
+        ...loosePin,
+        boardPoint,
+        imagePoint,
+      };
+    }
+
     const candidate = resolveComponentMeasurementCandidate(component);
     return {
       ...candidate,
+      boardPoint,
+      imagePoint,
+    };
+  }
+
+  const loosePin = pickLooseComponentPin(boardRuntime, boardPoint);
+  if (loosePin) {
+    return {
+      ...loosePin,
       boardPoint,
       imagePoint,
     };

@@ -1,3 +1,114 @@
 {
-  "components": []
+  "components": [
+    {
+      "bbox": {
+        "h": 158,
+        "w": 178,
+        "x": 1490,
+        "y": 298
+      },
+      "category": null,
+      "electrical": null,
+      "hints": null,
+      "id": "u666",
+      "kind": "ic",
+      "pins": [],
+      "refdes": "u666",
+      "shape": {
+        "points": [
+          [
+            1490,
+            298
+          ],
+          [
+            1668,
+            298
+          ],
+          [
+            1668,
+            456
+          ],
+          [
+            1490,
+            456
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "bbox": {
+        "h": 168,
+        "w": 181,
+        "x": 1253,
+        "y": 308
+      },
+      "category": null,
+      "electrical": null,
+      "hints": null,
+      "id": "u444",
+      "kind": "ic",
+      "pins": [],
+      "refdes": "u444",
+      "shape": {
+        "points": [
+          [
+            1253,
+            308
+          ],
+          [
+            1434,
+            308
+          ],
+          [
+            1434,
+            476
+          ],
+          [
+            1253,
+            476
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "id": "_unassigned",
+      "kind": "unknown",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_006",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_006",
+          "node": null,
+          "pinRole": "power",
+          "pinType": "inductor",
+          "radius": 6,
+          "railId": null,
+          "x": 758,
+          "y": 198
+        },
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_007",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_007",
+          "node": null,
+          "pinRole": "passive",
+          "pinType": "signal",
+          "radius": 6,
+          "railId": null,
+          "x": 732,
+          "y": 193
+        }
+      ],
+      "refdes": "_unassigned"
+    }
+  ],
+  "version": 1
 }
