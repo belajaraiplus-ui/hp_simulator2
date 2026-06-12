@@ -8,7 +8,7 @@
         "y": 298
       },
       "category": null,
-      "electrical": null,
+      "electricalProperties": {},
       "hints": null,
       "id": "u666",
       "kind": "ic",
@@ -45,7 +45,7 @@
         "y": 187
       },
       "category": null,
-      "electrical": null,
+      "electricalProperties": {},
       "hints": null,
       "id": "TP_PIN_001",
       "kind": "ground",
@@ -97,7 +97,7 @@
         "y": 317
       },
       "category": null,
-      "electrical": null,
+      "electricalProperties": {},
       "hints": null,
       "id": "TP_PIN_003",
       "kind": "passive",
@@ -149,7 +149,7 @@
         "y": 315
       },
       "category": null,
-      "electrical": null,
+      "electricalProperties": {},
       "hints": null,
       "id": "TP_PIN_004",
       "kind": "test_point",
@@ -201,7 +201,7 @@
         "y": 308
       },
       "category": null,
-      "electrical": null,
+      "electricalProperties": {},
       "hints": null,
       "id": "u444",
       "kind": "ic",

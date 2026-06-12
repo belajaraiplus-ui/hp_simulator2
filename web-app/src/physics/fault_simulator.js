@@ -2,6 +2,10 @@ import { State } from "../state.js";
 import { voltageHistory, thermalHistory, distressHistory, diagnosticHistory } from "../state.js";
 import { measurementEffects, componentDegradation, environmentEffects, toolCalibration } from "../physics/effects.js";
 
+// Legacy prototype only.
+// This module is intentionally no longer wired into scenario selection because
+// it uses old scenario IDs and does not drive the board power/runtime graph.
+// Keep it as reference until the structured case/fault engine replaces it.
 class FaultSimulator {
     constructor() {
         this.activeFaults = {};

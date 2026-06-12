@@ -1,4 +1,3 @@
-import OpenSeadragon from "openseadragon";
 import { querySpatialIndex, querySpatialIndexRange } from "./spatial_index.js";
 
 function pointInBox(point, box, padding = 0) {
@@ -58,6 +57,62 @@ function sortByPriority(items, metricKey = "distance") {
 
 const PIN_HIT_RADIUS_IMAGE_PX = 20;
 
+function createViewportPoint(x, y) {
+  return {
+    x,
+    y,
+    clone() {
+      return createViewportPoint(this.x, this.y);
+    },
+    plus(point) {
+      return createViewportPoint(this.x + point.x, this.y + point.y);
+    },
+    minus(point) {
+      return createViewportPoint(this.x - point.x, this.y - point.y);
+    },
+    times(factor) {
+      return createViewportPoint(this.x * factor, this.y * factor);
+    },
+    divide(factor) {
+      return createViewportPoint(this.x / factor, this.y / factor);
+    },
+    rotate(degrees, pivot = { x: 0, y: 0 }) {
+      const normalized = ((degrees % 360) + 360) % 360;
+      let cos;
+      let sin;
+      if (normalized === 0) {
+        cos = 1;
+        sin = 0;
+      } else if (normalized === 90) {
+        cos = 0;
+        sin = 1;
+      } else if (normalized === 180) {
+        cos = -1;
+        sin = 0;
+      } else if (normalized === 270) {
+        cos = 0;
+        sin = -1;
+      } else {
+        const angle = degrees * Math.PI / 180;
+        cos = Math.cos(angle);
+        sin = Math.sin(angle);
+      }
+
+      return createViewportPoint(
+        cos * (this.x - pivot.x) - sin * (this.y - pivot.y) + pivot.x,
+        sin * (this.x - pivot.x) + cos * (this.y - pivot.y) + pivot.y,
+      );
+    },
+  };
+}
+
+function toViewportPoint(candidate) {
+  if (candidate && typeof candidate.minus === "function" && typeof candidate.divide === "function") {
+    return candidate;
+  }
+  return createViewportPoint(candidate.x, candidate.y);
+}
+
 export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
   if (!viewer?.viewport || !boardRuntime?.spaces || !screenPoint) return null;
 
@@ -70,12 +125,11 @@ export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
 
   const tryConvert = (candidate) => {
     if (!candidate || !Number.isFinite(candidate.x) || !Number.isFinite(candidate.y)) return null;
-    // pointFromPixel requires an OSD Point (needs .minus() internally)
-    const osdPixel = candidate instanceof OpenSeadragon.Point
-      ? candidate
-      : new OpenSeadragon.Point(candidate.x, candidate.y);
+    // pointFromPixel requires a point-like object with vector methods.
+    // Keep this local so pure picking tests can import the module without a DOM.
+    const osdPixel = toViewportPoint(candidate);
     const viewportPoint = viewer.viewport.pointFromPixel(osdPixel, true);
-    const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
+    const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint.x, viewportPoint.y);
     const { sx, sy } = boardRuntime.spaces;
     if (!Number.isFinite(imagePoint?.x) || !Number.isFinite(imagePoint?.y) || !Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) {
       return null;

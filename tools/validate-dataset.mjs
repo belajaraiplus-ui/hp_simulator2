@@ -103,17 +103,23 @@ if (!rootStat.isDirectory()) {
 }
 
 const files = (await listJsonFiles(DATASET_ROOT))
-  .map((f) => path.relative(DATASET_ROOT, f))
-  .filter((f) => !f.startsWith('schema/'));
+  .map((fullPath) => {
+    const relPath = path.relative(DATASET_ROOT, fullPath);
+    return {
+      fullPath,
+      relPath,
+      relKey: relPath.split(path.sep).join('/'),
+    };
+  })
+  .filter((f) => !f.relKey.startsWith('schema/'));
 
 const errors = [];
 const perCaseCounts = Object.fromEntries(USE_CASES.map((u) => [u, 0]));
-for (const relFile of files) {
-  const fullPath = path.join(DATASET_ROOT, relFile);
+for (const { fullPath, relKey } of files) {
   const payload = JSON.parse(await readFile(fullPath, 'utf8'));
-  const fileErrors = validateTraceObject(payload, relFile);
+  const fileErrors = validateTraceObject(payload, relKey);
   if (fileErrors.length > 0) {
-    errors.push(`${relFile}:\n  - ${fileErrors.join('\n  - ')}`);
+    errors.push(`${relKey}:\n  - ${fileErrors.join('\n  - ')}`);
   } else {
     perCaseCounts[payload.scenario.use_case] += 1;
   }
