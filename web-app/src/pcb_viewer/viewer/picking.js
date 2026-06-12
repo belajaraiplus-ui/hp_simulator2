@@ -55,27 +55,155 @@ function sortByPriority(items, metricKey = "distance") {
   });
 }
 
+const PIN_HIT_RADIUS_IMAGE_PX = 20;
+
+function createViewportPoint(x, y) {
+  return {
+    x,
+    y,
+    clone() {
+      return createViewportPoint(this.x, this.y);
+    },
+    plus(point) {
+      return createViewportPoint(this.x + point.x, this.y + point.y);
+    },
+    minus(point) {
+      return createViewportPoint(this.x - point.x, this.y - point.y);
+    },
+    times(factor) {
+      return createViewportPoint(this.x * factor, this.y * factor);
+    },
+    divide(factor) {
+      return createViewportPoint(this.x / factor, this.y / factor);
+    },
+    rotate(degrees, pivot = { x: 0, y: 0 }) {
+      const normalized = ((degrees % 360) + 360) % 360;
+      let cos;
+      let sin;
+      if (normalized === 0) {
+        cos = 1;
+        sin = 0;
+      } else if (normalized === 90) {
+        cos = 0;
+        sin = 1;
+      } else if (normalized === 180) {
+        cos = -1;
+        sin = 0;
+      } else if (normalized === 270) {
+        cos = 0;
+        sin = -1;
+      } else {
+        const angle = degrees * Math.PI / 180;
+        cos = Math.cos(angle);
+        sin = Math.sin(angle);
+      }
+
+      return createViewportPoint(
+        cos * (this.x - pivot.x) - sin * (this.y - pivot.y) + pivot.x,
+        sin * (this.x - pivot.x) + cos * (this.y - pivot.y) + pivot.y,
+      );
+    },
+  };
+}
+
+function toViewportPoint(candidate) {
+  if (candidate && typeof candidate.minus === "function" && typeof candidate.divide === "function") {
+    return candidate;
+  }
+  return createViewportPoint(candidate.x, candidate.y);
+}
+
 export function screenToBoardPoint(viewer, boardRuntime, screenPoint) {
   if (!viewer?.viewport || !boardRuntime?.spaces || !screenPoint) return null;
 
+  const coordinateSpace = screenPoint?.coordinateSpace || screenPoint?.position?.coordinateSpace || null;
   const pixelPoint = screenPoint?.x != null && screenPoint?.y != null
     ? screenPoint
     : { x: screenPoint?.position?.x, y: screenPoint?.position?.y };
 
   if (!Number.isFinite(pixelPoint.x) || !Number.isFinite(pixelPoint.y)) return null;
 
-  const viewportPoint = viewer.viewport.pointFromPixel(pixelPoint, true);
-  const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint);
-  const { sx, sy } = boardRuntime.spaces;
-
-  return {
-    screen: { x: pixelPoint.x, y: pixelPoint.y },
-    image: { x: imagePoint.x, y: imagePoint.y },
-    board: {
-      x: imagePoint.x / sx,
-      y: imagePoint.y / sy,
-    },
+  const tryConvert = (candidate) => {
+    if (!candidate || !Number.isFinite(candidate.x) || !Number.isFinite(candidate.y)) return null;
+    // pointFromPixel requires a point-like object with vector methods.
+    // Keep this local so pure picking tests can import the module without a DOM.
+    const osdPixel = toViewportPoint(candidate);
+    const viewportPoint = viewer.viewport.pointFromPixel(osdPixel, true);
+    const imagePoint = viewer.viewport.viewportToImageCoordinates(viewportPoint.x, viewportPoint.y);
+    const { sx, sy } = boardRuntime.spaces;
+    if (!Number.isFinite(imagePoint?.x) || !Number.isFinite(imagePoint?.y) || !Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) {
+      return null;
+    }
+    return {
+      screen: { x: candidate.x, y: candidate.y },
+      image: { x: imagePoint.x, y: imagePoint.y },
+      board: {
+        x: imagePoint.x / sx,
+        y: imagePoint.y / sy,
+      },
+    };
   };
+
+  const scoreCandidate = (result) => {
+    if (!result) return Number.POSITIVE_INFINITY;
+    const { imgW, imgH, dataW, dataH } = boardRuntime.spaces || {};
+    const penalty = (value, min, max) => {
+      if (!Number.isFinite(value)) return 1e9;
+      let score = 0;
+      if (Number.isFinite(min) && value < min) score += min - value;
+      if (Number.isFinite(max) && value > max) score += value - max;
+      return score;
+    };
+    return penalty(result.image.x, 0, imgW)
+      + penalty(result.image.y, 0, imgH)
+      + penalty(result.board.x, 0, dataW)
+      + penalty(result.board.y, 0, dataH);
+  };
+
+  const candidates = [];
+  const seen = new Set();
+  const pushCandidate = (x, y) => {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+    const key = `${Math.round(x * 1000)}:${Math.round(y * 1000)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({ x, y });
+  };
+
+  if (coordinateSpace === "viewer-local") {
+    pushCandidate(pixelPoint.x, pixelPoint.y);
+  } else if (coordinateSpace === "client") {
+    const rect = viewer?.element?.getBoundingClientRect?.();
+    if (rect) {
+      pushCandidate(pixelPoint.x - rect.left, pixelPoint.y - rect.top);
+    } else {
+      pushCandidate(pixelPoint.x, pixelPoint.y);
+    }
+  } else {
+    pushCandidate(pixelPoint.x, pixelPoint.y);
+
+    const rectSources = [viewer?.canvas, viewer?.container, viewer?.element].filter(Boolean);
+    rectSources.forEach((source) => {
+      const rect = source?.getBoundingClientRect?.();
+      if (!rect) return;
+      // Some click paths provide client/page coordinates, others element-local.
+      // Keep all plausible offsets and score against board/image bounds.
+      pushCandidate(pixelPoint.x - rect.left, pixelPoint.y - rect.top);
+    });
+
+    if (typeof window !== "undefined") {
+      pushCandidate(pixelPoint.x + window.scrollX, pixelPoint.y + window.scrollY);
+    }
+  }
+
+  const converted = candidates.map((candidate) => ({
+    result: tryConvert(candidate),
+  }));
+  converted.forEach((entry) => {
+    entry.score = scoreCandidate(entry.result);
+  });
+  converted.sort((left, right) => left.score - right.score);
+  return converted[0]?.result || null;
 }
 
 function pickProbe(boardRuntime, boardPoint, imagePoint) {
@@ -114,6 +242,36 @@ function pickComponent(boardRuntime, boardPoint) {
   return winner?.item || null;
 }
 
+function componentImageBox(component, boardRuntime) {
+  if (!component?.bbox || !boardRuntime?.spaces) return null;
+  const { sx, sy } = boardRuntime.spaces;
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) return null;
+  return {
+    minX: component.bbox.minX * sx,
+    minY: component.bbox.minY * sy,
+    maxX: component.bbox.maxX * sx,
+    maxY: component.bbox.maxY * sy,
+  };
+}
+
+function pickComponentByImageHitbox(boardRuntime, imagePoint) {
+  if (!boardRuntime || !Number.isFinite(imagePoint?.x) || !Number.isFinite(imagePoint?.y)) return null;
+
+  const candidates = (Array.isArray(boardRuntime.components) ? boardRuntime.components : [])
+    .map((component) => ({
+      item: component,
+      imageBox: componentImageBox(component, boardRuntime),
+    }))
+    .filter((entry) => pointInBox(imagePoint, entry.imageBox))
+    .map((entry) => ({
+      item: entry.item,
+      distance: areaOfBox(entry.imageBox),
+    }));
+
+  const [winner] = sortByPriority(candidates, "distance");
+  return winner?.item || null;
+}
+
 function extractContactPoint(contact) {
   if (!contact || typeof contact !== "object") return null;
   const x = Number(contact.x ?? contact.cx ?? contact.px);
@@ -141,33 +299,91 @@ function inferComponentModeHints(component) {
   return [...hints];
 }
 
-function pickComponentPin(component, boardPoint, boardRuntime) {
-  if (!component || !boardPoint || !boardRuntime) return null;
+function contactHitRadius(contact, boardRuntime) {
+  const baseRadius = Math.max(6 / (boardRuntime?.spaces?.sx || 1), 6 / (boardRuntime?.spaces?.sy || 1), 4);
+  const storedRadius = Number(contact?.data?.radius);
+  return Number.isFinite(storedRadius) ? Math.max(baseRadius, storedRadius) : baseRadius;
+}
 
-  const contacts = [
-    ...(Array.isArray(component.pins) ? component.pins : []).map((pin, index) => ({ kind: "pin", index, data: pin })),
-    ...(Array.isArray(component.pads) ? component.pads : []).map((pad, index) => ({ kind: "pad", index, data: pad })),
-  ].map((entry) => {
-    const point = extractContactPoint(entry.data);
-    if (!point) return null;
-    return {
-      ...entry,
-      point,
-      distance: distanceSq(boardPoint, point),
-    };
-  }).filter(Boolean);
+function boardToImagePoint(point, boardRuntime) {
+  if (!point || !boardRuntime?.spaces) return null;
+  const sx = Number(boardRuntime.spaces.sx);
+  const sy = Number(boardRuntime.spaces.sy);
+  if (!Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) return null;
+  return {
+    x: point.x * sx,
+    y: point.y * sy,
+  };
+}
 
-  if (!contacts.length) return null;
+function contactHitRadiusImage(contact, boardRuntime) {
+  const storedRadius = Number(contact?.data?.radius);
+  const sx = Number(boardRuntime?.spaces?.sx);
+  const sy = Number(boardRuntime?.spaces?.sy);
+  if (!Number.isFinite(storedRadius) || !Number.isFinite(sx) || !Number.isFinite(sy) || sx === 0 || sy === 0) {
+    return PIN_HIT_RADIUS_IMAGE_PX;
+  }
+  const storedRadiusPx = Math.max(Math.abs(storedRadius * sx), Math.abs(storedRadius * sy));
+  return Math.max(PIN_HIT_RADIUS_IMAGE_PX, storedRadiusPx);
+}
 
-  const hitRadius = Math.max(6 / (boardRuntime?.spaces?.sx || 1), 6 / (boardRuntime?.spaces?.sy || 1), 4);
+function buildContactCandidate(entry, boardRuntime, boardPoint, imagePoint) {
+  const point = extractContactPoint(entry.data);
+  if (!point) return null;
+  const image = boardToImagePoint(point, boardRuntime);
+  return {
+    ...entry,
+    point,
+    image,
+    distance: Number.isFinite(boardPoint?.x) && Number.isFinite(boardPoint?.y)
+      ? distanceSq(boardPoint, point)
+      : Number.POSITIVE_INFINITY,
+    imageDistance: image && Number.isFinite(imagePoint?.x) && Number.isFinite(imagePoint?.y)
+      ? distanceSq(imagePoint, image)
+      : Number.POSITIVE_INFINITY,
+  };
+}
+
+function pickClosestContact(contacts, boardRuntime, boardPoint, imagePoint) {
+  const hasImagePoint = Number.isFinite(imagePoint?.x) && Number.isFinite(imagePoint?.y);
+  const hasBoardPoint = Number.isFinite(boardPoint?.x) && Number.isFinite(boardPoint?.y);
+  if (!hasImagePoint && !hasBoardPoint) return null;
+
   const [winner] = contacts
-    .filter((entry) => entry.distance <= hitRadius * hitRadius)
-    .sort((a, b) => a.distance - b.distance);
+    .filter((entry) => {
+      if (hasImagePoint && Number.isFinite(entry.imageDistance)) {
+        const hitRadius = contactHitRadiusImage(entry, boardRuntime);
+        return entry.imageDistance <= hitRadius * hitRadius;
+      }
+      if (hasBoardPoint && Number.isFinite(entry.distance)) {
+        const hitRadius = contactHitRadius(entry, boardRuntime);
+        return entry.distance <= hitRadius * hitRadius;
+      }
+      return false;
+    })
+    .sort((a, b) => {
+      const primaryA = hasImagePoint ? a.imageDistance : a.distance;
+      const primaryB = hasImagePoint ? b.imageDistance : b.distance;
+      if (primaryA !== primaryB) return primaryA - primaryB;
+      if (a.distance !== b.distance) return a.distance - b.distance;
+      const aComponentId = String(a.component?.id || "");
+      const bComponentId = String(b.component?.id || "");
+      if (aComponentId !== bComponentId) return aComponentId.localeCompare(bComponentId);
+      return String(a.data?.id || "").localeCompare(String(b.data?.id || ""));
+    });
 
-  if (!winner) return null;
+  return winner || null;
+}
+
+function buildComponentContactPick(component, winner) {
   const pinId = String(winner.data?.id || `${winner.kind.toUpperCase()}_${winner.index + 1}`);
   const railId = winner.data?.railId || winner.data?.rail || null;
   const node = winner.data?.node || null;
+  const pinLabel = String(winner.data?.name || winner.data?.label || pinId);
+  const componentLabel = String(component?.refdes || component?.id || "").trim();
+  const targetLabel = componentLabel && componentLabel !== "_unassigned"
+    ? `${componentLabel} (${pinLabel})`
+    : pinLabel;
 
   return {
     type: "component-pin",
@@ -177,10 +393,32 @@ function pickComponentPin(component, boardPoint, boardRuntime) {
     pinId,
     node,
     railId,
-    label: `${component.refdes || component.id} (${pinId})`,
+    label: targetLabel,
     modeHints: inferComponentModeHints(component),
     raw: winner.data,
   };
+}
+
+function pickLooseComponentPin(boardRuntime, boardPoint, imagePoint) {
+  if (!boardRuntime || (!boardPoint && !imagePoint)) return null;
+
+  const contacts = [];
+  (Array.isArray(boardRuntime.components) ? boardRuntime.components : []).forEach((component) => {
+    [
+      ...(Array.isArray(component?.pins) ? component.pins : []).map((pin, index) => ({ kind: "pin", index, data: pin })),
+      ...(Array.isArray(component?.pads) ? component.pads : []).map((pad, index) => ({ kind: "pad", index, data: pad })),
+    ].forEach((entry) => {
+      const candidate = buildContactCandidate({ ...entry, component }, boardRuntime, boardPoint, imagePoint);
+      if (!candidate) return;
+      contacts.push(candidate);
+    });
+  });
+
+  if (!contacts.length) return null;
+
+  const winner = pickClosestContact(contacts, boardRuntime, boardPoint, imagePoint);
+  if (!winner?.component) return null;
+  return buildComponentContactPick(winner.component, winner);
 }
 
 function resolveComponentMeasurementCandidate(component) {
@@ -305,17 +543,18 @@ export function pickBoardTarget(boardRuntime, boardPointLike) {
     };
   }
 
-  const component = pickComponent(boardRuntime, boardPoint);
-  if (component) {
-    const componentPin = pickComponentPin(component, boardPoint, boardRuntime);
-    if (componentPin) {
-      return {
-        ...componentPin,
-        boardPoint,
-        imagePoint,
-      };
-    }
+  const loosePin = pickLooseComponentPin(boardRuntime, boardPoint, imagePoint);
+  if (loosePin) {
+    return {
+      ...loosePin,
+      boardPoint,
+      imagePoint,
+    };
+  }
 
+  const component = pickComponent(boardRuntime, boardPoint)
+    || pickComponentByImageHitbox(boardRuntime, imagePoint);
+  if (component) {
     const candidate = resolveComponentMeasurementCandidate(component);
     return {
       ...candidate,

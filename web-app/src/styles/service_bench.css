@@ -1,0 +1,585 @@
+
+/* Service Bench Layout */
+body {
+  min-height: 100vh;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at top left, rgba(57, 197, 207, 0.08), transparent 28%),
+    radial-gradient(circle at top right, rgba(88, 166, 255, 0.06), transparent 24%),
+    linear-gradient(180deg, #0b1018 0%, #0d1117 100%);
+}
+
+.topbar {
+  margin-bottom: 0;
+  padding: 10px 20px;
+  min-height: 68px;
+}
+
+.layout {
+  height: calc(100vh - 68px);
+  padding: 12px 20px 14px;
+  grid-template-columns: minmax(0, 2.45fr) 320px;
+  gap: 16px;
+}
+
+.layout:has(.as-active) {
+  grid-template-columns: minmax(0, 2.2fr) 310px 330px;
+}
+
+.main,
+.sidebar {
+  min-height: 0;
+  height: 100%;
+}
+
+.main {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.sidebar {
+  display: grid;
+  grid-template-rows: auto auto auto auto;
+  align-content: start;
+  gap: 12px;
+}
+
+.card {
+  padding: 13px;
+  min-height: 0;
+  overflow: hidden;
+  backdrop-filter: blur(10px);
+}
+
+.card-header {
+  margin-bottom: 10px;
+  padding-bottom: 8px;
+}
+
+.viewer-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background:
+    linear-gradient(180deg, rgba(28, 33, 40, 0.98) 0%, rgba(23, 28, 34, 0.96) 100%);
+}
+
+.viewer-card .card-header {
+  margin-bottom: 0;
+}
+
+.pcb-toolbar-host {
+  min-height: 72px;
+}
+
+.pcb-viewer-ui {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 12px 14px;
+  border: 1px solid rgba(73, 84, 96, 0.9);
+  border-radius: calc(var(--radius-md) + 2px);
+  background:
+    linear-gradient(180deg, rgba(32, 38, 46, 0.97) 0%, rgba(17, 22, 29, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.03),
+    0 10px 22px rgba(0, 0, 0, 0.16);
+}
+
+.pcb-toolbar-cluster {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(8, 13, 18, 0.34);
+  border: 1px solid rgba(71, 80, 90, 0.55);
+}
+
+.pcb-toolbar-cluster-stack {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.pcb-toolbar-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.pcb-toolbar-field-wide {
+  min-width: 190px;
+}
+
+.pcb-toolbar-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #91a3b5;
+  font-weight: 700;
+}
+
+.pcb-toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pcb-toolbar-select {
+  min-width: 170px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid rgba(90, 104, 118, 0.82);
+  border-radius: var(--radius-md);
+  padding: 9px 11px;
+  font-size: 13px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+.pcb-toolbar-select:focus {
+  outline: none;
+  border-color: #6eb8ff;
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.18);
+}
+
+.pcb-toolbar-btn {
+  border: 1px solid rgba(95, 109, 123, 0.42);
+  border-radius: var(--radius-md);
+  padding: 9px 13px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.15s ease, opacity 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.pcb-toolbar-btn:hover {
+  filter: brightness(1.08);
+  border-color: rgba(127, 145, 160, 0.68);
+}
+
+.pcb-toolbar-btn:active {
+  transform: scale(0.98);
+}
+
+.pcb-toolbar-btn-primary {
+  background: linear-gradient(180deg, #0f8cff 0%, #0c6cd6 100%);
+}
+
+.pcb-toolbar-btn-mode {
+  background: linear-gradient(180deg, #46525f 0%, #38424d 100%);
+}
+
+.pcb-toolbar-btn-ghost {
+  background: linear-gradient(180deg, #2f3942 0%, #242c34 100%);
+}
+
+.pcb-toolbar-btn-icon {
+  min-width: 40px;
+  font-size: 15px;
+}
+
+.pcb-toolbar-spacer {
+  flex: 1 1 auto;
+}
+
+.pcb-toolbar-status {
+  color: #d6dde5;
+  font-size: 12px;
+  line-height: 1.4;
+  font-family: var(--font-mono);
+}
+
+.pcb-toolbar-readout {
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  background: rgba(7, 12, 16, 0.44);
+  border: 1px solid rgba(76, 90, 103, 0.52);
+}
+
+.pcb-canvas-target {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  z-index: 1;
+}
+
+.motherboardMap {
+  height: 100%;
+  min-height: 0;
+}
+
+.service-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: 132px minmax(250px, auto) minmax(210px, auto);
+  gap: 12px;
+  min-height: 0;
+}
+
+.compact-card,
+.multimeter-card,
+.psu-card,
+.control-card,
+.scenario-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.multimeter-card {
+  background:
+    linear-gradient(180deg, rgba(25, 30, 38, 0.98) 0%, rgba(16, 20, 26, 0.98) 100%);
+}
+
+.psu-card,
+.control-card,
+.scenario-card {
+  background:
+    linear-gradient(180deg, rgba(23, 28, 34, 0.97) 0%, rgba(17, 22, 27, 0.95) 100%);
+}
+
+.bench-intel-card,
+.review-card {
+  grid-column: span 2;
+}
+
+.bench-intel-card {
+  grid-column: 1 / span 2;
+  grid-row: 2;
+}
+
+.history-card {
+  grid-column: 3;
+  grid-row: 2;
+}
+
+.review-card {
+  grid-column: 1 / -1;
+  grid-row: 3;
+}
+
+.telemetry-card .telemetryCanvas {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.telemetry-card,
+.distress-card {
+  padding: 11px 12px;
+}
+
+.telemetry-card .card-header,
+.distress-card .card-header {
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+}
+
+.distress-card {
+  justify-content: space-between;
+}
+
+.distress-percent {
+  font-size: 20px;
+}
+
+.distressBar {
+  margin: 8px 0 6px;
+  height: 14px;
+}
+
+.distress-legend {
+  gap: 10px;
+  font-size: 11px;
+  flex-wrap: wrap;
+}
+
+.intel-grid,
+.review-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 12px;
+  min-height: 0;
+  flex: 1;
+}
+
+.intel-section,
+.review-section {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, rgba(8, 13, 18, 0.5) 0%, rgba(9, 13, 19, 0.32) 100%);
+  border: 1px solid rgba(48, 54, 61, 0.62);
+}
+
+.subsection-title {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.subsection-spaced {
+  margin-top: 4px;
+}
+
+.diag-grid {
+  gap: 9px;
+  align-content: start;
+}
+
+.diag-value {
+  min-height: 22px;
+  padding: 8px 9px;
+  font-size: 11px;
+  line-height: 1.45;
+  border: 1px solid rgba(53, 61, 69, 0.46);
+  background: rgba(8, 13, 18, 0.52);
+}
+
+.diagnostic-message {
+  font-size: 13px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: rgba(10, 16, 22, 0.62);
+  border: 1px solid rgba(57, 197, 207, 0.16);
+}
+
+.diagnostic-confidence,
+.meter-help,
+.scenario-info,
+.current-text,
+.status-text {
+  font-size: 11px;
+}
+
+.diagnostic-confidence {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hypothesis-list {
+  min-height: 0;
+  overflow: auto;
+  gap: 7px;
+}
+
+.hypothesis-list li {
+  padding: 8px 10px;
+  line-height: 1.45;
+  border-left-width: 3px;
+}
+
+.measurement-history,
+#sessionReviewTimeline,
+.pre-box,
+.scenario-card .scenario-info {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.history-card .measurement-history {
+  max-height: 210px;
+}
+
+#sessionReviewTimeline {
+  max-height: 160px;
+}
+
+.review-section .btn-group {
+  margin-bottom: 8px;
+}
+
+.pre-box {
+  font-size: 10px;
+  padding: 10px;
+}
+
+.control-grid {
+  gap: 7px;
+  margin-bottom: 10px;
+}
+
+.control-grid .btn {
+  min-height: 40px;
+  font-size: 12px;
+}
+
+.control-row {
+  margin-bottom: 8px;
+}
+
+.timeline-section {
+  margin-top: auto;
+}
+
+.psu-grid {
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.psu-target-group {
+  grid-column: 1 / -1;
+}
+
+.psu-controls {
+  margin-bottom: 10px;
+}
+
+.mm-row {
+  margin: 10px 0;
+}
+
+.mm-probe-row {
+  margin-top: 8px;
+}
+
+.mm-probe-btn {
+  min-width: 74px;
+  padding: 9px 10px;
+}
+
+.meter-summary {
+  margin-top: 10px;
+}
+
+.meter-summary-item {
+  padding: 8px 10px;
+}
+
+.meter-readout {
+  margin-top: 10px;
+  padding: 12px;
+}
+
+.meter-value {
+  font-size: 28px;
+}
+
+.meter-status {
+  margin-top: 8px;
+  padding: 8px 10px;
+}
+
+.multimeter-card .card-header,
+.psu-card .card-header,
+.control-card .card-header,
+.scenario-card .card-header {
+  margin-bottom: 10px;
+}
+
+.psu-card .psu-status,
+.scenario-card .scenario-info,
+.control-card .timeline-section {
+  margin-top: 10px;
+}
+
+.control-card .timeline-section {
+  padding-top: 6px;
+}
+
+.scenario-card {
+  min-height: 128px;
+}
+
+.btn-group {
+  gap: 6px;
+}
+
+@media (max-width: 1400px) {
+  body {
+    overflow: auto;
+  }
+
+  .topbar {
+    min-height: auto;
+  }
+
+  .layout {
+    height: auto;
+    min-height: calc(100vh - 68px);
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+
+  .main {
+    grid-template-rows: minmax(520px, 1fr) auto;
+  }
+
+  .pcb-toolbar-readout {
+    min-width: 220px;
+  }
+}
+
+@media (max-width: 1200px) {
+  body {
+    overflow: auto;
+  }
+
+  .layout {
+    height: auto;
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    height: auto;
+    grid-template-rows: none;
+  }
+
+  .service-grid,
+  .intel-grid,
+  .review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .service-grid {
+    grid-template-rows: none;
+  }
+
+  .bench-intel-card,
+  .review-card,
+  .history-card {
+    grid-column: span 1;
+    grid-row: auto;
+  }
+
+  .pcb-toolbar-spacer {
+    display: none;
+  }
+
+  .pcb-toolbar-status {
+    width: 100%;
+  }
+
+  .pcb-toolbar-cluster,
+  .pcb-toolbar-readout {
+    width: 100%;
+  }
+
+  .pcb-toolbar-field-wide,
+  .pcb-toolbar-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .layout:has(.as-active) {
+    grid-template-columns: 1fr;
+  }
+}
+

@@ -1,16 +1,14 @@
 import { createDeepZoomViewer } from "./viewer/deepzoom.js";
 import OpenSeadragon from "openseadragon";
 import {
-  getBoardList,
-  loadBoard as loadBoardData,
-  loadComponents,
-  loadRailsFile,
-  loadTopology,
-  loadThermal,
-  getTileUrl,
   clearCache,
-} from "../assets/loader.js";
-import { buildBoardRuntime } from "./viewer/spatial_index.js";
+  getBoardList,
+  createTileUrlResolver,
+  loadBoardRuntimeBundle,
+  refreshBoardRuntimeBundle,
+} from "./viewer/board_loader.js";
+import { createPadPickerController } from "./pad_picker.js";
+import { createComponentLabelController } from "./component_labels.js";
 import {
   pickAtScreenPoint,
   pickBoardTarget,
@@ -18,6 +16,28 @@ import {
   describePick,
   screenToBoardPoint,
 } from "./viewer/picking.js";
+import {
+  applyViewerInteractionMode as applyViewerMode,
+  currentProbeCursor,
+} from "./viewer/probe_interaction.js";
+import {
+  applyProbeOverlayCursor,
+  drawPlacedProbeTargetOverlays,
+  drawProbePointOverlays,
+  setProbeOverlayVisualState,
+} from "./viewer/probe_overlays.js";
+import {
+  clearViewerOverlayList,
+  createRectOverlay,
+} from "./viewer/overlays.js";
+import {
+  mountPanelShell,
+  renderBoardOptions,
+  renderRailOptions,
+  stopViewerInputOnUiLayer,
+  syncModeButtons as syncPanelModeButtons,
+} from "./viewer/panel_ui.js";
+import { createPinEditorController } from "./viewer/pin_editor_controller.js";
 import {
   initAuthoringStudio,
   updateAuthoringViewerRefs,
@@ -46,73 +66,36 @@ let probeMode = true;
 let probeOverlays = [];
 let placedProbeOverlays = [];
 let activeProbePolarity = "positive";
-let padPickerEnabled = false;
-let pickedPads = [];
-let pickedPadOverlays = [];
-let pickedPadCounter = 0;
-let latestPadPoint = null;
-let latestPickedPadId = null;
-const PAD_MARKER_DIAMETER_IMAGE_PX = 12;
-const PIN_EDITOR_DEFAULT_RADIUS = 6;
-const PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX = 14;
-const PIN_TYPE_VALUES = new Set(["resistor", "capacitor", "diode", "mosfet", "ic", "fuse", "inductor", "jumper", "test_point", "passive", "signal", "power", "ground"]);
-const PIN_ROLE_VALUES = new Set(["ground", "signal", "power", "passive", "test_point", "anode", "cathode", "gate", "drain", "source", "input", "output", "pin1", "pin2"]);
+let lastSyntheticCanvasClick = null;
+let authoringSavedHandler = null;
 
-let pinEditorState = {
-  componentId: null,
-  pins: [],
-  selectedPinId: null,
-  isEditing: false,
-  relocateOnNextClick: false,
-};
-let pinEditorOverlays = [];
 let placedProbeTargets = {
   positive: null,
   negative: null,
 };
 
-function buildProbeCursor({
-  cable = "#151515",
-  cableShade = "#2b2b2b",
-  handle = "#c82626",
-  handleHighlight = "#f35a5a",
-  guard = "#8f1717",
-  collar = "#4a4f57",
-  shaft = "#b8bec7",
-  shaftHighlight = "#edf2f7",
-  tip = "#9097a1",
-  tipHighlight = "#dfe5ec",
-  cableCap = "#861010",
-} = {}) {
-  return `url("data:image/svg+xml;utf8,${encodeURIComponent(`
-<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
-  <g fill="none" fill-rule="evenodd">
-    <path d="M7 56 C11 49, 17 44, 22 39 C25 36, 28 33, 31 31" stroke="${cable}" stroke-width="4" stroke-linecap="round"/>
-    <path d="M11 57 C16 51, 21 45, 28 39" stroke="${cableShade}" stroke-width="1.4" stroke-linecap="round" opacity="0.55"/>
-    <path d="M12 54 L23 43 L29 49 L18 60 Z" fill="${handle}"/>
-    <path d="M14 52 L23 43 L26 46 L17 55 Z" fill="${handleHighlight}" opacity="0.75"/>
-    <path d="M23 43 L29 37 L34 42 L29 49 Z" fill="${guard}"/>
-    <path d="M28.5 37.5 L33.5 32.5 L38.5 37.5 L33.5 42.5 Z" fill="${collar}"/>
-    <path d="M33.5 32.5 L48 18" stroke="${shaft}" stroke-width="5" stroke-linecap="round"/>
-    <path d="M35 31 L48 18" stroke="${shaftHighlight}" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
-    <path d="M47.5 18.5 L57 9" stroke="${tip}" stroke-width="2.4" stroke-linecap="round"/>
-    <path d="M57 9 L61 5" stroke="${tipHighlight}" stroke-width="1.3" stroke-linecap="round"/>
-    <circle cx="12" cy="56" r="2.4" fill="${cableCap}"/>
-    <ellipse cx="41" cy="25" rx="10" ry="3.2" fill="#ffffff" opacity="0.12" transform="rotate(-45 41 25)"/>
-  </g>
-</svg>
-`)}") 12 56, crosshair`;
-}
-
-const POSITIVE_PROBE_CURSOR = buildProbeCursor();
-const NEGATIVE_PROBE_CURSOR = buildProbeCursor({
-  handle: "#2c313a",
-  handleHighlight: "#636b78",
-  guard: "#11161d",
-  collar: "#596170",
-  cableCap: "#07090c",
+const padPicker = createPadPickerController({
+  getViewer: () => viewerInstance,
+  getBoardRuntime: () => currentBoardRuntime,
+  getBoard: () => currentBoard,
+  getProbeMode: () => probeMode,
+  getMountPoint: () => document.querySelector("#motherboardMap"),
+  setStatus,
 });
-const NAVIGATE_CURSOR = "zoom-in";
+
+const componentLabels = createComponentLabelController({
+  getViewer: () => viewerInstance,
+  getBoardRuntime: () => currentBoardRuntime,
+  getSpaces,
+});
+
+const pinEditor = createPinEditorController({
+  getViewer: () => viewerInstance,
+  getBoardRuntime: () => currentBoardRuntime,
+  getBoard: () => currentBoard,
+  getSelection: () => currentSelection,
+  clearOverlayList,
+});
 
 function getSpaces() {
   return currentBoardRuntime?.spaces || {
@@ -133,113 +116,34 @@ export function getBoardSize() {
 }
 
 function clearOverlayList(list) {
-  if (!viewerInstance) {
-    list.length = 0;
-    return;
-  }
-  list.forEach((entry) => {
-    try {
-      viewerInstance.removeOverlay(entry.element || entry);
-    } catch {
-      // ignore overlay cleanup errors
-    }
-  });
-  list.length = 0;
+  clearViewerOverlayList(viewerInstance, list);
 }
 
 function setProbeVisualState(selectedProbeId = null) {
-  probeOverlays.forEach((probe) => {
-    const active = selectedProbeId && probe.probeId === selectedProbeId;
-    const idleBackground = probe.isGround ? "#05070a" : "#ff4444";
-    const idleBorder = probe.isGround ? "2px solid #f8fafc" : "2px solid white";
-    probe.element.style.background = active ? "#ffe066" : idleBackground;
-    probe.element.style.border = active ? "2px solid #fff4bf" : idleBorder;
-    probe.element.style.color = probe.isGround ? "#f8fafc" : "transparent";
-    probe.element.style.transform = active ? "scale(1.25)" : "scale(1)";
-    probe.element.style.boxShadow = active
-      ? "0 0 8px rgba(255, 224, 102, 0.9)"
-      : (probe.isGround
-        ? "0 0 0 1px rgba(248, 250, 252, 0.35), 0 0 8px rgba(15, 23, 42, 0.75)"
-        : "0 0 4px rgba(0,0,0,0.5)");
+  setProbeOverlayVisualState(probeOverlays, selectedProbeId);
+}
+function getCurrentProbeCursor() {
+  return currentProbeCursor(activeProbePolarity);
+}
+
+function applyCurrentViewerInteractionMode(viewer, mountPoint = null) {
+  applyViewerMode({
+    viewer,
+    mountPoint,
+    probeMode,
+    activeProbePolarity,
+    setStatus,
   });
-}
-
-function getViewerCursorTargets(viewer) {
-  if (!viewer) return [];
-  return [viewer.canvas, viewer.container, viewer.element].filter(Boolean);
-}
-
-function currentProbeCursor() {
-  return activeProbePolarity === "negative" ? NEGATIVE_PROBE_CURSOR : POSITIVE_PROBE_CURSOR;
-}
-
-function setViewerNavigationEnabled(viewer, enabled) {
-  if (!viewer) return;
-  const active = Boolean(enabled);
-
-  if (typeof viewer.setMouseNavEnabled === "function") {
-    viewer.setMouseNavEnabled(active);
-  }
-
-  const mouse = viewer.gestureSettingsMouse;
-  if (mouse) {
-    mouse.clickToZoom = active;
-    mouse.dblClickToZoom = active;
-    mouse.dragToPan = active;
-    mouse.scrollToZoom = active;
-    mouse.pinchToZoom = active;
-    mouse.flickEnabled = active;
-  }
-
-  const touch = viewer.gestureSettingsTouch;
-  if (touch) {
-    touch.dragToPan = active;
-    touch.pinchToZoom = active;
-    touch.flickEnabled = active;
-    touch.clickToZoom = active;
-    touch.dblClickToZoom = active;
-  }
-
-  const pen = viewer.gestureSettingsPen;
-  if (pen) {
-    pen.dragToPan = active;
-    pen.scrollToZoom = active;
-    pen.clickToZoom = active;
-    pen.dblClickToZoom = active;
-  }
-}
-
-function applyViewerInteractionMode(viewer, mountPoint = null) {
-  if (!viewer) return;
-
-  setViewerNavigationEnabled(viewer, false);
-  getViewerCursorTargets(viewer).forEach((target) => {
-    target.style.cursor = probeMode ? currentProbeCursor() : NAVIGATE_CURSOR;
-    target.style.touchAction = probeMode ? "auto" : "none";
-  });
-
-  if (mountPoint) {
-    setStatus(
-      mountPoint,
-      probeMode
-        ? `Probe mode active (${activeProbePolarity === "negative" ? "NEG" : "POS"}). Click probe, component, or rail to measure.`
-        : "Navigate mode active. Pan/zoom PCB, then switch back to probe mode to measure."
-    );
-  }
 }
 
 function applyProbeCursorToOverlays() {
-  const cursor = currentProbeCursor();
-  probeOverlays.forEach((probe) => {
-    probe.element.style.cursor = cursor;
-  });
+  applyProbeOverlayCursor(probeOverlays, getCurrentProbeCursor());
 }
-
 function setProbePolarity(polarity = "positive") {
   activeProbePolarity = polarity === "negative" ? "negative" : "positive";
   applyProbeCursorToOverlays();
   const mountPoint = document.querySelector("#motherboardMap");
-  applyViewerInteractionMode(viewerInstance, mountPoint);
+  applyCurrentViewerInteractionMode(viewerInstance, mountPoint);
 }
 
 export function clearScene() {
@@ -248,8 +152,9 @@ export function clearScene() {
   clearOverlayList(railOverlays);
   clearOverlayList(componentOverlays);
   clearOverlayList(psuTargetOverlays);
-  clearOverlayList(pickedPadOverlays);
-  clearOverlayList(pinEditorOverlays);
+  pinEditor.reset();
+  padPicker.reset();
+  componentLabels.clear();
   safeDestroyViewer();
 
   currentBoard = null;
@@ -257,22 +162,15 @@ export function clearScene() {
   currentSelection = null;
   psuTargetRail = null;
   probeMode = true;
-  padPickerEnabled = false;
-  pickedPads = [];
-  pickedPadCounter = 0;
-  latestPadPoint = null;
-  latestPickedPadId = null;
-  pinEditorState = {
-    componentId: null,
-    pins: [],
-    selectedPinId: null,
-    isEditing: false,
-    relocateOnNextClick: false,
-  };
   placedProbeTargets = {
     positive: null,
     negative: null,
   };
+
+  if (authoringSavedHandler) {
+    window.removeEventListener("pcb:authoring-saved", authoringSavedHandler);
+    authoringSavedHandler = null;
+  }
 
   clearCache();
 
@@ -280,666 +178,228 @@ export function clearScene() {
   if (railSelect) railSelect.innerHTML = '<option value="">-- Select Rail --</option>';
 }
 
-function formatPadId(counter) {
-  return `PAD_${String(counter).padStart(3, "0")}`;
-}
-
-function createPickedPadOverlayElement(pad, isLatest) {
-  const element = document.createElement("div");
-  element.style.width = `${PAD_MARKER_DIAMETER_IMAGE_PX}px`;
-  element.style.height = `${PAD_MARKER_DIAMETER_IMAGE_PX}px`;
-  element.style.borderRadius = "50%";
-  element.style.border = isLatest ? "2px solid #ffffff" : "1px solid #ffffff";
-  element.style.background = isLatest ? "rgba(0, 224, 255, 0.95)" : "rgba(255, 99, 132, 0.95)";
-  element.style.boxShadow = isLatest
-    ? "0 0 10px rgba(0, 224, 255, 0.9)"
-    : "0 0 6px rgba(255, 99, 132, 0.75)";
-  element.style.pointerEvents = "none";
-  element.title = `${pad.id} @ (${pad.x}, ${pad.y})`;
-  return element;
-}
-
 function redrawPickedPadOverlays() {
-  clearOverlayList(pickedPadOverlays);
-  if (!viewerInstance || !currentBoardRuntime || !pickedPads.length) return;
-
-  const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
-
-  pickedPads.forEach((pad) => {
-    const xi = pad.x * sx;
-    const yi = pad.y * sy;
-    const markerRadiusX = Math.max(1, pad.radius * sx);
-    const markerRadiusY = Math.max(1, pad.radius * sy);
-
-    const rect = new OpenSeadragon.Rect(
-      (xi - markerRadiusX) / imgW,
-      (yi - markerRadiusY) / imgH,
-      (markerRadiusX * 2) / imgW,
-      (markerRadiusY * 2) / imgH
-    );
-
-    const element = createPickedPadOverlayElement(pad, pad.id === latestPickedPadId);
-    viewerInstance.addOverlay({ element, location: rect });
-    pickedPadOverlays.push({ element, padId: pad.id });
-  });
-}
-
-function createPadAtPoint(point, { radius = 6 } = {}) {
-  pickedPadCounter += 1;
-  const pad = {
-    id: formatPadId(pickedPadCounter),
-    x: Math.round(point.board.x),
-    y: Math.round(point.board.y),
-    radius,
-    label: null,
-    railId: null,
-    node: null,
-    componentId: null,
-    pinId: null,
-  };
-  pickedPads.push(pad);
-  latestPickedPadId = pad.id;
-  latestPadPoint = {
-    board: { ...point.board },
-    image: { ...point.image },
-    screen: { ...point.screen },
-  };
-  redrawPickedPadOverlays();
-  return pad;
-}
-
-function ensurePadPickerRuntime(actionName) {
-  if (!viewerInstance || !currentBoardRuntime) {
-    console.warn(`[pcb] ${actionName} requires a loaded board/runtime.`);
-    return false;
-  }
-  return true;
+  padPicker.redraw();
 }
 
 export function enablePadPicker() {
-  if (!ensurePadPickerRuntime("enablePadPicker")) return false;
-  padPickerEnabled = true;
-  const mountPoint = document.querySelector("#motherboardMap");
-  if (mountPoint) setStatus(mountPoint, "Pad picker enabled. Click motherboard to add pads.");
-  redrawPickedPadOverlays();
-  console.info("[pcb] Pad picker enabled");
-  return true;
+  return padPicker.enable();
 }
 
 export function disablePadPicker() {
-  padPickerEnabled = false;
-  const mountPoint = document.querySelector("#motherboardMap");
-  if (mountPoint) {
-    setStatus(
-      mountPoint,
-      probeMode
-        ? "Pad picker disabled. Probe mode active."
-        : "Pad picker disabled. Navigate mode active."
-    );
-  }
-  console.info("[pcb] Pad picker disabled");
-  return true;
+  return padPicker.disable();
 }
 
 export function listPickedPads() {
-  return pickedPads.map((pad) => ({ ...pad }));
+  return padPicker.list();
 }
 
 export function clearPickedPads() {
-  pickedPads = [];
-  pickedPadCounter = 0;
-  latestPickedPadId = null;
-  latestPadPoint = null;
-  redrawPickedPadOverlays();
-  console.info("[pcb] Cleared picked pads");
-  return [];
+  return padPicker.clear();
 }
 
 export function removeLastPickedPad() {
-  if (!pickedPads.length) return null;
-  const removed = pickedPads.pop() || null;
-  latestPickedPadId = pickedPads.length ? pickedPads[pickedPads.length - 1].id : null;
-  redrawPickedPadOverlays();
-  console.info("[pcb] Removed picked pad", removed?.id || "");
-  return removed ? { ...removed } : null;
+  return padPicker.removeLast();
 }
 
 export function exportPickedPads() {
-  const payload = {
-    boardId: currentBoard?.id || currentBoardRuntime?.board?.id || null,
-    pads: listPickedPads(),
-  };
-  return payload;
+  return padPicker.exportPayload();
 }
 
 export function exportPickedPadsJson() {
-  return JSON.stringify(exportPickedPads(), null, 2);
+  return padPicker.exportJson();
 }
 
-
-function normalizePinContact(pin = {}, fallbackId = "") {
-  const x = Number(pin?.x ?? pin?.cx ?? pin?.px);
-  const y = Number(pin?.y ?? pin?.cy ?? pin?.py);
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  const id = String(pin?.id || fallbackId || "").trim();
-  return {
-    id: id || fallbackId,
-    name: pin?.name ?? pin?.label ?? null,
-    x: Math.round(x),
-    y: Math.round(y),
-    radius: Number.isFinite(Number(pin?.radius)) && Number(pin.radius) > 0 ? Number(pin.radius) : PIN_EDITOR_DEFAULT_RADIUS,
-    node: pin?.node ?? null,
-    railId: pin?.railId ?? pin?.rail ?? null,
-    pinType: pin?.pinType ?? pin?.kind ?? null,
-    pinRole: pin?.pinRole ?? null,
-    isGround: Boolean(pin?.isGround),
-    isTestPoint: Boolean(pin?.isTestPoint),
-    componentId: pin?.componentId ?? null,
-    authoringSource: pin?.authoringSource || "asset-import",
-  };
-}
-
-function inferPinDefaultsFromComponent(component, sequence = 1) {
-  const kind = String(component?.kind || "").toLowerCase();
-  const oneBased = Math.max(1, sequence);
-  if (kind.includes("res") || kind === "resistor") return { id: String(oneBased), name: String(oneBased), pinType: "resistor", pinRole: "passive" };
-  if (kind.includes("cap") || kind === "capacitor") return { id: String(oneBased), name: String(oneBased), pinType: "capacitor", pinRole: "passive" };
-  if (kind.includes("diode") || kind === "di") {
-    return oneBased === 1
-      ? { id: "A", name: "A", pinType: "diode", pinRole: "anode" }
-      : { id: "K", name: "K", pinType: "diode", pinRole: "cathode" };
-  }
-  if (kind.includes("mosfet") || kind === "fet") {
-    const map = [
-      { id: "G", name: "G", pinRole: "gate" },
-      { id: "D", name: "D", pinRole: "drain" },
-      { id: "S", name: "S", pinRole: "source" },
-    ];
-    const selected = map[(oneBased - 1) % map.length];
-    return { ...selected, pinType: "mosfet" };
-  }
-  if (kind.includes("ic")) return { id: String(oneBased), name: String(oneBased), pinType: "ic", pinRole: "signal" };
-  return { id: `PIN_${String(oneBased).padStart(3, "0")}`, name: `PIN_${String(oneBased).padStart(3, "0")}`, pinType: null, pinRole: null };
-}
-
-function inferPinRailId(pin) {
-  if (!pin || !currentBoardRuntime?.rails || !currentBoardRuntime.rails.length) return null;
-  const candidates = currentBoardRuntime.rails.filter((rail) => rail?.overlayBox
-    && pin.x >= rail.overlayBox.minX && pin.x <= rail.overlayBox.maxX
-    && pin.y >= rail.overlayBox.minY && pin.y <= rail.overlayBox.maxY);
-  if (candidates.length) return candidates[0].id;
-
-  const nearest = currentBoardRuntime.rails
-    .filter((rail) => rail?.overlayBox)
-    .map((rail) => {
-      const cx = (rail.overlayBox.minX + rail.overlayBox.maxX) / 2;
-      const cy = (rail.overlayBox.minY + rail.overlayBox.maxY) / 2;
-      const dx = pin.x - cx;
-      const dy = pin.y - cy;
-      return { id: rail.id, distance: dx * dx + dy * dy };
-    })
-    .sort((a, b) => a.distance - b.distance)[0];
-  return nearest?.id || null;
-}
-
-function nextGeneratedPinId() {
-  const used = new Set(pinEditorState.pins.map((pin) => String(pin.id || "").trim()));
-  for (let i = 1; i <= 9999; i += 1) {
-    const candidate = `PIN_${String(i).padStart(3, "0")}`;
-    if (!used.has(candidate)) return candidate;
-  }
-  return `PIN_${Date.now()}`;
-}
-
-function syncRuntimeComponentPins() {
-  if (!currentBoardRuntime || !pinEditorState.componentId) return;
-  const runtimeComponent = currentBoardRuntime.componentsById?.[pinEditorState.componentId];
-  if (!runtimeComponent) return;
-  runtimeComponent.pins = pinEditorState.pins.map((pin) => ({
-    id: pin.id,
-    name: pin.name ?? null,
-    x: pin.x,
-    y: pin.y,
-    radius: pin.radius,
-    node: pin.node ?? null,
-    railId: pin.railId ?? null,
-    pinType: pin.pinType ?? null,
-    pinRole: pin.pinRole ?? null,
-    isGround: Boolean(pin.isGround),
-    isTestPoint: Boolean(pin.isTestPoint),
-    componentId: pin.componentId ?? pinEditorState.componentId ?? null,
-    authoringSource: pin.authoringSource || "manual-click",
-  }));
-  runtimeComponent.raw = runtimeComponent.raw || {};
-  runtimeComponent.raw.pins = runtimeComponent.pins.map((pin) => ({ ...pin }));
-}
-
-function createPinEditorOverlayElement(pin, selected = false) {
-  const element = document.createElement("button");
-  element.type = "button";
-  element.style.width = `${PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX}px`;
-  element.style.height = `${PIN_EDITOR_MARKER_DIAMETER_IMAGE_PX}px`;
-  element.style.borderRadius = "50%";
-  element.style.border = selected ? "2px solid #fff7d6" : "1px solid #ffffff";
-  const isManual = pin.authoringSource === "manual-click";
-  element.style.background = selected
-    ? "rgba(255, 184, 0, 0.96)"
-    : (isManual ? "rgba(26, 174, 255, 0.9)" : "rgba(111, 255, 163, 0.85)");
-  element.style.boxShadow = selected
-    ? "0 0 12px rgba(255, 184, 0, 0.95)"
-    : "0 0 7px rgba(26, 174, 255, 0.8)";
-  element.style.pointerEvents = "none";
-  element.style.padding = "0";
-  element.title = `${pin.id}${pin.name ? ` (${pin.name})` : ""} @ (${pin.x}, ${pin.y}) [${pin.authoringSource || "unknown"}]`;
-  return element;
+function redrawRuntimePinOverlays() {
+  pinEditor.redrawRuntimeOverlays();
 }
 
 function redrawPinEditorOverlays() {
-  clearOverlayList(pinEditorOverlays);
-  if (!viewerInstance || !currentBoardRuntime || !pinEditorState.isEditing) return;
-
-  const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
-  pinEditorState.pins.forEach((pin) => {
-    const xi = pin.x * sx;
-    const yi = pin.y * sy;
-    const markerRadiusX = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sx);
-    const markerRadiusY = Math.max(1, (pin.radius || PIN_EDITOR_DEFAULT_RADIUS) * sy);
-    const rect = new OpenSeadragon.Rect(
-      (xi - markerRadiusX) / imgW,
-      (yi - markerRadiusY) / imgH,
-      (markerRadiusX * 2) / imgW,
-      (markerRadiusY * 2) / imgH
-    );
-    const selected = pin.id === pinEditorState.selectedPinId;
-    const element = createPinEditorOverlayElement(pin, selected);
-    viewerInstance.addOverlay({ element, location: rect });
-    pinEditorOverlays.push({ element, pinId: pin.id });
-  });
-}
-
-function clonePinEditorState() {
-  return {
-    componentId: pinEditorState.componentId,
-    selectedPinId: pinEditorState.selectedPinId,
-    isEditing: pinEditorState.isEditing,
-    relocateOnNextClick: pinEditorState.relocateOnNextClick,
-    pins: pinEditorState.pins.map((pin) => ({ ...pin })),
-  };
-}
-
-function setPinEditorComponent(componentId) {
-  const runtimeComponent = currentBoardRuntime?.componentsById?.[componentId];
-  if (!runtimeComponent) {
-    console.warn(`[pcb] Component not found for pin editor: ${componentId}`);
-    return null;
-  }
-
-  const sourcePins = Array.isArray(runtimeComponent?.pins) && runtimeComponent.pins.length
-    ? runtimeComponent.pins
-    : (Array.isArray(runtimeComponent?.pads) ? runtimeComponent.pads : []);
-
-  const pins = sourcePins
-    .map((pin, index) => normalizePinContact(pin, String(index + 1)))
-    .filter(Boolean);
-
-  pinEditorState.componentId = runtimeComponent.id;
-  pinEditorState.pins = pins;
-  pinEditorState.selectedPinId = pins[0]?.id || null;
-  pinEditorState.relocateOnNextClick = false;
-  redrawPinEditorOverlays();
-  return clonePinEditorState();
-}
-
-function pickEditorPinAtPoint(boardPoint) {
-  const hitRadius = Math.max(8 / (currentBoardRuntime?.spaces?.sx || 1), 8 / (currentBoardRuntime?.spaces?.sy || 1), 6);
-  const hitSq = hitRadius * hitRadius;
-  const winner = pinEditorState.pins
-    .map((pin) => {
-      const dx = boardPoint.x - pin.x;
-      const dy = boardPoint.y - pin.y;
-      return { pin, distance: dx * dx + dy * dy };
-    })
-    .filter((entry) => entry.distance <= hitSq)
-    .sort((a, b) => a.distance - b.distance)[0];
-  return winner?.pin || null;
-}
-
-function addEditorPinAtPoint(boardPoint) {
-  const selectedComponent = getSelectedRuntimeComponent() || currentBoardRuntime?.componentsById?.[currentSelection?.pick?.componentId] || null;
-  const sequence = pinEditorState.pins.filter((pin) => pin.authoringSource === "manual-click").length + 1;
-  const defaults = inferPinDefaultsFromComponent(selectedComponent, sequence);
-  const id = defaults.id || nextGeneratedPinId();
-  const pin = {
-    id,
-    name: defaults.name || id,
-    x: Math.round(boardPoint.x),
-    y: Math.round(boardPoint.y),
-    radius: PIN_EDITOR_DEFAULT_RADIUS,
-    node: null,
-    railId: null,
-    pinType: defaults.pinType,
-    pinRole: defaults.pinRole,
-    isGround: false,
-    isTestPoint: false,
-    componentId: pinEditorState.componentId || selectedComponent?.id || null,
-    authoringSource: "manual-click",
-  };
-  pin.railId = inferPinRailId(pin);
-  if (String(pin.railId || "").toUpperCase().includes("GND")) {
-    pin.pinRole = "ground";
-    pin.isGround = true;
-  }
-  if (String(pin.componentId || "").toUpperCase().startsWith("TP")) {
-    pin.pinType = pin.pinType || "test_point";
-    pin.pinRole = pin.pinRole || "test_point";
-    pin.isTestPoint = true;
-  }
-  pinEditorState.pins.push(pin);
-  pinEditorState.selectedPinId = pin.id;
-  syncRuntimeComponentPins();
-  redrawPinEditorOverlays();
-  return { ...pin };
-}
-
-function getSelectedRuntimeComponent() {
-  if (!pinEditorState.componentId) return null;
-  return currentBoardRuntime?.componentsById?.[pinEditorState.componentId] || null;
+  pinEditor.redrawOverlays();
 }
 
 export function editComponentPins(componentId = null) {
-  if (!currentBoardRuntime) {
-    console.warn("[pcb] editComponentPins requires a loaded board.");
-    return null;
-  }
-
-  const targetId = componentId
-    || currentSelection?.pick?.componentId
-    || currentSelection?.target?.componentId
-    || null;
-
-  if (!targetId) {
-    console.warn("[pcb] No component selected. Pick a component first or pass componentId.");
-    return null;
-  }
-
-  if (!setPinEditorComponent(targetId)) return null;
-  pinEditorState.isEditing = true;
-  redrawPinEditorOverlays();
-  console.info(`[pcb] Pin editor enabled for component ${targetId}`);
-  return clonePinEditorState();
+  return pinEditor.editComponentPins(componentId);
 }
 
 export function enableComponentPinEditor() {
-  if (!currentBoardRuntime) {
-    console.warn("[pcb] enableComponentPinEditor requires a loaded board.");
-    return false;
-  }
-  if (!pinEditorState.componentId) {
-    const selectedComponentId = currentSelection?.pick?.componentId || currentSelection?.target?.componentId || null;
-    if (selectedComponentId) {
-      setPinEditorComponent(selectedComponentId);
-    }
-  }
-  if (!pinEditorState.componentId) console.warn("[pcb] No component selected for pin editor. Manual loose pin authoring enabled.");
-  pinEditorState.isEditing = true;
-  redrawPinEditorOverlays();
-  return true;
+  return pinEditor.enableComponentPinEditor();
 }
 
 export function disableComponentPinEditor() {
-  pinEditorState.isEditing = false;
-  pinEditorState.relocateOnNextClick = false;
-  redrawPinEditorOverlays();
-  return true;
+  return pinEditor.disableComponentPinEditor();
 }
 
 export function listComponentPins() {
-  return pinEditorState.pins.map((pin) => ({ ...pin }));
+  return pinEditor.listComponentPins();
 }
 
 export function listCreatedPins() {
-  return listComponentPins().filter((pin) => pin.authoringSource === "manual-click");
+  return pinEditor.listCreatedPins();
 }
 
 export function selectPin(pinId) {
-  const wanted = String(pinId || "");
-  const pin = pinEditorState.pins.find((entry) => String(entry.id) === wanted);
-  if (!pin) return null;
-  pinEditorState.selectedPinId = pin.id;
-  redrawPinEditorOverlays();
-  return { ...pin };
-}
-
-function updatePin(pinId, patch = {}) {
-  const wanted = String(pinId || pinEditorState.selectedPinId || "");
-  if (!wanted) return null;
-  const idx = pinEditorState.pins.findIndex((entry) => String(entry.id) === wanted);
-  if (idx < 0) return null;
-  const current = pinEditorState.pins[idx];
-  const next = { ...current, ...patch };
-  if (patch.id !== undefined) next.id = String(patch.id || "").trim();
-  if (!next.id) return null;
-  if (patch.radius !== undefined) {
-    const radius = Number(patch.radius);
-    if (!Number.isFinite(radius) || radius <= 0) return null;
-    next.radius = radius;
-  }
-  if (patch.x !== undefined || patch.y !== undefined) {
-    const x = Number(patch.x ?? next.x);
-    const y = Number(patch.y ?? next.y);
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-    next.x = Math.round(x);
-    next.y = Math.round(y);
-  }
-  pinEditorState.pins[idx] = next;
-  if (pinEditorState.selectedPinId === wanted) pinEditorState.selectedPinId = next.id;
-  syncRuntimeComponentPins();
-  redrawPinEditorOverlays();
-  return { ...next };
+  return pinEditor.selectPin(pinId);
 }
 
 export function renamePin(pinId, newId) {
-  return updatePin(pinId, { id: newId });
+  return pinEditor.renamePin(pinId, newId);
 }
 
 export function setPinName(pinId, name) {
-  return updatePin(pinId, { name: name == null ? null : String(name) });
+  return pinEditor.setPinName(pinId, name);
 }
 
 export function setPinNode(pinId, node) {
-  return updatePin(pinId, { node: node == null ? null : String(node) });
+  return pinEditor.setPinNode(pinId, node);
 }
 
 export function setPinType(pinId, type) {
-  if (type != null && !PIN_TYPE_VALUES.has(String(type))) console.warn(`[pcb] Unknown pinType: ${type}`);
-  return updatePin(pinId, { pinType: type == null ? null : String(type) });
+  return pinEditor.setPinType(pinId, type);
 }
 
 export function setPinRole(pinId, role) {
-  if (role != null && !PIN_ROLE_VALUES.has(String(role))) console.warn(`[pcb] Unknown pinRole: ${role}`);
-  return updatePin(pinId, { pinRole: role == null ? null : String(role) });
+  return pinEditor.setPinRole(pinId, role);
 }
 
 export function setPinGround(pinId, value) {
-  const isGround = Boolean(value);
-  const patch = { isGround };
-  if (isGround) patch.pinRole = "ground";
-  return updatePin(pinId, patch);
+  return pinEditor.setPinGround(pinId, value);
 }
 
 export function setPinTestPoint(pinId, value) {
-  const isTestPoint = Boolean(value);
-  const patch = { isTestPoint };
-  if (isTestPoint) {
-    patch.pinRole = "test_point";
-    patch.pinType = "test_point";
-  }
-  return updatePin(pinId, patch);
+  return pinEditor.setPinTestPoint(pinId, value);
 }
 
 export function setPinRail(pinId, railId) {
-  return updatePin(pinId, { railId: railId == null ? null : String(railId) });
+  return pinEditor.setPinRail(pinId, railId);
 }
 
 export function setPinRadius(pinId, radius) {
-  return updatePin(pinId, { radius });
+  return pinEditor.setPinRadius(pinId, radius);
 }
 
 export function moveSelectedPinTo(x, y) {
-  return updatePin(pinEditorState.selectedPinId, { x, y });
+  return pinEditor.moveSelectedPinTo(x, y);
 }
 
 export function moveSelectedPinOnNextClick() {
-  if (!pinEditorState.selectedPinId) return false;
-  pinEditorState.relocateOnNextClick = true;
-  return true;
+  return pinEditor.moveSelectedPinOnNextClick();
 }
 
 export function deleteSelectedPin() {
-  if (!pinEditorState.selectedPinId) return null;
-  const idx = pinEditorState.pins.findIndex((pin) => pin.id === pinEditorState.selectedPinId);
-  if (idx < 0) return null;
-  const [removed] = pinEditorState.pins.splice(idx, 1);
-  pinEditorState.selectedPinId = pinEditorState.pins[idx]?.id || pinEditorState.pins[idx - 1]?.id || null;
-  syncRuntimeComponentPins();
-  redrawPinEditorOverlays();
-  return removed ? { ...removed } : null;
+  return pinEditor.deleteSelectedPin();
 }
 
 export function exportEditedComponentPins() {
-  const component = getSelectedRuntimeComponent();
-  if (!component) return null;
-  const payload = {
-    id: component.id,
-    refdes: component.refdes,
-    kind: component.kind,
-    bbox: component.raw?.bbox || null,
-    pins: listComponentPins(),
-  };
-  return payload;
+  return pinEditor.exportEditedComponentPins();
 }
 
 export function exportCreatedPins() {
-  return {
-    boardId: currentBoard?.id || currentBoardRuntime?.board?.id || null,
-    componentId: pinEditorState.componentId || null,
-    pins: listCreatedPins(),
-  };
+  return pinEditor.exportCreatedPins();
 }
 
 export function exportCreatedPinsJson() {
-  return JSON.stringify(exportCreatedPins(), null, 2);
+  return pinEditor.exportCreatedPinsJson();
 }
 
 export function exportSelectedComponentPatch() {
-  const componentId = pinEditorState.componentId || currentSelection?.pick?.componentId || null;
-  if (!componentId) return null;
-  const pins = listCreatedPins().filter((pin) => (pin.componentId || componentId) === componentId);
-  return { id: componentId, pins };
+  return pinEditor.exportSelectedComponentPatch();
 }
 
 export function exportEditedComponentPinsJson() {
-  const payload = exportEditedComponentPins();
-  return payload ? JSON.stringify(payload, null, 2) : "";
+  return pinEditor.exportEditedComponentPinsJson();
 }
 
 export function dumpEditedComponent() {
-  const component = getSelectedRuntimeComponent();
-  if (!component) return null;
-  return {
-    id: component.id,
-    refdes: component.refdes,
-    kind: component.kind,
-    rails: component.rails,
-    pins: listComponentPins(),
-  };
+  return pinEditor.dumpEditedComponent();
 }
 
 export function getSelectedComponentId() {
-  return currentSelection?.pick?.componentId || pinEditorState.componentId || null;
+  return pinEditor.getSelectedComponentId();
 }
 
 export function getSelectedComponent() {
-  const id = getSelectedComponentId();
-  if (!id) return null;
-  return currentBoardRuntime?.componentsById?.[id] || null;
+  return pinEditor.getSelectedComponent();
 }
 
 export function dumpSelectedComponentPins() {
-  const id = getSelectedComponentId();
-  if (!id) return [];
-  return pinEditorState.pins.filter((pin) => (pin.componentId || id) === id).map((pin) => ({ ...pin }));
+  return pinEditor.dumpSelectedComponentPins();
 }
 
 export function dumpSelectedPin() {
-  if (!pinEditorState.selectedPinId) return null;
-  return pinEditorState.pins.find((pin) => pin.id === pinEditorState.selectedPinId) || null;
+  return pinEditor.dumpSelectedPin();
 }
 
 export function debugPinEditorState() {
-  return clonePinEditorState();
+  return pinEditor.debugState();
 }
 
 export function debugPinPlacementState() {
-  return {
-    enabled: pinEditorState.isEditing,
-    selectedPinId: pinEditorState.selectedPinId,
-    targetComponentId: pinEditorState.componentId,
-    createdPins: listCreatedPins().length,
-  };
+  return pinEditor.debugPinPlacementState();
 }
 
 export function enablePinPlacementMode() {
-  return enableComponentPinEditor();
+  return pinEditor.enableComponentPinEditor();
 }
 
 export function disablePinPlacementMode() {
-  return disableComponentPinEditor();
+  return pinEditor.disableComponentPinEditor();
 }
 
 export function selectCreatedPin(pinId) {
-  return selectPin(pinId);
+  return pinEditor.selectCreatedPin(pinId);
 }
-
 export function dumpViewerRuntime() {
   return {
     boardId: currentBoard?.id || null,
-    padPickerEnabled,
-    pickedPadCount: pickedPads.length,
-    latestPadPoint,
+    padPickerEnabled: padPicker.isEnabled(),
+    pickedPadCount: padPicker.list().length,
+    latestPadPoint: padPicker.getLatestPoint(),
     probeMode,
     selection: currentSelection,
-    pinEditor: clonePinEditorState(),
+    pinEditor: pinEditor.debugState(),
   };
 }
 
-function createRectOverlay({ border, background, boxShadow = "none" }) {
-  const el = document.createElement("div");
-  el.style.position = "absolute";
-  el.style.border = border;
-  el.style.background = background;
-  el.style.boxShadow = boxShadow;
-  el.style.pointerEvents = "none";
-  return el;
+// ── Floating fixed-size label system ──────────────────────────────────────────
+/**
+ * Render labels for ALL components in boardRuntime.
+ * Called once after board + viewer are ready.
+ */
+export function drawAllComponentLabels() {
+  componentLabels.draw();
+
+    // Use OSD's native image→viewport conversion (handles aspect ratio)
 }
 
 function addBoxOverlay(list, box, styles = {}) {
-  if (!viewerInstance || !box) return;
-  const { imgW, imgH, sx, sy } = getSpaces();
-  const minXi = box.minX * sx;
-  const minYi = box.minY * sy;
-  const maxXi = box.maxX * sx;
-  const maxYi = box.maxY * sy;
-  const rect = new OpenSeadragon.Rect(
-    minXi / imgW,
-    minYi / imgH,
-    Math.max(1, maxXi - minXi) / imgW,
-    Math.max(1, maxYi - minYi) / imgH
+  if (!viewerInstance?.viewport || !box) return;
+  const { sx, sy } = getSpaces();
+  const rawMinX = Number(box.minX);
+  const rawMinY = Number(box.minY);
+  const rawMaxX = Number(box.maxX);
+  const rawMaxY = Number(box.maxY);
+  if (![rawMinX, rawMinY, rawMaxX, rawMaxY].every(Number.isFinite)) return;
+
+  const looksLikeImageSpace = rawMaxX > currentBoardRuntime?.spaces?.dataW
+    || rawMaxY > currentBoardRuntime?.spaces?.dataH;
+  const minXi = looksLikeImageSpace ? rawMinX : rawMinX * sx;
+  const minYi = looksLikeImageSpace ? rawMinY : rawMinY * sy;
+  const maxXi = looksLikeImageSpace ? rawMaxX : rawMaxX * sx;
+  const maxYi = looksLikeImageSpace ? rawMaxY : rawMaxY * sy;
+
+  const imgRect = new OpenSeadragon.Rect(
+    minXi,
+    minYi,
+    Math.max(1, maxXi - minXi),
+    Math.max(1, maxYi - minYi)
   );
+  const rect = viewerInstance.viewport.imageToViewportRectangle(imgRect);
   const element = createRectOverlay(styles);
   viewerInstance.addOverlay({ element, location: rect });
   list.push({ element });
 }
+
 
 function drawRailOverlay(rail) {
   clearOverlayList(railOverlays);
@@ -971,152 +431,23 @@ function drawPsuTargetOverlay(rail) {
   });
 }
 
-function pointForMeasurementTarget(target, boardRuntime) {
-  if (!target || !boardRuntime) return null;
-
-  if (target.type === "probe") {
-    const probe = boardRuntime.probesById?.[target.probeId || target.id] || null;
-    if (probe && Number.isFinite(probe.x) && Number.isFinite(probe.y)) return { x: probe.x, y: probe.y };
-  }
-
-  if (target.type === "component-pin") {
-    const component = boardRuntime.componentsById?.[target.componentId] || null;
-    const contacts = [
-      ...(Array.isArray(component?.pins) ? component.pins : []),
-      ...(Array.isArray(component?.pads) ? component.pads : []),
-    ];
-    const contact = contacts.find((entry) => String(entry?.id || "") === String(target.pinId || ""));
-    const x = Number(contact?.x ?? contact?.cx ?? contact?.px);
-    const y = Number(contact?.y ?? contact?.cy ?? contact?.py);
-    if (Number.isFinite(x) && Number.isFinite(y)) return { x, y };
-  }
-
-  if (target.type === "component") {
-    const component = boardRuntime.componentsById?.[target.componentId] || null;
-    const box = component?.bbox || null;
-    if (box) return { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
-  }
-
-  if (target.type === "rail") {
-    const rail = boardRuntime.railsById?.[target.railId] || null;
-    const probe = Array.isArray(rail?.probePoints) ? rail.probePoints[0] : null;
-    if (probe && Number.isFinite(probe.x) && Number.isFinite(probe.y)) return { x: probe.x, y: probe.y };
-    const box = rail?.overlayBox || null;
-    if (box) return { x: (box.minX + box.maxX) / 2, y: (box.minY + box.maxY) / 2 };
-  }
-
-  if (target.type === "node" && target.railId) {
-    return pointForMeasurementTarget({ type: "rail", railId: target.railId }, boardRuntime);
-  }
-
-  return null;
-}
-
 function drawPlacedProbeTargets() {
-  clearOverlayList(placedProbeOverlays);
-  if (!viewerInstance || !currentBoardRuntime) return;
-
-  const { imgW, imgH, sx, sy } = currentBoardRuntime.spaces;
-  const entries = [
-    { key: "positive", label: "RED", fill: "#ff4d4f", glow: "rgba(255, 77, 79, 0.42)" },
-    { key: "negative", label: "BLACK", fill: "#0f172a", glow: "rgba(148, 163, 184, 0.34)" },
-  ];
-
-  entries.forEach((entry) => {
-    const target = placedProbeTargets[entry.key];
-    const point = pointForMeasurementTarget(target, currentBoardRuntime);
-    if (!point) return;
-
-    const element = document.createElement("div");
-    element.style.width = "46px";
-    element.style.height = "46px";
-    element.style.borderRadius = "50%";
-    element.style.border = "2px solid rgba(255,255,255,0.94)";
-    element.style.background = entry.fill;
-    element.style.color = "#f8fafc";
-    element.style.fontSize = "9px";
-    element.style.fontWeight = "800";
-    element.style.letterSpacing = "0.08em";
-    element.style.display = "flex";
-    element.style.alignItems = "center";
-    element.style.justifyContent = "center";
-    element.style.boxShadow = `0 0 0 3px ${entry.glow}, 0 0 14px ${entry.glow}`;
-    element.style.pointerEvents = "none";
-    element.textContent = entry.label;
-    element.title = target?.label || entry.label;
-
-    const markerImgPx = 46;
-    const xi = point.x * sx;
-    const yi = point.y * sy;
-    const rect = new OpenSeadragon.Rect(
-      (xi - markerImgPx / 2) / imgW,
-      (yi - markerImgPx / 2) / imgH,
-      markerImgPx / imgW,
-      markerImgPx / imgH
-    );
-
-    viewerInstance.addOverlay({ element, location: rect });
-    placedProbeOverlays.push({ element });
+  drawPlacedProbeTargetOverlays({
+    viewer: viewerInstance,
+    boardRuntime: currentBoardRuntime,
+    placedProbeTargets,
+    placedProbeOverlays,
+    clearOverlayList,
   });
 }
-
 export function drawProbePoints(viewer, boardRuntime) {
-  clearOverlayList(probeOverlays);
-  if (!viewer || !boardRuntime) return;
-
-  const { imgW, imgH, sx, sy } = boardRuntime.spaces;
-  const markerImgPx = 14;
-
-  boardRuntime.probes.forEach((probe) => {
-    const isGround = String(probe.railId || "").toUpperCase().includes("GND")
-      || String(probe.label || "").toUpperCase().includes("GND");
-    const overlaySize = isGround ? 22 : markerImgPx;
-    const element = document.createElement("button");
-    element.type = "button";
-    element.style.width = `${overlaySize}px`;
-    element.style.height = `${overlaySize}px`;
-    element.style.background = isGround ? "#05070a" : "#ff4444";
-    element.style.border = isGround ? "2px solid #f8fafc" : "2px solid white";
-    element.style.borderRadius = "50%";
-    element.style.cursor = currentProbeCursor();
-    element.style.boxShadow = isGround
-      ? "0 0 0 1px rgba(248, 250, 252, 0.35), 0 0 8px rgba(15, 23, 42, 0.75)"
-      : "0 0 4px rgba(0,0,0,0.5)";
-    element.style.pointerEvents = "auto";
-    element.style.padding = "0";
-    element.style.color = isGround ? "#f8fafc" : "yellow";
-    element.style.fontSize = "9px";
-    element.style.fontWeight = "800";
-    element.style.lineHeight = "1";
-    if (isGround) element.textContent = "G";
-    element.title = probe.label || probe.id;
-    element.dataset.probeId = probe.id;
-
-    element.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const pick = {
-        type: "probe",
-        id: probe.id,
-        probeId: probe.id,
-        railId: probe.railId,
-        label: probe.label,
-        raw: probe,
-      };
-      dispatchSelection(pick, { source: "probe-overlay" });
-    });
-
-    const xi = probe.x * sx;
-    const yi = probe.y * sy;
-    const rect = new OpenSeadragon.Rect(
-      (xi - overlaySize / 2) / imgW,
-      (yi - overlaySize / 2) / imgH,
-      overlaySize / imgW,
-      overlaySize / imgH
-    );
-
-    viewer.addOverlay({ element, location: rect });
-    probeOverlays.push({ element, probeId: probe.id, railId: probe.railId, isGround });
+  drawProbePointOverlays({
+    viewer,
+    boardRuntime,
+    probeOverlays,
+    clearOverlayList,
+    getCursor: getCurrentProbeCursor,
+    onProbePicked: (pick) => dispatchSelection(pick, { source: "probe-overlay" }),
   });
   drawPlacedProbeTargets();
 }
@@ -1130,7 +461,7 @@ export function toggleProbeMode(viewer, boardRuntime) {
     setProbeVisualState(currentSelection.target.probeId);
   }
   const mountPoint = document.querySelector("#motherboardMap");
-  applyViewerInteractionMode(viewer, mountPoint);
+  applyCurrentViewerInteractionMode(viewer, mountPoint);
   return probeMode;
 }
 
@@ -1143,7 +474,7 @@ function setProbeModeState(viewer, boardRuntime, nextProbeMode) {
     setProbeVisualState(currentSelection.target.probeId);
   }
   const mountPoint = document.querySelector("#motherboardMap");
-  applyViewerInteractionMode(viewer, mountPoint);
+  applyCurrentViewerInteractionMode(viewer, mountPoint);
   return probeMode;
 }
 
@@ -1180,9 +511,7 @@ function applySelectionVisuals(pick) {
   if (pick.type === "component" || pick.type === "component-pin") {
     const component = currentBoardRuntime?.componentsById?.[pick.componentId];
     if (component) drawComponentOverlay(component);
-    if (pinEditorState.isEditing && pinEditorState.componentId === pick.componentId) {
-      redrawPinEditorOverlays();
-    }
+    redrawPinEditorOverlays();
     return;
   }
   if (pick.type === "rail") {
@@ -1243,6 +572,15 @@ export function setPsuTargetRail(railId) {
 function handleCanvasClick(event) {
   if (!event?.quick || !viewerInstance || !currentBoardRuntime) return;
 
+  if (!event.syntheticDirectClick && lastSyntheticCanvasClick) {
+    const ageMs = Date.now() - lastSyntheticCanvasClick.time;
+    const dx = Math.abs((event.position?.x || 0) - lastSyntheticCanvasClick.x);
+    const dy = Math.abs((event.position?.y || 0) - lastSyntheticCanvasClick.y);
+    if (ageMs < 250 && dx <= 2 && dy <= 2) {
+      return;
+    }
+  }
+
   // ── Authoring Studio intercept ──
   if (isAuthoringEnabled()) {
     const handled = handleAuthoringCanvasClick(event, viewerInstance, currentBoardRuntime);
@@ -1251,34 +589,30 @@ function handleCanvasClick(event) {
 
   const point = screenToBoardPoint(viewerInstance, currentBoardRuntime, event.position);
 
-  if (pinEditorState.isEditing) {
+  if (pinEditor.isEditing()) {
     if (!point) {
       console.warn("[pcb] Could not resolve click point for pin editor.");
       return;
     }
 
     const mountPoint = document.querySelector("#motherboardMap");
-    const hitPin = pickEditorPinAtPoint(point.board);
-
-    if (pinEditorState.relocateOnNextClick && pinEditorState.selectedPinId) {
-      const moved = moveSelectedPinTo(point.board.x, point.board.y);
-      pinEditorState.relocateOnNextClick = false;
-      if (mountPoint && moved) {
-        setStatus(mountPoint, `Moved pin ${moved.id} to (${moved.x}, ${moved.y})`);
-      }
+    const moved = pinEditor.consumeRelocateAtPoint(point.board);
+    if (moved) {
+      if (mountPoint) setStatus(mountPoint, `Moved pin ${moved.id} to (${moved.x}, ${moved.y})`);
       event.preventDefaultAction = true;
       return;
     }
 
+    const hitPin = pinEditor.pickAtPoint(point.board);
     if (hitPin) {
-      pinEditorState.selectedPinId = hitPin.id;
-      redrawPinEditorOverlays();
-      if (mountPoint) setStatus(mountPoint, `Selected pin ${hitPin.id}${pinEditorState.componentId ? ` on ${pinEditorState.componentId}` : ""}`);
+      pinEditor.selectPin(hitPin.id);
+      const componentId = pinEditor.getComponentId();
+      if (mountPoint) setStatus(mountPoint, `Selected pin ${hitPin.id}${componentId ? ` on ${componentId}` : ""}`);
       event.preventDefaultAction = true;
       return;
     }
 
-    const created = addEditorPinAtPoint(point.board);
+    const created = pinEditor.addPinAtPoint(point.board);
     if (mountPoint && created) {
       const railHint = created.railId ? ` rail=${created.railId}` : "";
       setStatus(mountPoint, `Added pin ${created.id} @ (${created.x}, ${created.y})${railHint}`);
@@ -1288,13 +622,13 @@ function handleCanvasClick(event) {
     return;
   }
 
-  if (padPickerEnabled) {
+  if (padPicker.isEnabled()) {
     if (!point) {
       console.warn("[pcb] Could not resolve click point for pad picker.");
       return;
     }
 
-    const pad = createPadAtPoint(point, { radius: 6 });
+    const pad = padPicker.addAtPoint(point, { radius: 6 });
     const mountPoint = document.querySelector("#motherboardMap");
     if (mountPoint) {
       setStatus(mountPoint, `Picked ${pad.id} @ (${pad.x}, ${pad.y})`);
@@ -1304,9 +638,25 @@ function handleCanvasClick(event) {
     return;
   }
 
-  if (!probeMode) return;
+  if (!probeMode) {
+    if (!point) return;
+    const picked = pickBoardTarget(currentBoardRuntime, point);
+    if (picked?.type === "component" || picked?.type === "component-pin") {
+      dispatchSelection(picked, { source: "canvas" });
+    }
+    return;
+  }
+
   const picked = pickAtScreenPoint(viewerInstance, currentBoardRuntime, event.position);
   if (!picked) {
+    // Fallback: try to select a component even in probe mode
+    if (point) {
+      const compPick = pickBoardTarget(currentBoardRuntime, point);
+      if (compPick?.type === "component" || compPick?.type === "component-pin") {
+        dispatchSelection(compPick, { source: "canvas" });
+        return;
+      }
+    }
     const mountPoint = document.querySelector("#motherboardMap");
     if (mountPoint) setStatus(mountPoint, "No measurable target at click position.");
     window.dispatchEvent(new CustomEvent("pcb:pick-missed", {
@@ -1333,101 +683,20 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
   if (!mountPoint) return null;
   const toolbarHost = document.querySelector("#pcbViewerToolbar");
 
-  const mountStyle = window.getComputedStyle(mountPoint);
-  if (mountStyle.position === "static") mountPoint.style.position = "relative";
-  mountPoint.style.overflow = "hidden";
-  if (!mountPoint.style.minHeight) mountPoint.style.minHeight = "400px";
+  const {
+    canvasTarget,
+    homeBtn,
+    loadBtn,
+    navBtn,
+    probeBtn,
+    railSelect,
+    select,
+    uiLayer,
+    zoomInBtn,
+    zoomOutBtn,
+  } = mountPanelShell({ mountPoint, toolbarHost });
 
-  const toolbarMarkup = `
-    <div id="pcb-viewer-ui" class="pcb-viewer-ui">
-      <div class="pcb-toolbar-cluster">
-        <label class="pcb-toolbar-field pcb-toolbar-field-wide">
-          <span class="pcb-toolbar-label">Board</span>
-          <select id="board-select" class="pcb-toolbar-select"></select>
-        </label>
-        <button id="btn-load-pcb" class="pcb-toolbar-btn pcb-toolbar-btn-primary">
-          Load
-        </button>
-      </div>
-      <div class="pcb-toolbar-cluster">
-        <label class="pcb-toolbar-field pcb-toolbar-field-wide">
-          <span class="pcb-toolbar-label">Rail Focus</span>
-          <select id="rail-select" class="pcb-toolbar-select">
-            <option value="">-- Select Rail --</option>
-          </select>
-        </label>
-      </div>
-      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack">
-        <span class="pcb-toolbar-label">Interaction</span>
-        <div class="pcb-toolbar-group">
-          <button id="btn-probe" class="pcb-toolbar-btn pcb-toolbar-btn-mode">
-            Probe
-          </button>
-          <button id="btn-nav" class="pcb-toolbar-btn pcb-toolbar-btn-mode">
-            Navigate
-          </button>
-        </div>
-      </div>
-      <div class="pcb-toolbar-cluster pcb-toolbar-cluster-stack">
-        <span class="pcb-toolbar-label">Viewport</span>
-        <div class="pcb-toolbar-group">
-          <button id="btn-zoom-in" class="pcb-toolbar-btn pcb-toolbar-btn-ghost pcb-toolbar-btn-icon">
-            +
-          </button>
-          <button id="btn-zoom-out" class="pcb-toolbar-btn pcb-toolbar-btn-ghost pcb-toolbar-btn-icon">
-            -
-          </button>
-          <button id="btn-home" class="pcb-toolbar-btn pcb-toolbar-btn-ghost">
-            Home
-          </button>
-        </div>
-      </div>
-      <span class="pcb-toolbar-spacer"></span>
-      <div class="pcb-toolbar-readout">
-        <span class="pcb-toolbar-label">Status</span>
-        <span id="pcb-status" class="pcb-toolbar-status">
-          Loading boards...
-        </span>
-      </div>
-    </div>
-  `;
-  const canvasMarkup = '<div id="pcb-canvas-target" class="pcb-canvas-target"></div>';
-
-  if (toolbarHost) {
-    toolbarHost.innerHTML = toolbarMarkup;
-    mountPoint.innerHTML = canvasMarkup;
-  } else {
-    mountPoint.innerHTML = `${toolbarMarkup}${canvasMarkup}`;
-  }
-
-  const toolbarRoot = toolbarHost || mountPoint;
-  const uiLayer = toolbarRoot.querySelector("#pcb-viewer-ui");
-  const select = toolbarRoot.querySelector("#board-select");
-  const railSelect = toolbarRoot.querySelector("#rail-select");
-  const loadBtn = toolbarRoot.querySelector("#btn-load-pcb");
-  const probeBtn = toolbarRoot.querySelector("#btn-probe");
-  const navBtn = toolbarRoot.querySelector("#btn-nav");
-  const zoomInBtn = toolbarRoot.querySelector("#btn-zoom-in");
-  const zoomOutBtn = toolbarRoot.querySelector("#btn-zoom-out");
-  const homeBtn = toolbarRoot.querySelector("#btn-home");
-  const canvasTarget = mountPoint.querySelector("#pcb-canvas-target");
-
-  if (uiLayer) {
-    const stopViewerInput = (event) => event.stopPropagation();
-    [
-      "pointerdown",
-      "pointerup",
-      "mousedown",
-      "mouseup",
-      "click",
-      "dblclick",
-      "wheel",
-      "touchstart",
-      "touchmove",
-      "touchend",
-    ].forEach((name) => uiLayer.addEventListener(name, stopViewerInput));
-  }
-
+  stopViewerInputOnUiLayer(uiLayer);
   railSelect.addEventListener("change", () => {
     if (railSelect.value) onRailSelected(railSelect.value);
   });
@@ -1514,35 +783,40 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     if (isBoxDragActive()) return;
 
     if (isAuthoringEnabled()) {
-      const rect = canvasTarget.getBoundingClientRect();
-      const screenX = e.clientX - rect.left;
-      const screenY = e.clientY - rect.top;
+      const screenX = e.clientX;
+      const screenY = e.clientY;
+      const screenPoint = new OpenSeadragon.Point(screenX, screenY);
+      screenPoint.coordinateSpace = "client";
       const syntheticEvent = {
         quick: true,
-        position: new OpenSeadragon.Point(screenX, screenY),
+        position: screenPoint,
         preventDefaultAction: false,
+        syntheticDirectClick: true,
       };
       console.debug("[authoring] click →", getActiveTool(), { screenX, screenY });
       const handled = handleAuthoringCanvasClick(syntheticEvent, viewerInstance, currentBoardRuntime);
       if (handled) return;
+      lastSyntheticCanvasClick = { x: screenX, y: screenY, time: Date.now() };
+      handleCanvasClick(syntheticEvent);
+      return;
     }
+
+    const screenX = e.clientX;
+    const screenY = e.clientY;
+    const screenPoint = new OpenSeadragon.Point(screenX, screenY);
+    screenPoint.coordinateSpace = "client";
+    const syntheticEvent = {
+      quick: true,
+      position: screenPoint,
+      preventDefaultAction: false,
+      syntheticDirectClick: true,
+    };
+    lastSyntheticCanvasClick = { x: screenX, y: screenY, time: Date.now() };
+    handleCanvasClick(syntheticEvent);
   }, false);
 
   function syncModeButtons() {
-    if (probeBtn) {
-      probeBtn.style.background = probeMode ? "#1e7e34" : "#495057";
-      probeBtn.style.boxShadow = probeMode ? "0 0 0 1px rgba(30,126,52,0.35)" : "none";
-    }
-    if (navBtn) {
-      navBtn.style.background = probeMode ? "#495057" : "#0d6efd";
-      navBtn.style.boxShadow = probeMode ? "none" : "0 0 0 1px rgba(13,110,253,0.35)";
-    }
-    [zoomInBtn, zoomOutBtn, homeBtn].forEach((button) => {
-      if (!button) return;
-      button.disabled = probeMode;
-      button.style.opacity = probeMode ? "0.45" : "1";
-      button.style.cursor = probeMode ? "not-allowed" : "pointer";
-    });
+    syncPanelModeButtons({ probeBtn, navBtn, zoomInBtn, zoomOutBtn, homeBtn, probeMode });
   }
 
   async function loadBoardsList() {
@@ -1555,7 +829,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         setStatus(mountPoint, "No boards in manifest.json");
         return;
       }
-      select.innerHTML = boards.map((board) => `<option value="${board.id}">${board.name || board.id}</option>`).join("");
+      renderBoardOptions(select, boards);
       setStatus(mountPoint, `Boards: ${boards.length}`);
     } catch (error) {
       console.error("Failed to load boards manifest:", error);
@@ -1576,41 +850,28 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     loadBtn.disabled = true;
 
     try {
-      const boardData = await loadBoardData(boardId);
+      const bundle = await loadBoardRuntimeBundle(boardId);
+      const {
+        boardData,
+        components,
+        railFile,
+        rails,
+        runtime,
+        thermal,
+        topology,
+      } = bundle;
       safeDestroyViewer();
 
       viewerInstance = await createDeepZoomViewer({
         el: canvasTarget,
         board: boardData,
-        getTileUrl: (level, x, y) => getTileUrl(boardData, level, x, y),
+        getTileUrl: createTileUrlResolver(boardData),
       });
 
-      const [components, railFile, topology, thermal] = await Promise.all([
-        loadComponents(boardId),
-        loadRailsFile(boardId),
-        loadTopology(boardId),
-        loadThermal(boardId),
-      ]);
-
-      const rails = Array.isArray(railFile?.rails) ? railFile.rails : [];
-      currentBoard = { ...boardData, components, rails, topology, thermal, railFile };
-      currentBoardRuntime = buildBoardRuntime({
-        board: boardData,
-        rails,
-        components,
-        topology,
-        thermal,
-        railFile,
-      });
+      currentBoard = bundle.board;
+      currentBoardRuntime = runtime;
       currentSelection = null;
-      pinEditorState = {
-        componentId: null,
-        pins: [],
-        selectedPinId: null,
-        isEditing: false,
-        relocateOnNextClick: false,
-      };
-      clearOverlayList(pinEditorOverlays);
+      pinEditor.reset();
       redrawPickedPadOverlays();
 
       // ── Authoring Studio: update refs & install drag handler ──
@@ -1629,11 +890,25 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
       // This is registered once per viewer; OSD deduplicates the same function reference.
       viewerInstance.addHandler("canvas-click", handleCanvasClick);
 
-      railSelect.innerHTML = '<option value="">-- Select Rail --</option>'
-        + currentBoardRuntime.rails.map((rail) => `<option value="${rail.id}">${rail.label || rail.id}</option>`).join("");
+      renderRailOptions(railSelect, currentBoardRuntime.rails);
 
       setProbeModeState(viewerInstance, currentBoardRuntime, true);
       syncModeButtons();
+
+      // Draw labels for all components once the image is fully loaded
+      // so imageToViewportCoordinates has correct data
+      const _drawLabelsOnce = () => {
+        drawAllComponentLabels();
+        redrawPinEditorOverlays();
+        viewerInstance.removeHandler("open", _drawLabelsOnce);
+      };
+      if (viewerInstance.world?.getItemCount() > 0) {
+        // Image already open — draw immediately
+        drawAllComponentLabels();
+        redrawPinEditorOverlays();
+      } else {
+        viewerInstance.addHandler("open", _drawLabelsOnce);
+      }
       probeBtn.onclick = () => {
         setProbeModeState(viewerInstance, currentBoardRuntime, true);
         syncModeButtons();
@@ -1672,6 +947,32 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
         onBoardReady(detail);
       }
       window.dispatchEvent(new CustomEvent("pcb:board-runtime-ready", { detail }));
+
+      // When authoring saves new components, refresh runtime + labels
+      if (authoringSavedHandler) {
+        window.removeEventListener("pcb:authoring-saved", authoringSavedHandler);
+      }
+      authoringSavedHandler = async (e) => {
+        if (e.detail?.boardId !== boardId || !viewerInstance) return;
+        try {
+          clearCache(boardId);
+          const freshBundle = await refreshBoardRuntimeBundle(boardId, { boardData, topology, thermal });
+          currentBoard = freshBundle.board;
+          currentBoardRuntime = freshBundle.runtime;
+          updateAuthoringViewerRefs({
+            viewerInstance,
+            boardRuntime: currentBoardRuntime,
+            getSpaces,
+          });
+          drawAllComponentLabels();
+          redrawPinEditorOverlays();
+          if (probeMode) drawProbePoints(viewerInstance, currentBoardRuntime);
+          console.info("[pcb] Runtime refreshed after authoring save — labels updated.");
+        } catch (err) {
+          console.warn("[pcb] Failed to refresh runtime after save:", err);
+        }
+      };
+      window.addEventListener("pcb:authoring-saved", authoringSavedHandler);
     } catch (error) {
       console.error("Load board failed:", error);
       setStatus(mountPoint, `Load failed: ${error.message}`);
@@ -1712,7 +1013,7 @@ export function initPcbViewerPanel({ mountSelector, onBoardReady } = {}) {
     getBoardList,
     getCurrentRuntime: () => currentBoardRuntime,
     getCurrentSelection: () => currentSelection,
-    isPadPickerEnabled: () => padPickerEnabled,
+    isPadPickerEnabled: () => padPicker.isEnabled(),
     enablePadPicker,
     disablePadPicker,
     listPickedPads,

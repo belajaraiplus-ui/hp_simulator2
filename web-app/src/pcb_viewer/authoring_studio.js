@@ -5,18 +5,35 @@
  */
 
 import OpenSeadragon from "openseadragon";
+import {
+  TOOL_NAMES,
+} from "./authoring/constants.js";
+import {
+  boxBoundsFromAuthoringBox,
+  buildBoardOverlayRect,
+  dragDeltaToBoardDelta,
+  normalizeAuthoringId,
+  safeScreenToBoardPoint,
+  suppressOverlayPointerEvent,
+  updateBoxOverlayPosition,
+} from "./authoring/geometry.js";
+import {
+  buildBoxComponentIdMap as buildBoxComponentIdMapForBoxes,
+  getComponentIdForBox,
+  resolvePinComponentId as resolvePinComponentIdForState,
+} from "./authoring/component_resolver.js";
+import { validateAuthoringState } from "./authoring/validation.js";
+import {
+  buildAuthoringComponentPatchData,
+  buildAuthoringExportJson,
+  fallbackStandaloneComponentId,
+} from "./authoring/export_payload.js";
+import {
+  buildBoxInspectorHTML,
+  buildPinInspectorHTML,
+} from "./authoring/inspector_html.js";
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
-const PIN_TYPE_OPTIONS = [
-  "", "resistor", "capacitor", "diode", "mosfet", "ic", "fuse",
-  "inductor", "jumper", "test_point", "passive", "signal", "power", "ground",
-];
-const PIN_ROLE_OPTIONS = [
-  "", "ground", "signal", "power", "passive", "test_point",
-  "anode", "cathode", "gate", "drain", "source", "input", "output", "pin1", "pin2",
-];
-
-const TOOL_NAMES = ["select", "box", "pin", "edit"];
 
 // ─── State ─────────────────────────────────────────────────────────────────────
 let authoringState = {
@@ -84,26 +101,6 @@ export function initAuthoringStudio({
 
 let _screenToBoardPointFn = null;
 
-/**
- * Wrapper: ensures that screen coords are wrapped as OpenSeadragon.Point
- * before passing to the picking.js screenToBoardPoint function, because
- * OSD's viewport.pointFromPixel internally calls .minus() which only exists
- * on OSD Point objects.
- */
-function safeScreenToBoardPoint(viewer, runtime, screenXY) {
-  if (!_screenToBoardPointFn || !viewer || !runtime) return null;
-  // If it's already an OSD Point (has .minus method), just pass through
-  if (screenXY && typeof screenXY.minus === "function") {
-    return _screenToBoardPointFn(viewer, runtime, screenXY);
-  }
-  // Otherwise create a proper OSD Point
-  const x = screenXY?.x ?? screenXY?.position?.x;
-  const y = screenXY?.y ?? screenXY?.position?.y;
-  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
-  const osdPoint = new OpenSeadragon.Point(x, y);
-  return _screenToBoardPointFn(viewer, runtime, osdPoint);
-}
-
 export function updateAuthoringViewerRefs({ viewerInstance, boardRuntime, getSpaces }) {
   _viewerInstance = viewerInstance;
   _boardRuntime = boardRuntime;
@@ -125,6 +122,107 @@ export function getActiveTool() {
 
 export function isBoxDragActive() {
   return dragState !== null;
+}
+
+function collectUsedAuthoringIds(prefix) {
+  const used = new Set();
+  const add = (value) => {
+    const normalized = normalizeAuthoringId(value);
+    if (normalized) used.add(normalized);
+  };
+
+  if (prefix === "BOX") {
+    Object.keys(_boardRuntime?.componentsById || {}).forEach(add);
+    authoringState.boxes.forEach((box) => {
+      add(box?.id);
+      add(box?.componentId);
+    });
+    return used;
+  }
+
+  authoringState.pins.forEach((pin) => add(pin?.id));
+  (_boardRuntime?.components || []).forEach((component) => {
+    (component?.pins || []).forEach((pin) => add(pin?.id));
+  });
+  return used;
+}
+
+function nextAuthoringId(prefix) {
+  const counterKey = prefix === "BOX" ? "boxCounter" : "pinCounter";
+  const used = collectUsedAuthoringIds(prefix);
+
+  while (true) {
+    authoringState[counterKey] += 1;
+    const candidate = `${prefix}_${String(authoringState[counterKey]).padStart(3, "0")}`;
+    if (!used.has(candidate)) return candidate;
+  }
+}
+
+function buildBoxComponentIdMap() {
+  return buildBoxComponentIdMapForBoxes(authoringState.boxes);
+}
+
+function resolvePinComponentId(pin, boxComponentIds = buildBoxComponentIdMap()) {
+  return resolvePinComponentIdForState(pin, {
+    boxes: authoringState.boxes,
+    boardRuntime: _boardRuntime,
+    boxComponentIds,
+  });
+}
+function wireEditableBoxOverlay(box, element, spaces) {
+  if (!_viewerInstance || !box || !element) return null;
+  if (authoringState.activeTool !== "edit") return null;
+
+  ["pointerdown", "pointermove", "pointerup", "click"].forEach((name) => {
+    element.addEventListener(name, suppressOverlayPointerEvent);
+  });
+
+  const tracker = new OpenSeadragon.MouseTracker({
+    element,
+    pressHandler: (event) => {
+      event.preventDefaultAction = true;
+      authoringState.selectedBoxId = box.id;
+      authoringState.selectedPinId = null;
+      setAuthoringStatus(`Selected box ${box.id}`);
+      refreshInspector();
+      refreshItemsList();
+      event.originalEvent?.stopPropagation?.();
+      event.originalEvent?.preventDefault?.();
+    },
+    dragHandler: (event) => {
+      event.preventDefaultAction = true;
+      const liveBox = authoringState.boxes.find((entry) => entry.id === box.id);
+      if (!liveBox) return;
+
+      const boardDelta = dragDeltaToBoardDelta(_viewerInstance, event.delta, spaces);
+      if (!boardDelta) return;
+
+      liveBox.x = Number(liveBox.x || 0) + boardDelta.x;
+      liveBox.y = Number(liveBox.y || 0) + boardDelta.y;
+      updateBoxOverlayPosition(_viewerInstance, liveBox, element, spaces);
+      event.originalEvent?.stopPropagation?.();
+      event.originalEvent?.preventDefault?.();
+    },
+    releaseHandler: (event) => {
+      event.preventDefaultAction = true;
+      const liveBox = authoringState.boxes.find((entry) => entry.id === box.id);
+      if (liveBox) {
+        liveBox.x = Math.round(Number(liveBox.x || 0));
+        liveBox.y = Math.round(Number(liveBox.y || 0));
+        updateBoxOverlayPosition(_viewerInstance, liveBox, element, spaces);
+        setAuthoringStatus(`Moved box ${liveBox.id} to (${liveBox.x}, ${liveBox.y})`);
+      }
+      refreshOverlays();
+      refreshInspector();
+      refreshItemsList();
+      refreshExportPanel();
+      refreshValidationPanel();
+      event.originalEvent?.stopPropagation?.();
+      event.originalEvent?.preventDefault?.();
+    },
+  });
+  tracker.setTracking(true);
+  return tracker;
 }
 
 // ─── Build Studio Panel ────────────────────────────────────────────────────────
@@ -254,6 +352,7 @@ function wireToolButtons() {
       authoringState.activeTool = tool;
       syncToolButtons();
       setAuthoringStatus(toolStatusMessage(tool));
+      refreshOverlays();
     });
   });
 }
@@ -348,7 +447,7 @@ export function handleAuthoringCanvasClick(event, viewerInstance, boardRuntime) 
   if (!event?.quick) return false;
 
   // event.position from OSD is already an OSD Point — safe to pass directly
-  const point = safeScreenToBoardPoint(viewerInstance, boardRuntime, event.position);
+  const point = safeScreenToBoardPoint(_screenToBoardPointFn, viewerInstance, boardRuntime, event.position);
   if (!point) return false;
 
   const tool = authoringState.activeTool;
@@ -376,20 +475,46 @@ export function handleAuthoringCanvasClick(event, viewerInstance, boardRuntime) 
 }
 
 // Box drag — uses pointer events on the canvas target
+// Handlers are stored so they can be removed and reinstalled on board reload.
+let _boxDragHandlers = null;
+
 export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntime) {
   if (!canvasTarget) return;
-  // Guard: only install once (board reload calls this again)
-  if (_boxDragInstalled) return;
+
+  // Remove previous handlers if present (board reload case)
+  if (_boxDragHandlers) {
+    canvasTarget.removeEventListener("pointerdown", _boxDragHandlers.down, true);
+    canvasTarget.removeEventListener("pointermove", _boxDragHandlers.move, true);
+    canvasTarget.removeEventListener("pointerup",   _boxDragHandlers.end,  true);
+    canvasTarget.removeEventListener("pointercancel", _boxDragHandlers.end, true);
+    _boxDragHandlers = null;
+  }
   _boxDragInstalled = true;
 
-  canvasTarget.addEventListener("pointerdown", (e) => {
+  // Always use live module-level refs (_viewerInstance, _boardRuntime) so that
+  // after updateAuthoringViewerRefs() the handlers pick up the new viewer.
+  const resolvePointerBoardPoint = (e) => {
+    const rect = canvasTarget.getBoundingClientRect?.();
+    if (rect) {
+      return safeScreenToBoardPoint(_screenToBoardPointFn, _viewerInstance, _boardRuntime, {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+        coordinateSpace: "viewer-local",
+      });
+    }
+
+    return safeScreenToBoardPoint(_screenToBoardPointFn, _viewerInstance, _boardRuntime, {
+      x: e.clientX,
+      y: e.clientY,
+      coordinateSpace: "client",
+    });
+  };
+
+  const onPointerDown = (e) => {
     if (!authoringState.enabled || authoringState.activeTool !== "box") return;
     if (!_viewerInstance?.viewport) return;
 
-    const rect = canvasTarget.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
-    const boardPt = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, { x: localX, y: localY });
+    const boardPt = resolvePointerBoardPoint(e);
     if (!boardPt) return;
 
     dragState = {
@@ -413,9 +538,9 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
     canvasTarget.setPointerCapture?.(e.pointerId);
     e.preventDefault();
     e.stopPropagation();
-  }, true);
+  };
 
-  canvasTarget.addEventListener("pointermove", (e) => {
+  const onPointerMove = (e) => {
     if (!dragState || e.pointerId !== dragState.pointerId) return;
     if (!dragPreviewEl) return;
 
@@ -431,7 +556,7 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
 
     e.preventDefault();
     e.stopPropagation();
-  }, true);
+  };
 
   const endDrag = (e) => {
     if (!dragState) return;
@@ -444,10 +569,7 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
     canvasTarget.releasePointerCapture?.(dragState.pointerId);
 
     // Calculate end board point
-    const rect = canvasTarget.getBoundingClientRect();
-    const localX = e.clientX - rect.left;
-    const localY = e.clientY - rect.top;
-    const boardPt = safeScreenToBoardPoint(_viewerInstance, _boardRuntime, { x: localX, y: localY });
+    const boardPt = resolvePointerBoardPoint(e);
 
     if (boardPt) {
       const startB = dragState.startBoard;
@@ -477,15 +599,19 @@ export function installBoxDragHandlers(canvasTarget, viewerInstance, boardRuntim
     }
   };
 
-  canvasTarget.addEventListener("pointerup", endDrag, true);
-  canvasTarget.addEventListener("pointercancel", endDrag, true);
+  canvasTarget.addEventListener("pointerdown",  onPointerDown, true);
+  canvasTarget.addEventListener("pointermove",  onPointerMove, true);
+  canvasTarget.addEventListener("pointerup",    endDrag,       true);
+  canvasTarget.addEventListener("pointercancel", endDrag,      true);
+
+  // Save refs for cleanup on next board load
+  _boxDragHandlers = { down: onPointerDown, move: onPointerMove, end: endDrag };
 }
 
 // ─── Box CRUD ──────────────────────────────────────────────────────────────────
 
 function addBox({ x, y, w, h }) {
-  authoringState.boxCounter += 1;
-  const id = `BOX_${String(authoringState.boxCounter).padStart(3, "0")}`;
+  const id = nextAuthoringId("BOX");
   const box = {
     id,
     componentId: authoringState.selectedComponentId || null,
@@ -502,6 +628,7 @@ function addBox({ x, y, w, h }) {
   authoringState.boxes.push(box);
   authoringState.selectedBoxId = id;
   authoringState.selectedPinId = null;
+  authoringState.selectedComponentId = getComponentIdForBox(box);
   setAuthoringStatus(`Created box ${id} at (${x}, ${y}) ${w}×${h}`);
   refreshOverlays();
   refreshInspector();
@@ -512,8 +639,10 @@ function addBox({ x, y, w, h }) {
 }
 
 function selectBox(boxId) {
+  const box = authoringState.boxes.find(b => b.id === boxId) || null;
   authoringState.selectedBoxId = boxId;
   authoringState.selectedPinId = null;
+  authoringState.selectedComponentId = getComponentIdForBox(box);
   setAuthoringStatus(`Selected box ${boxId}`);
   refreshOverlays();
   refreshInspector();
@@ -552,8 +681,7 @@ function deleteBox(boxId) {
 // ─── Pin CRUD ──────────────────────────────────────────────────────────────────
 
 function addPinAtBoardPoint(boardPoint) {
-  authoringState.pinCounter += 1;
-  const id = `PIN_${String(authoringState.pinCounter).padStart(3, "0")}`;
+  const id = nextAuthoringId("PIN");
 
   // Find enclosing box
   let boxId = authoringState.selectedBoxId || null;
@@ -565,13 +693,24 @@ function addPinAtBoardPoint(boardPoint) {
     if (enclosingBox) boxId = enclosingBox.id;
   }
 
+  const selectedBox = boxId
+    ? authoringState.boxes.find((entry) => entry.id === boxId) || null
+    : null;
+  const boxComponentIds = buildBoxComponentIdMap();
+  const inferredComponentId = resolvePinComponentId({
+    componentId: normalizeAuthoringId(authoringState.selectedComponentId),
+    boxId,
+    x: Math.round(boardPoint.x),
+    y: Math.round(boardPoint.y),
+  }, boxComponentIds);
+
   const pin = {
     id,
     name: id,
     x: Math.round(boardPoint.x),
     y: Math.round(boardPoint.y),
     radius: 6,
-    componentId: authoringState.selectedComponentId || null,
+    componentId: inferredComponentId,
     boxId,
     node: null,
     railId: null,
@@ -601,11 +740,14 @@ function addPinAtBoardPoint(boardPoint) {
   authoringState.pins.push(pin);
   authoringState.selectedPinId = id;
   authoringState.selectedBoxId = null;
+  authoringState.selectedComponentId = inferredComponentId;
 
-  if (!boxId) {
-    setAuthoringStatus(`⚠ Pin ${id} at (${pin.x}, ${pin.y}) — no box/component selected`);
-  } else {
+  if (boxId) {
     setAuthoringStatus(`Created pin ${id} at (${pin.x}, ${pin.y}) in ${boxId}`);
+  } else if (inferredComponentId) {
+    setAuthoringStatus(`Created pin ${id} at (${pin.x}, ${pin.y}) on ${inferredComponentId}`);
+  } else {
+    setAuthoringStatus(`⚠ Pin ${id} at (${pin.x}, ${pin.y}) — no box/component selected`);
   }
 
   refreshOverlays();
@@ -617,8 +759,17 @@ function addPinAtBoardPoint(boardPoint) {
 }
 
 function selectPin(pinId) {
+  const pin = authoringState.pins.find((entry) => entry.id === pinId) || null;
+  const selectedBox = pin?.boxId
+    ? authoringState.boxes.find((entry) => entry.id === pin.boxId) || null
+    : null;
+  const boxComponentIds = buildBoxComponentIdMap();
   authoringState.selectedPinId = pinId;
   authoringState.selectedBoxId = null;
+  authoringState.selectedComponentId = resolvePinComponentId(pin, boxComponentIds)
+    || normalizeAuthoringId(pin?.componentId)
+    || getComponentIdForBox(selectedBox)
+    || null;
   setAuthoringStatus(`Selected pin ${pinId}`);
   refreshOverlays();
   refreshInspector();
@@ -693,6 +844,7 @@ function clearAuthoringOverlays() {
   if (!_viewerInstance) return;
   [...boxOverlays, ...pinOverlays].forEach(entry => {
     try {
+      entry.tracker?.destroy?.();
       _viewerInstance.removeOverlay(entry.element);
     } catch { /* ignore */ }
   });
@@ -706,19 +858,11 @@ export function refreshOverlays() {
 
   const spaces = _getSpaces?.() || _boardRuntime.spaces;
   if (!spaces) return;
-  const { imgW, imgH, sx, sy } = spaces;
 
   // Draw boxes
   authoringState.boxes.forEach(box => {
-    const xi = box.x * sx;
-    const yi = box.y * sy;
-    const wi = box.w * sx;
-    const hi = box.h * sy;
-
-    const rect = new OpenSeadragon.Rect(
-      xi / imgW, yi / imgH,
-      Math.max(1, wi) / imgW, Math.max(1, hi) / imgH
-    );
+    const rect = buildBoardOverlayRect(_viewerInstance, box, spaces);
+    if (!rect) return;
 
     const el = document.createElement("div");
     const selected = box.id === authoringState.selectedBoxId;
@@ -726,7 +870,7 @@ export function refreshOverlays() {
     el.style.border = `${box.style.strokeWidth}px solid ${box.style.strokeColor}`;
     el.style.background = box.style.fillColor;
     el.style.boxSizing = "border-box";
-    el.style.pointerEvents = "none";
+    el.style.pointerEvents = authoringState.activeTool === "edit" ? "auto" : "none";
     if (selected) {
       el.style.boxShadow = "0 0 0 2px rgba(255,184,0,0.8), 0 0 12px rgba(255,184,0,0.4)";
     }
@@ -746,23 +890,20 @@ export function refreshOverlays() {
 
     el.title = `${box.id}${box.label ? ` (${box.label})` : ""} @ (${box.x}, ${box.y}) ${box.w}×${box.h}`;
     _viewerInstance.addOverlay({ element: el, location: rect });
-    boxOverlays.push({ element: el, boxId: box.id });
+    const tracker = wireEditableBoxOverlay(box, el, spaces);
+    boxOverlays.push({ element: el, boxId: box.id, tracker });
   });
 
   // Draw pins
   authoringState.pins.forEach(pin => {
-    const xi = pin.x * sx;
-    const yi = pin.y * sy;
     const r = Math.max(1, (pin.radius || 6));
-    const markerRx = r * sx;
-    const markerRy = r * sy;
-
-    const rect = new OpenSeadragon.Rect(
-      (xi - markerRx) / imgW,
-      (yi - markerRy) / imgH,
-      (markerRx * 2) / imgW,
-      (markerRy * 2) / imgH
-    );
+    const rect = buildBoardOverlayRect(_viewerInstance, {
+      x: pin.x - r,
+      y: pin.y - r,
+      w: r * 2,
+      h: r * 2,
+    }, spaces);
+    if (!rect) return;
 
     const selected = pin.id === authoringState.selectedPinId;
     const el = document.createElement("div");
@@ -817,62 +958,6 @@ function refreshInspector() {
   }
 }
 
-function buildPinInspectorHTML(pin) {
-  return `
-    <div class="as-inspector-grid">
-      <label class="as-field">
-        <span class="as-field-label">ID</span>
-        <input type="text" class="as-input" data-field="id" value="${esc(pin.id)}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Name</span>
-        <input type="text" class="as-input" data-field="name" value="${esc(pin.name || "")}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Pin Type</span>
-        <select class="as-select" data-field="pinType">
-          ${PIN_TYPE_OPTIONS.map(v => `<option value="${v}" ${pin.pinType === v ? "selected" : ""}>${v || "-- none --"}</option>`).join("")}
-        </select>
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Pin Role</span>
-        <select class="as-select" data-field="pinRole">
-          ${PIN_ROLE_OPTIONS.map(v => `<option value="${v}" ${pin.pinRole === v ? "selected" : ""}>${v || "-- none --"}</option>`).join("")}
-        </select>
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Node</span>
-        <input type="text" class="as-input" data-field="node" value="${esc(pin.node || "")}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Rail ID</span>
-        <input type="text" class="as-input" data-field="railId" value="${esc(pin.railId || "")}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Radius</span>
-        <input type="number" class="as-input" data-field="radius" value="${pin.radius}" min="1" step="1">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">X</span>
-        <input type="number" class="as-input" data-field="x" value="${pin.x}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Y</span>
-        <input type="number" class="as-input" data-field="y" value="${pin.y}">
-      </label>
-      <label class="as-field as-field-checkbox">
-        <input type="checkbox" data-field="isGround" ${pin.isGround ? "checked" : ""}>
-        <span>Is Ground</span>
-      </label>
-      <label class="as-field as-field-checkbox">
-        <input type="checkbox" data-field="isTestPoint" ${pin.isTestPoint ? "checked" : ""}>
-        <span>Is Test Point</span>
-      </label>
-    </div>
-    <button class="as-btn as-btn-danger as-btn-sm" id="as-delete-pin">🗑 Delete Pin</button>
-  `;
-}
-
 function wirePinInspectorEvents(container, pin) {
   container.querySelectorAll("[data-field]").forEach(el => {
     const field = el.dataset.field;
@@ -887,39 +972,6 @@ function wirePinInspectorEvents(container, pin) {
   if (deleteBtn) {
     deleteBtn.addEventListener("click", () => deletePin(pin.id));
   }
-}
-
-function buildBoxInspectorHTML(box) {
-  return `
-    <div class="as-inspector-grid">
-      <label class="as-field">
-        <span class="as-field-label">Label</span>
-        <input type="text" class="as-input" data-field="label" value="${esc(box.label || "")}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Kind</span>
-        <input type="text" class="as-input" data-field="kind" value="${esc(box.kind || "")}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Component ID</span>
-        <input type="text" class="as-input" data-field="componentId" value="${esc(box.componentId || "")}">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Border Color</span>
-        <input type="text" class="as-input" data-field="strokeColor" value="${esc(box.style.strokeColor)}" placeholder="rgba(...)">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Fill Color</span>
-        <input type="text" class="as-input" data-field="fillColor" value="${esc(box.style.fillColor)}" placeholder="rgba(...)">
-      </label>
-      <label class="as-field">
-        <span class="as-field-label">Border Width</span>
-        <input type="number" class="as-input" data-field="strokeWidth" value="${box.style.strokeWidth}" min="0" step="1">
-      </label>
-      <div class="as-field-info">Position: (${box.x}, ${box.y}) Size: ${box.w}×${box.h}</div>
-    </div>
-    <button class="as-btn as-btn-danger as-btn-sm" id="as-delete-box">🗑 Delete Box</button>
-  `;
 }
 
 function wireBoxInspectorEvents(container, box) {
@@ -992,70 +1044,22 @@ function refreshItemsList() {
 
 // ─── Export ────────────────────────────────────────────────────────────────────
 
-function buildComponentPatchPayload() {
-  // Build component-patch format: each box becomes a component with pins inside
-  const compMap = {};
-
-  // Add boxes as component scaffolds
-  authoringState.boxes.forEach(box => {
-    compMap[box.id] = {
-      id: box.id,
-      refdes: box.label || box.id,
-      kind: box.kind || "IC",
-      bbox: box.bbox ? { ...box.bbox } : undefined,
-      shape: box.bbox ? {
-        type: "poly",
-        points: [
-          [box.bbox.x, box.bbox.y],
-          [box.bbox.x + box.bbox.w, box.bbox.y],
-          [box.bbox.x + box.bbox.w, box.bbox.y + box.bbox.h],
-          [box.bbox.x, box.bbox.y + box.bbox.h],
-        ]
-      } : undefined,
-      pins: [],
-    };
+function buildComponentPatchData() {
+  const boxComponentIds = buildBoxComponentIdMap();
+  return buildAuthoringComponentPatchData({
+    state: authoringState,
+    boardRuntime: _boardRuntime,
+    boxComponentIds,
+    resolvePinComponentId,
   });
-
-  // Assign pins to their parent component
-  authoringState.pins.forEach(pin => {
-    const compId = pin.componentId || pin.boxId || null;
-    // Ensure component entry exists (pin may have no box)
-    if (compId && !compMap[compId]) {
-      compMap[compId] = { id: compId, refdes: compId, kind: "unknown", pins: [] };
-    }
-    const target = compId ? compMap[compId] : (compMap["_unassigned"] = compMap["_unassigned"] || { id: "_unassigned", pins: [] });
-    target.pins.push({
-      id: pin.id,
-      x: Math.round(pin.x),
-      y: Math.round(pin.y),
-      name: pin.name || pin.id,
-      railId: pin.railId || null,
-      node: pin.node || pin.railId || null,
-    });
-  });
-
-  return Object.values(compMap);
 }
 
 function buildExportJson() {
-  const mode = authoringState.exportMode;
-  let data;
-
-  if (mode === "boxes") {
-    data = { boxes: authoringState.boxes.map(b => ({ ...b, style: { ...b.style } })) };
-  } else if (mode === "pins") {
-    data = { pins: authoringState.pins.map(p => ({ ...p })) };
-  } else if (mode === "component-patch") {
-    data = { components: buildComponentPatchPayload() };
-  } else {
-    data = {
-      boardId: _boardRuntime?.board?.id || null,
-      boxes: authoringState.boxes.map(b => ({ ...b, style: { ...b.style } })),
-      pins: authoringState.pins.map(p => ({ ...p })),
-    };
-  }
-
-  return JSON.stringify(data, null, 2);
+  return buildAuthoringExportJson({
+    state: authoringState,
+    boardRuntime: _boardRuntime,
+    buildComponentPatchData,
+  });
 }
 
 async function saveToFile(btn) {
@@ -1065,7 +1069,7 @@ async function saveToFile(btn) {
     return;
   }
 
-  const components = buildComponentPatchPayload();
+  const { components, standalonePins } = buildComponentPatchData();
   if (!components.length) {
     setAuthoringStatus("⚠️ Nothing to save (no boxes/pins).");
     return;
@@ -1088,10 +1092,15 @@ async function saveToFile(btn) {
 
     const result = await res.json();
     setAuthoringStatus(
-      `✅ Saved! ${result.components_written} component(s) written → ${result.total_components} total in components.json`
+      standalonePins.length
+        ? `✅ Saved! ${result.components_written} component(s) written → ${result.total_components} total. ${standalonePins.length} pin(s) saved as standalone components.`
+        : `✅ Saved! ${result.components_written} component(s) written → ${result.total_components} total in components.json`
     );
     if (btn) { btn.textContent = "✅ Saved!"; }
     setTimeout(() => { if (btn) { btn.disabled = false; btn.textContent = "💾 Save to File"; } }, 2500);
+
+    // Notify panel.js to refresh labels (board data changed)
+    window.dispatchEvent(new CustomEvent("pcb:authoring-saved", { detail: { boardId } }));
 
   } catch (err) {
     console.error("[authoring] saveToFile failed:", err);
@@ -1112,78 +1121,22 @@ function refreshExportPanel() {
 // ─── Validation ────────────────────────────────────────────────────────────────
 
 function runValidation() {
+  const boxComponentIds = buildBoxComponentIdMap();
+  return validateAuthoringState({
+    state: authoringState,
+    boxComponentIds,
+    resolvePinComponentId,
+    fallbackStandaloneComponentId,
+  });
+}
+
+/* legacy validation tail removed.
   const issues = [];
 
-  // Check for duplicate pin IDs
-  const pinIds = new Set();
-  authoringState.pins.forEach(pin => {
-    if (pinIds.has(pin.id)) {
-      issues.push({ severity: "error", message: `Duplicate pin ID: ${pin.id}` });
-    }
-    pinIds.add(pin.id);
-  });
-
-  // Check for duplicate box IDs
-  const boxIds = new Set();
-  authoringState.boxes.forEach(box => {
-    if (boxIds.has(box.id)) {
-      issues.push({ severity: "error", message: `Duplicate box ID: ${box.id}` });
-    }
-    boxIds.add(box.id);
-  });
-
-  // Check pins without componentId/boxId
-  authoringState.pins.forEach(pin => {
-    if (!pin.componentId && !pin.boxId) {
-      issues.push({ severity: "warning", message: `Pin ${pin.id} has no componentId or boxId` });
-    }
-    if (!pin.node && !pin.railId) {
-      issues.push({ severity: "warning", message: `Pin ${pin.id} missing node/railId` });
-    }
-    if (!pin.pinType) {
-      issues.push({ severity: "info", message: `Pin ${pin.id} missing pinType` });
-    }
-    if (!pin.pinRole) {
-      issues.push({ severity: "info", message: `Pin ${pin.id} missing pinRole` });
-    }
-  });
-
-  // Check boxes without label/kind
-  authoringState.boxes.forEach(box => {
-    if (!box.label) {
-      issues.push({ severity: "warning", message: `Box ${box.id} has no label` });
-    }
-    if (!box.kind) {
-      issues.push({ severity: "info", message: `Box ${box.id} has no kind` });
-    }
-  });
-
-  // Check box has pins
-  authoringState.boxes.forEach(box => {
-    const boxPins = authoringState.pins.filter(p => p.boxId === box.id);
-    if (boxPins.length === 0) {
-      issues.push({ severity: "info", message: `Box ${box.id} has no pins yet` });
-    }
-  });
-
-  // Measurability check
-  if (authoringState.pins.length > 0) {
-    const measurable = authoringState.pins.filter(p => p.node || p.railId);
-    if (measurable.length < authoringState.pins.length) {
-      issues.push({
-        severity: "warning",
-        message: `${authoringState.pins.length - measurable.length} of ${authoringState.pins.length} pins not yet measurable (missing node/rail)`,
-      });
-    }
-  }
-
-  if (issues.length === 0 && (authoringState.pins.length > 0 || authoringState.boxes.length > 0)) {
     issues.push({ severity: "info", message: "✅ All authoring data looks valid!" });
   }
 
-  return issues;
-}
-
+*/
 function refreshValidationPanel() {
   const listEl = studioPanel?.querySelector("#as-validation-list");
   const countEl = studioPanel?.querySelector("#as-validation-count");
@@ -1272,6 +1225,10 @@ export function resetAuthoringOnBoardChange() {
   authoringState.selectedBoxId = null;
   authoringState.selectedPinId = null;
   authoringState.selectedComponentId = null;
+  // Reset drag-handler guard so installBoxDragHandlers reinstalls cleanly
+  // on the new canvas/viewer after a board reload.
+  _boxDragInstalled = false;
+  dragState = null;
   clearAuthoringOverlays();
   if (authoringState.enabled) {
     refreshOverlays();

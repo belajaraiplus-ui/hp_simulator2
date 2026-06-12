@@ -1,6 +1,5 @@
 import { State } from "../state.js";
 import { loadScenario } from "../engine/scenario.js";
-import { faultSimulator } from "../physics/fault_simulator.js";
 import { environmentEffects } from "../physics/effects.js";
 
 const defaultScenario = {
@@ -107,7 +106,6 @@ export function setScenario(scenarioId) {
         return;
       }
 
-      faultSimulator.initializeForScenario(scenarioId);
       if (result.profile) {
         environmentEffects.setEnvironment(
           result.profile.ambient_temperature,

@@ -1,22 +1,250 @@
 {
-  "version": 1,
   "components": [
     {
-      "id": "U1201",
-      "refdes": "U1201",
-      "kind": "IC",
-      "bbox": { "x": 252, "y": 176, "w": 56, "h": 52 },
+      "bbox": {
+        "h": 158,
+        "w": 178,
+        "x": 1490,
+        "y": 298
+      },
+      "category": null,
+      "electricalProperties": {},
+      "hints": null,
+      "id": "u666",
+      "kind": "ic",
+      "pins": [],
+      "refdes": "u666",
       "shape": {
-        "type": "poly",
-        "points": [[252,176],[308,176],[308,228],[252,228]]
+        "points": [
+          [
+            1490,
+            298
+          ],
+          [
+            1668,
+            298
+          ],
+          [
+            1668,
+            456
+          ],
+          [
+            1490,
+            456
+          ]
+        ],
+        "type": "poly"
       },
-      "tags": ["pmic"],
-      "hints": {
-        "rails": ["VCORE", "VIO"]
+      "tags": []
+    },
+    {
+      "bbox": {
+        "h": 12,
+        "w": 12,
+        "x": 753,
+        "y": 187
       },
-      "electricalProperties": {
-        "diodeDrop": 0.55
-      }
+      "category": null,
+      "electricalProperties": {},
+      "hints": null,
+      "id": "TP_PIN_001",
+      "kind": "ground",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_001",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_001",
+          "node": null,
+          "pinRole": "ground",
+          "pinType": "ground",
+          "radius": 6,
+          "railId": null,
+          "x": 759,
+          "y": 193
+        }
+      ],
+      "refdes": "TP_PIN_001",
+      "shape": {
+        "points": [
+          [
+            753,
+            187
+          ],
+          [
+            765,
+            187
+          ],
+          [
+            765,
+            199
+          ],
+          [
+            753,
+            199
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "bbox": {
+        "h": 12,
+        "w": 12,
+        "x": 855,
+        "y": 317
+      },
+      "category": null,
+      "electricalProperties": {},
+      "hints": null,
+      "id": "TP_PIN_003",
+      "kind": "passive",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_003",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_003",
+          "node": null,
+          "pinRole": "passive",
+          "pinType": "passive",
+          "radius": 6,
+          "railId": null,
+          "x": 861,
+          "y": 323
+        }
+      ],
+      "refdes": "TP_PIN_003",
+      "shape": {
+        "points": [
+          [
+            855,
+            317
+          ],
+          [
+            867,
+            317
+          ],
+          [
+            867,
+            329
+          ],
+          [
+            855,
+            329
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "bbox": {
+        "h": 12,
+        "w": 12,
+        "x": 673,
+        "y": 315
+      },
+      "category": null,
+      "electricalProperties": {},
+      "hints": null,
+      "id": "TP_PIN_004",
+      "kind": "test_point",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_004",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_004",
+          "node": null,
+          "pinRole": "test_point",
+          "pinType": "test_point",
+          "radius": 6,
+          "railId": null,
+          "x": 679,
+          "y": 321
+        }
+      ],
+      "refdes": "TP_PIN_004",
+      "shape": {
+        "points": [
+          [
+            673,
+            315
+          ],
+          [
+            685,
+            315
+          ],
+          [
+            685,
+            327
+          ],
+          [
+            673,
+            327
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
+    },
+    {
+      "bbox": {
+        "h": 168,
+        "w": 181,
+        "x": 1253,
+        "y": 308
+      },
+      "category": null,
+      "electricalProperties": {},
+      "hints": null,
+      "id": "u444",
+      "kind": "ic",
+      "pins": [
+        {
+          "authoringSource": "manual-click",
+          "id": "PIN_007",
+          "isGround": false,
+          "isTestPoint": false,
+          "name": "PIN_007",
+          "node": null,
+          "pinRole": "signal",
+          "pinType": "signal",
+          "radius": 6,
+          "railId": null,
+          "x": 1344,
+          "y": 388
+        }
+      ],
+      "refdes": "u444",
+      "shape": {
+        "points": [
+          [
+            1253,
+            308
+          ],
+          [
+            1434,
+            308
+          ],
+          [
+            1434,
+            476
+          ],
+          [
+            1253,
+            476
+          ]
+        ],
+        "type": "poly"
+      },
+      "tags": []
     }
-  ]
+  ],
+  "version": 1
 }
